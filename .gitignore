@@ -1,0 +1,18 @@
+# Environment
+.env
+.env.local
+.env.production
+
+# Attachments (user/agent generated files)
+attachments/
+
+# Screenshots (local captures)
+screenshots/nul
+screenshots/*.mp4
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Node
+node_modules/
