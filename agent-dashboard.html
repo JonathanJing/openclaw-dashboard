@@ -655,8 +655,8 @@ header{display:flex;align-items:center;justify-content:space-between;padding:16p
   <!-- Header -->
   <header>
     <div>
-      <div class="logo">Agent Dashboard</div>
-      <div class="logo-sub">OpenClaw · Task Management</div>
+      <div class="logo">Jony's Dashboard 🦞</div>
+      <div class="logo-sub">雯雯 · 24/7 Online</div>
     </div>
     <div class="header-right">
       <span class="status-dot ok" id="statusDot"></span>
@@ -2173,110 +2173,33 @@ function toggleAutoRefresh() {
 // ═══ CONNECTED APIs ═══
 const CONNECTED_APIS = [
   {
-    id: 'telegram',
-    name: 'Telegram Bot',
-    provider: 'Telegram',
-    icon: '✈️',
-    iconClass: 'telegram',
+    id: 'discord',
+    name: 'Discord Bot',
+    provider: 'Discord API',
+    icon: '🎮',
+    iconClass: 'discord',
     status: 'connected',
-    description: 'Primary messaging channel for agent communication. Receives commands, sends reports, and handles inline buttons.',
+    description: '主消息频道，用于接收指令、发送报告和互动。支持 Components v2 组件交互。',
     capabilities: [
       { label: 'Send Messages', type: 'messaging' },
-      { label: 'Inline Buttons', type: 'messaging' },
-      { label: 'Voice Messages', type: 'messaging' },
-      { label: 'File Sharing', type: 'data' },
-      { label: 'Reactions', type: 'messaging' },
-      { label: 'Polls', type: 'messaging' }
+      { label: 'Read Messages', type: 'messaging' },
+      { label: 'React', type: 'messaging' },
+      { label: 'Components v2', type: 'messaging' }
     ]
   },
   {
-    id: 'google-workspace',
-    name: 'Google Workspace',
-    provider: 'Google (gog CLI)',
-    icon: 'G',
-    iconClass: 'google',
+    id: 'anthropic',
+    name: 'Anthropic Claude',
+    provider: 'Anthropic API',
+    icon: '🧠',
+    iconClass: 'anthropic',
     status: 'connected',
-    description: 'Full Google Workspace access via gog CLI — Gmail, Calendar, Drive, Contacts, Docs, Sheets.',
+    description: '主 LLM 引擎。Claude Sonnet 4.6 / Opus 4.6，用于推理、代码生成和对话。',
     capabilities: [
-      { label: 'Gmail', type: 'messaging' },
-      { label: 'Calendar', type: 'data' },
-      { label: 'Drive', type: 'data' },
-      { label: 'Contacts', type: 'data' },
-      { label: 'Docs', type: 'data' },
-      { label: 'Sheets', type: 'data' }
-    ]
-  },
-  {
-    id: 'notion',
-    name: 'Notion',
-    provider: 'Notion API',
-    icon: 'N',
-    iconClass: 'notion',
-    status: 'connected',
-    description: 'Project management and operations tracking. Databases for tasks, projects, follow-ups, and agent task queue.',
-    capabilities: [
-      { label: 'Databases', type: 'data' },
-      { label: 'Pages', type: 'data' },
-      { label: 'Task Polling', type: 'ai' },
-      { label: 'Daily Reports', type: 'data' }
-    ]
-  },
-  {
-    id: 'brevo',
-    name: 'Brevo',
-    provider: 'Brevo (Sendinblue)',
-    icon: '📧',
-    iconClass: 'brevo',
-    status: 'connected',
-    description: 'Email marketing platform with credits tracking. Manages contacts for campaigns and newsletters.',
-    capabilities: [
-      { label: 'Email Campaigns', type: 'messaging' },
-      { label: 'Contact Mgmt', type: 'data' },
-      { label: 'Weekly Reports', type: 'data' },
-      { label: 'Templates', type: 'data' }
-    ]
-  },
-  {
-    id: 'imap',
-    name: 'IMAP Email',
-    provider: 'your-email@example.com',
-    icon: '📬',
-    iconClass: 'email',
-    status: 'connected',
-    description: 'Company main email via IMAP/SMTP on A2 Hosting. Receives campaign replies and form submissions.',
-    capabilities: [
-      { label: 'Read Inbox', type: 'data' },
-      { label: 'Send Email', type: 'messaging' },
-      { label: 'Lead Reports', type: 'data' },
-      { label: 'Form Submissions', type: 'data' }
-    ]
-  },
-  {
-    id: 'nano-banana-pro',
-    name: 'Nano Banana Pro',
-    provider: 'Google AI Studio',
-    icon: '🎨',
-    iconClass: 'imagen',
-    status: 'connected',
-    description: 'AI image generation via Gemini. Creates visuals, diagrams, and creative content on demand.',
-    capabilities: [
-      { label: 'Image Generation', type: 'ai' },
-      { label: 'Image Editing', type: 'ai' },
-      { label: 'Creative Art', type: 'ai' }
-    ]
-  },
-  {
-    id: 'whisper',
-    name: 'OpenAI Whisper',
-    provider: 'Local (CPU)',
-    icon: '🎙️',
-    iconClass: 'whisper',
-    status: 'connected',
-    description: 'Local speech-to-text transcription. Supports Arabic and multiple languages. CPU-only, no API key needed.',
-    capabilities: [
-      { label: 'Speech-to-Text', type: 'ai' },
-      { label: 'Arabic Support', type: 'ai' },
-      { label: 'Multi-Language', type: 'ai' }
+      { label: 'Claude Sonnet 4.6', type: 'ai' },
+      { label: 'Claude Opus 4.6', type: 'ai' },
+      { label: 'Reasoning', type: 'ai' },
+      { label: 'Code Gen', type: 'ai' }
     ]
   },
   {
@@ -2286,7 +2209,7 @@ const CONNECTED_APIS = [
     icon: '🦁',
     iconClass: 'brave',
     status: 'connected',
-    description: 'Web search engine API for real-time information retrieval. Supports region-specific and localized search.',
+    description: '实时网页搜索 API，用于信息检索和最新内容获取。',
     capabilities: [
       { label: 'Web Search', type: 'search' },
       { label: 'Region Filter', type: 'search' },
@@ -2294,53 +2217,91 @@ const CONNECTED_APIS = [
     ]
   },
   {
-    id: 'tavily',
-    name: 'Tavily',
-    provider: 'Tavily API',
-    icon: '🔍',
-    iconClass: 'tavily',
+    id: 'notion',
+    name: 'Notion',
+    provider: 'Notion API',
+    icon: 'N',
+    iconClass: 'notion',
     status: 'connected',
-    description: 'Advanced AI-powered web search with content extraction. Deep research and URL fetching capabilities.',
+    description: '数据库读写，用于任务管理、项目跟踪和知识库存储。',
     capabilities: [
-      { label: 'AI Search', type: 'search' },
+      { label: 'Database Read', type: 'data' },
+      { label: 'Database Write', type: 'data' },
+      { label: 'Pages', type: 'data' },
+      { label: 'Task Queue', type: 'ai' }
+    ]
+  },
+  {
+    id: 'openai',
+    name: 'OpenAI',
+    provider: 'OpenAI API',
+    icon: '⚡',
+    iconClass: 'openai',
+    status: 'connected',
+    description: 'GPT-5.2 / Codex，用于代码补全、内容生成和多模态任务。',
+    capabilities: [
+      { label: 'GPT-5.2', type: 'ai' },
+      { label: 'Codex', type: 'ai' },
+      { label: 'Code Completion', type: 'ai' },
+      { label: 'Multimodal', type: 'ai' }
+    ]
+  },
+  {
+    id: 'gemini',
+    name: 'Google Gemini',
+    provider: 'Google AI',
+    icon: 'G',
+    iconClass: 'google',
+    status: 'connected',
+    description: 'Gemini 3 Pro / Flash，用于多模态推理、图像理解和长上下文任务。',
+    capabilities: [
+      { label: 'Gemini 3 Pro', type: 'ai' },
+      { label: 'Gemini Flash', type: 'ai' },
+      { label: 'Image Understanding', type: 'ai' },
+      { label: 'Long Context', type: 'ai' }
+    ]
+  },
+  {
+    id: 'x-api',
+    name: 'X API',
+    provider: 'Twitter API v2',
+    icon: '𝕏',
+    iconClass: 'twitter',
+    status: 'connected',
+    description: '推文抓取与监控，追踪 @steipete @openclaw 及相关话题动态。',
+    capabilities: [
+      { label: 'Tweet Fetch', type: 'data' },
+      { label: '@steipete', type: 'search' },
+      { label: '@openclaw', type: 'search' },
+      { label: 'Timeline', type: 'data' }
+    ]
+  },
+  {
+    id: 'web-fetch',
+    name: 'Web Fetch',
+    provider: 'Built-in',
+    icon: '🌐',
+    iconClass: 'web',
+    status: 'connected',
+    description: '网页内容提取工具，用于抓取和解析任意 URL 的页面内容。',
+    capabilities: [
+      { label: 'URL Fetch', type: 'data' },
       { label: 'Content Extract', type: 'data' },
-      { label: 'Deep Research', type: 'ai' }
+      { label: 'HTML Parse', type: 'data' }
     ]
   },
   {
-    id: 'meta',
-    name: 'Meta Business API',
-    provider: 'Meta (Facebook/Instagram)',
-    icon: 'M',
-    iconClass: 'meta',
+    id: 'whisper',
+    name: 'OpenAI Whisper API',
+    provider: 'OpenAI API',
+    icon: '🎙️',
+    iconClass: 'whisper',
     status: 'connected',
-    description: 'Meta Business Suite integration for Facebook Pages, Instagram Business, WhatsApp Cloud API, and Ads management. Enables social media automation, content publishing, and audience analytics.',
+    description: '语音转文字服务，支持多语言识别，用于音频内容处理。',
     capabilities: [
-      { label: 'Facebook Pages', type: 'messaging' },
-      { label: 'Instagram Business', type: 'messaging' },
-      { label: 'WhatsApp Cloud', type: 'messaging' },
-      { label: 'Meta Ads', type: 'data' },
-      { label: 'Audience Insights', type: 'data' },
-      { label: 'Content Publishing', type: 'messaging' },
-      { label: 'Threads API', type: 'messaging' },
-      { label: 'Webhooks', type: 'data' }
-    ]
-  },
-  {
-    id: 'openclaw',
-    name: 'OpenClaw Platform',
-    provider: 'Core Engine',
-    icon: '🐾',
-    iconClass: 'openclaw',
-    status: 'connected',
-    description: 'Core agent orchestration platform. Manages sessions, cron jobs, sub-agents, memory, and multi-channel routing.',
-    capabilities: [
-      { label: 'Sessions', type: 'ai' },
-      { label: 'Cron Jobs', type: 'data' },
-      { label: 'Sub-Agents', type: 'ai' },
-      { label: 'Memory', type: 'data' },
-      { label: 'Multi-Channel', type: 'messaging' },
-      { label: 'Browser Control', type: 'ai' }
+      { label: 'Speech-to-Text', type: 'ai' },
+      { label: 'Multi-Language', type: 'ai' },
+      { label: 'Audio Transcribe', type: 'ai' }
     ]
   }
 ];

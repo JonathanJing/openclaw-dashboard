@@ -10,7 +10,7 @@ const url = require('url');
 // --- Config ---
 const PORT = parseInt(process.env.DASHBOARD_PORT || '18791', 10);
 const AUTH_TOKEN = process.env.OPENCLAW_AUTH_TOKEN || '';
-const WORKSPACE = process.env.OPENCLAW_WORKSPACE || path.join(process.env.HOME || '', 'clawd');
+const WORKSPACE = process.env.OPENCLAW_WORKSPACE || '/Users/jonyopenclaw/.openclaw/workspace';
 const TASKS_FILE = path.join(__dirname, 'tasks.json');
 const SKILLS_DIR = path.join(WORKSPACE, 'skills');
 const MEMORY_DIR = path.join(WORKSPACE, 'memory');
@@ -137,11 +137,18 @@ function setCors(res) {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 }
 
+function parseCookies(req) {
+  const raw = req.headers['cookie'] || '';
+  return Object.fromEntries(raw.split(';').map(c => c.trim().split('=').map(s => decodeURIComponent(s.trim()))));
+}
+
 function authenticate(req) {
   const parsed = url.parse(req.url, true);
   if (parsed.query.token === AUTH_TOKEN) return true;
   const authHeader = req.headers['authorization'] || '';
   if (authHeader.startsWith('Bearer ') && authHeader.slice(7).trim() === AUTH_TOKEN) return true;
+  const cookies = parseCookies(req);
+  if (cookies['ds'] === AUTH_TOKEN) return true;
   return false;
 }
 
@@ -1043,9 +1050,88 @@ const server = http.createServer((req, res) => {
     return jsonReply(res, 200, { status: 'ok', uptime: process.uptime() });
   }
 
-  // Auth check
+  // Login page (no auth required)
+  if (pathname === '/login') {
+    if (method === 'GET') {
+      setCors(res);
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end(`<!DOCTYPE html><html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Dashboard Login</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0a0a0f;color:#e0e0e0;font-family:-apple-system,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:20px}
+.card{background:#13131a;border:1px solid #2a2a3a;border-radius:16px;padding:40px 32px;width:100%;max-width:380px;text-align:center}
+h1{font-size:1.4rem;font-weight:600;margin-bottom:8px}
+p{color:#888;font-size:.9rem;margin-bottom:28px}
+input{width:100%;padding:14px 16px;border:1px solid #2a2a3a;border-radius:10px;background:#0d0d14;color:#e0e0e0;font-size:1rem;margin-bottom:16px;outline:none}
+input:focus{border-color:#5b6af0}
+button{width:100%;padding:14px;background:#5b6af0;color:#fff;border:none;border-radius:10px;font-size:1rem;font-weight:600;cursor:pointer}
+button:active{opacity:.8}
+.err{color:#f05b5b;font-size:.85rem;margin-top:12px;display:none}
+</style></head><body>
+<div class="card">
+  <h1>🐾 OpenClaw Dashboard</h1>
+  <p>Enter your access token</p>
+  <form method="POST" action="/login">
+    <input type="password" name="token" placeholder="Token" autofocus autocomplete="current-password">
+    <button type="submit">Sign in</button>
+  </form>
+  ${parsed.query.err ? '<p class="err" style="display:block">Invalid token</p>' : ''}
+</div></body></html>`);
+      return;
+    }
+    if (method === 'POST') {
+      return readBody(req).then(buf => {
+        const body = Object.fromEntries(new URLSearchParams(buf.toString()).entries());
+        if (body.token === AUTH_TOKEN) {
+          const cookieAge = 60 * 60 * 24 * 30; // 30 days
+          res.writeHead(302, {
+            'Set-Cookie': `ds=${encodeURIComponent(AUTH_TOKEN)}; Path=/; Max-Age=${cookieAge}; HttpOnly; SameSite=Strict`,
+            'Location': `/?token=${encodeURIComponent(AUTH_TOKEN)}`
+          });
+          res.end();
+        } else {
+          res.writeHead(302, { 'Location': '/login?err=1' });
+          res.end();
+        }
+      }).catch(() => { res.writeHead(400); res.end('Bad request'); });
+    }
+  }
+
+  // Logout
+  if (pathname === '/logout' && method === 'GET') {
+    res.writeHead(302, {
+      'Set-Cookie': 'ds=; Path=/; Max-Age=0',
+      'Location': '/login'
+    });
+    res.end();
+    return;
+  }
+
+  // Auth check — redirect browsers to login, return 401 for API clients
   if (!authenticate(req)) {
+    const acceptsHtml = (req.headers['accept'] || '').includes('text/html');
+    if (acceptsHtml) {
+      res.writeHead(302, { 'Location': '/login' });
+      res.end();
+      return;
+    }
     return errorReply(res, 401, 'Unauthorized');
+  }
+
+  // Serve dashboard HTML at root
+  if (pathname === '/' && method === 'GET') {
+    const htmlPath = path.join(__dirname, 'agent-dashboard.html');
+    try {
+      const html = fs.readFileSync(htmlPath);
+      setCors(res);
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end(html);
+    } catch (e) {
+      return errorReply(res, 404, 'Dashboard HTML not found');
+    }
+    return;
   }
 
   const segments = pathname.split('/').filter(Boolean);
