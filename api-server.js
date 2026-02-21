@@ -456,8 +456,19 @@ function handleSkills(req, res, method) {
     }
   }
 
+  // Scan workspace custom skills
   scanDir(SKILLS_DIR);
-  jsonReply(res, 200, skills);
+  // Scan system-installed skills
+  const SYSTEM_SKILLS_DIR = process.env.OPENCLAW_SYSTEM_SKILLS || '/opt/homebrew/lib/node_modules/openclaw/skills';
+  scanDir(SYSTEM_SKILLS_DIR);
+  // Deduplicate by name
+  const seen = new Set();
+  const unique = skills.filter(s => {
+    if (seen.has(s.name)) return false;
+    seen.add(s.name);
+    return true;
+  });
+  jsonReply(res, 200, unique);
 }
 
 function parseSkillFrontmatter(content, filePath) {
