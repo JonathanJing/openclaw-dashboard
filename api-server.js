@@ -1221,7 +1221,11 @@ const MODEL_COSTS_IO = {
   'gemini-3-pro-preview': [2, 12], 'gemini-3-flash-preview': [0.5, 3],
 };
 
-function estimateCost(model, totalTokens, inputTokens, outputTokens) {
+// estimateCost: prefer provider-reported cost.total, then input/output/cache split, then fallback
+function estimateCost(model, totalTokens, inputTokens, outputTokens, costObj) {
+  // If provider gives us a cost object with total, use it directly
+  if (costObj && typeof costObj.total === 'number') return costObj.total;
+
   const key = Object.keys(MODEL_COSTS_IO).find(k => (model || '').includes(k));
   if (!key) return 0;
   const [inCost, outCost] = MODEL_COSTS_IO[key];
@@ -1266,13 +1270,13 @@ function scanSessionUsageToday(sessionFile, todayStartIso) {
         if (j.type !== 'message' || !j.message?.usage) continue;
         if (j.timestamp < todayStartIso) continue;
         const u = j.message.usage;
-        const inp = u.input || 0;
+        const inp = (u.input || 0) + (u.cacheRead || 0) + (u.cacheWrite || 0);
         const out = u.output || 0;
         result.input += inp;
         result.output += out;
         result.totalTokens += u.totalTokens || 0;
         const m = j.message.model || 'unknown';
-        result.cost += estimateCost(m, u.totalTokens || 0, inp, out);
+        result.cost += estimateCost(m, u.totalTokens || 0, inp, out, u.cost);
         result.models[m] = (result.models[m] || 0) + (u.totalTokens || 0);
         result.messages++;
       } catch {}
@@ -1395,9 +1399,9 @@ function handleOpsAlltime(req, res, method) {
           const u = j.message.usage;
           const m = j.message.model || 'unknown';
           const tokens = u.totalTokens || 0;
-          const input = u.input || 0;
+          const input = (u.input || 0) + (u.cacheRead || 0) + (u.cacheWrite || 0);
           const output = u.output || 0;
-          const cost = estimateCost(m, tokens, input, output);
+          const cost = estimateCost(m, tokens, input, output, u.cost);
 
           totalTokens += tokens;
           totalInput += input;
@@ -1441,7 +1445,7 @@ function handleOpsAlltime(req, res, method) {
             const m = j.model || 'cron';
             const tokens = j.usage.total_tokens || j.usage.totalTokens || 0;
             if (tokens === 0) continue;
-            let cost = estimateCost(m, tokens);
+            let cost = estimateCost(m, tokens, j.usage.input || 0, j.usage.output || 0, j.usage.cost);
             totalTokens += tokens;
             totalCost += cost;
             totalMessages++;
@@ -1711,11 +1715,11 @@ function handleOpsSessions(req, res, method) {
           if (role === 'assistant') {
             const u = j.message?.usage;
             if (u) {
-              today.input += u.input || 0;
+              today.input += (u.input || 0) + (u.cacheRead || 0) + (u.cacheWrite || 0);
               today.output += u.output || 0;
               today.totalTokens += u.totalTokens || 0;
               const m = j.message.model || 'unknown';
-              const cost = estimateCost(m, u.totalTokens || 0, u.input || 0, u.output || 0);
+              const cost = estimateCost(m, u.totalTokens || 0, (u.input || 0) + (u.cacheRead || 0) + (u.cacheWrite || 0), u.output || 0, u.cost);
               today.cost += cost;
               today.models[m] = (today.models[m] || 0) + (u.totalTokens || 0);
             }
