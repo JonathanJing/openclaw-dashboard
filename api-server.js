@@ -33,6 +33,7 @@ const VISION_DB = {
 const CRON_STORE_PATH = path.join(process.env.HOME || '', '.openclaw', 'cron', 'jobs.json');
 const CRON_RUNS_DIR = path.join(process.env.HOME || '', '.openclaw', 'cron', 'runs');
 const GATEWAY_HOOKS_URL = 'http://127.0.0.1:18789/hooks';
+const SESSIONS_JSON = path.join(process.env.HOME || '', '.openclaw', 'agents', 'main', 'sessions', 'sessions.json');
 
 // --- Webhook: trigger instant task execution via OpenClaw hooks ---
 const HOOK_URL = 'http://127.0.0.1:18789/hooks/agent';
@@ -1198,6 +1199,174 @@ async function notionCount(dbId, startIso, endIso) {
   return total;
 }
 
+// --- Ops: Channel Usage (today, PST) ---
+const MODEL_COSTS = {
+  // per 1M tokens (input/output avg blended)
+  'claude-opus-4-6': 0.075, 'claude-sonnet-4-6': 0.015,
+  'gpt-5.2-codex': 0.0375, 'gpt-5.2': 0.01,
+  'gemini-3-pro-preview': 0.00625, 'gemini-3-flash-preview': 0.0015,
+};
+
+function estimateCost(model, tokens) {
+  const key = Object.keys(MODEL_COSTS).find(k => (model || '').includes(k));
+  if (!key) return 0;
+  return (tokens / 1_000_000) * MODEL_COSTS[key];
+}
+
+let _opsCache = null;
+let _opsCacheAt = 0;
+const OPS_CACHE_TTL = 60_000; // 60s
+
+function todayPstStartUtcMs() {
+  // PST = UTC-8; get midnight PST as UTC ms
+  const now = new Date();
+  const pst = new Date(now.toLocaleString('en-US', { timeZone: 'America/Los_Angeles' }));
+  pst.setHours(0, 0, 0, 0);
+  // Convert back to UTC
+  const diff = now.getTime() - pst.getTime();
+  return now.getTime() - diff - (now.getTime() - pst.getTime()) + pst.getTime();
+}
+
+function scanSessionUsageToday(sessionFile, todayStartIso) {
+  const result = { input: 0, output: 0, totalTokens: 0, cost: 0, models: {}, messages: 0 };
+  try {
+    const stat = fs.statSync(sessionFile);
+    // Read last 500KB max (should cover today's messages)
+    const readSize = Math.min(500_000, stat.size);
+    const buf = Buffer.alloc(readSize);
+    const fd = fs.openSync(sessionFile, 'r');
+    fs.readSync(fd, buf, 0, readSize, Math.max(0, stat.size - readSize));
+    fs.closeSync(fd);
+    const lines = buf.toString('utf8').split('\n').filter(Boolean);
+    for (const line of lines) {
+      try {
+        const j = JSON.parse(line);
+        if (j.type !== 'message' || !j.message?.usage) continue;
+        if (j.timestamp < todayStartIso) continue;
+        const u = j.message.usage;
+        result.input += u.input || 0;
+        result.output += u.output || 0;
+        result.totalTokens += u.totalTokens || 0;
+        result.cost += u.cost?.total || 0;
+        const m = j.message.model || 'unknown';
+        result.models[m] = (result.models[m] || 0) + (u.totalTokens || 0);
+        result.messages++;
+      } catch {}
+    }
+  } catch {}
+  // If provider cost is 0, estimate
+  if (result.cost === 0 && result.totalTokens > 0) {
+    for (const [m, t] of Object.entries(result.models)) {
+      result.cost += estimateCost(m, t);
+    }
+  }
+  return result;
+}
+
+function handleOpsChannels(req, res, method) {
+  if (method !== 'GET') return errorReply(res, 405, 'Method not allowed');
+
+  const now = Date.now();
+  if (_opsCache && (now - _opsCacheAt) < OPS_CACHE_TTL) {
+    return jsonReply(res, 200, _opsCache);
+  }
+
+  let sessions;
+  try {
+    sessions = JSON.parse(fs.readFileSync(SESSIONS_JSON, 'utf8'));
+  } catch (e) {
+    return errorReply(res, 500, 'Cannot read sessions: ' + e.message);
+  }
+
+  // Today start in PST as ISO string
+  const todayPst = new Date();
+  const pstStr = todayPst.toLocaleString('en-US', { timeZone: 'America/Los_Angeles' });
+  const pstDate = new Date(pstStr);
+  pstDate.setHours(0, 0, 0, 0);
+  // Convert PST midnight back to UTC ISO
+  const offsetMs = todayPst.getTime() - pstDate.getTime();
+  const todayStartUtc = new Date(todayPst.getTime() - offsetMs);
+  const todayStartIso = todayStartUtc.toISOString();
+
+  const channels = {}; // keyed by channel display name
+  let grandTotal = { input: 0, output: 0, totalTokens: 0, cost: 0, messages: 0, models: {} };
+
+  for (const [key, sess] of Object.entries(sessions)) {
+    const ch = sess.channel || sess.origin?.surface || 'other';
+    if (ch !== 'discord' && ch !== 'whatsapp') continue;
+
+    const displayName = sess.displayName || sess.groupChannel || key;
+    const sessionFile = sess.sessionFile;
+    if (!sessionFile) continue;
+
+    const usage = scanSessionUsageToday(sessionFile, todayStartIso);
+    if (usage.messages === 0) continue; // skip sessions with no today activity
+
+    const chKey = displayName;
+    if (!channels[chKey]) {
+      channels[chKey] = {
+        displayName,
+        channel: ch,
+        sessionKey: key,
+        model: sess.model || 'unknown',
+        status: sess.abortedLastRun ? 'error' : 'active',
+        updatedAt: sess.updatedAt,
+        today: { input: 0, output: 0, totalTokens: 0, cost: 0, messages: 0, models: {} }
+      };
+    }
+    const c = channels[chKey];
+    c.today.input += usage.input;
+    c.today.output += usage.output;
+    c.today.totalTokens += usage.totalTokens;
+    c.today.cost += usage.cost;
+    c.today.messages += usage.messages;
+    for (const [m, t] of Object.entries(usage.models)) {
+      c.today.models[m] = (c.today.models[m] || 0) + t;
+      grandTotal.models[m] = (grandTotal.models[m] || 0) + t;
+    }
+    grandTotal.input += usage.input;
+    grandTotal.output += usage.output;
+    grandTotal.totalTokens += usage.totalTokens;
+    grandTotal.cost += usage.cost;
+    grandTotal.messages += usage.messages;
+  }
+
+  // Also scan cron runs for today
+  try {
+    const cronFiles = fs.readdirSync(CRON_RUNS_DIR).filter(f => f.endsWith('.jsonl'));
+    for (const cf of cronFiles) {
+      const fp = path.join(CRON_RUNS_DIR, cf);
+      try {
+        const raw = fs.readFileSync(fp, 'utf8').trim();
+        const lines = raw.split('\n').filter(Boolean);
+        for (const line of lines) {
+          try {
+            const j = JSON.parse(line);
+            if (!j.ts || new Date(j.ts).toISOString() < todayStartIso) continue;
+            if (j.action !== 'finished' || !j.usage) continue;
+            const m = j.model || 'cron';
+            const tokens = j.usage.total_tokens || j.usage.totalTokens || 0;
+            if (tokens === 0) continue;
+            grandTotal.totalTokens += tokens;
+            grandTotal.models[m] = (grandTotal.models[m] || 0) + tokens;
+            grandTotal.cost += estimateCost(m, tokens);
+          } catch {}
+        }
+      } catch {}
+    }
+  } catch {}
+
+  const result = {
+    channels: Object.values(channels).sort((a, b) => b.today.totalTokens - a.today.totalTokens),
+    totals: grandTotal,
+    cachedAt: now
+  };
+
+  _opsCache = result;
+  _opsCacheAt = now;
+  return jsonReply(res, 200, result);
+}
+
 // --- Main Server ---
 const server = http.createServer((req, res) => {
   const parsed = url.parse(req.url, true);
@@ -1317,6 +1486,7 @@ button:active{opacity:.8}
     if (root === 'cron' && segments[1] === 'today') return handleCronToday(req, res, method);
     if (root === 'cron') return handleCron(req, res, parsed, segments, method);
     if (root === 'vision' && segments[1] === 'stats') return handleVisionStats(req, res, method);
+    if (root === 'ops' && segments[1] === 'channels') return handleOpsChannels(req, res, method);
     return errorReply(res, 404, 'Not found');
   } catch (e) {
     console.error('Unhandled error:', e);
