@@ -1534,6 +1534,67 @@ let _auditCache = null;
 let _auditCacheAt = 0;
 const AUDIT_CACHE_TTL = 300_000;
 
+// ─── POST /backup ───
+async function handleBackup(req, res, method) {
+  if (method !== 'POST') return errorReply(res, 405, 'Method not allowed');
+  const { spawn } = require('child_process');
+  try {
+    const output = await new Promise((resolve, reject) => {
+      const proc = spawn('git', ['-C', WORKSPACE, 'add', '-A'], { shell: false });
+      let out = '';
+      proc.stdout.on('data', d => out += d);
+      proc.stderr.on('data', d => out += d);
+      proc.on('close', code => {
+        if (code !== 0) { resolve('git add exit ' + code + '\n' + out); return; }
+        const commit = spawn('git', ['-C', WORKSPACE, 'commit', '-m', 'auto-backup', '--allow-empty'], { shell: false });
+        let out2 = out;
+        commit.stdout.on('data', d => out2 += d);
+        commit.stderr.on('data', d => out2 += d);
+        commit.on('close', () => resolve(out2));
+        commit.on('error', reject);
+      });
+      proc.on('error', reject);
+    });
+    return jsonReply(res, 200, { ok: true, output });
+  } catch (e) {
+    return jsonReply(res, 500, { ok: false, error: e.message });
+  }
+}
+
+// ─── GET /memory?file=<filename> ───
+async function handleMemory(req, res, method, parsed) {
+  if (method !== 'GET') return errorReply(res, 405, 'Method not allowed');
+  const file = parsed.query?.file || '';
+  if (!file || file.includes('/') || file.includes('..')) return errorReply(res, 400, 'Invalid file param');
+  const filePath = path.join(MEMORY_DIR, file);
+  try {
+    const content = fs.readFileSync(filePath, 'utf8');
+    return jsonReply(res, 200, JSON.parse(content));
+  } catch (e) {
+    return errorReply(res, 404, `Cannot read memory file: ${e.message}`);
+  }
+}
+
+// ─── GET /ops/secaudit ───
+async function handleOpsSecAudit(req, res, method) {
+  if (method !== 'GET') return errorReply(res, 405, 'Method not allowed');
+  try {
+    let cronJobs = 0;
+    let sessions = 0;
+    try {
+      const cron = JSON.parse(fs.readFileSync(CRON_STORE_PATH, 'utf8'));
+      cronJobs = Array.isArray(cron) ? cron.length : Object.keys(cron).length;
+    } catch {}
+    try {
+      const sess = JSON.parse(fs.readFileSync(SESSIONS_JSON, 'utf8'));
+      sessions = Array.isArray(sess) ? sess.length : Object.keys(sess).length;
+    } catch {}
+    return jsonReply(res, 200, { cronJobs, sessions, timestamp: new Date().toISOString() });
+  } catch (e) {
+    return errorReply(res, 500, e.message);
+  }
+}
+
 async function handleOpsAudit(req, res, method) {
   if (method !== 'GET') return errorReply(res, 405, 'Method not allowed');
 
@@ -1737,6 +1798,9 @@ button:active{opacity:.8}
     if (root === 'ops' && segments[1] === 'channels') return handleOpsChannels(req, res, method);
     if (root === 'ops' && segments[1] === 'alltime') return handleOpsAlltime(req, res, method);
     if (root === 'ops' && segments[1] === 'audit') return handleOpsAudit(req, res, method);
+    if (root === 'ops' && segments[1] === 'secaudit') return handleOpsSecAudit(req, res, method);
+    if (root === 'backup') return handleBackup(req, res, method);
+    if (root === 'memory') return handleMemory(req, res, method, parsed);
     return errorReply(res, 404, 'Not found');
   } catch (e) {
     console.error('Unhandled error:', e);
