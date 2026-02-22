@@ -1214,18 +1214,23 @@ async function notionCount(dbId, startIso, endIso) {
 }
 
 // --- Ops: Channel Usage (today, PST) ---
-const MODEL_COSTS = {
-  // per 1M tokens (blended input/output average)
-  'claude-opus-4-6': 0.075, 'claude-sonnet-4-6': 0.015,
-  'gpt-5.2-codex': 0.0375, 'gpt-5.2': 0.01,
-  // Google pricing: Pro $1.25/1M in + $10/1M out ≈ blended ~$2.50/1M; Flash $0.15/1M in + $0.60/1M out ≈ ~$0.30/1M
-  'gemini-3-pro-preview': 0.0025, 'gemini-3-flash-preview': 0.0003,
+// Per 1M tokens: [input_cost, output_cost]
+const MODEL_COSTS_IO = {
+  'claude-opus-4-6': [15, 75], 'claude-sonnet-4-6': [3, 15],
+  'gpt-5.2-codex': [2.5, 10], 'gpt-5.2': [2.5, 10],
+  'gemini-3-pro-preview': [2, 12], 'gemini-3-flash-preview': [0.5, 3],
 };
 
-function estimateCost(model, tokens) {
-  const key = Object.keys(MODEL_COSTS).find(k => (model || '').includes(k));
+function estimateCost(model, totalTokens, inputTokens, outputTokens) {
+  const key = Object.keys(MODEL_COSTS_IO).find(k => (model || '').includes(k));
   if (!key) return 0;
-  return (tokens / 1_000_000) * MODEL_COSTS[key];
+  const [inCost, outCost] = MODEL_COSTS_IO[key];
+  if (inputTokens || outputTokens) {
+    return ((inputTokens || 0) / 1_000_000) * inCost + ((outputTokens || 0) / 1_000_000) * outCost;
+  }
+  // Fallback: assume 90% input, 10% output (typical for agent workloads)
+  const inp = totalTokens * 0.9, out = totalTokens * 0.1;
+  return (inp / 1_000_000) * inCost + (out / 1_000_000) * outCost;
 }
 
 let _opsCache = null;
@@ -1272,7 +1277,7 @@ function scanSessionUsageToday(sessionFile, todayStartIso) {
   // If provider cost is 0, estimate
   if (result.cost === 0 && result.totalTokens > 0) {
     for (const [m, t] of Object.entries(result.models)) {
-      result.cost += estimateCost(m, t);
+      result.cost += estimateCost(m, t, result.input, result.output);
     }
   }
   return result;
@@ -1429,7 +1434,7 @@ function handleOpsAlltime(req, res, method) {
           const input = u.input || 0;
           const output = u.output || 0;
           let cost = u.cost?.total || 0;
-          if (cost === 0 && tokens > 0) cost = estimateCost(m, tokens);
+          if (cost === 0 && tokens > 0) cost = estimateCost(m, tokens, input, output);
 
           totalTokens += tokens;
           totalInput += input;
