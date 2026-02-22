@@ -614,12 +614,12 @@ header{display:flex;align-items:center;justify-content:space-between;padding:16p
   .agent-stat-value{font-size:1.6rem}
   .agent-stat{padding:12px 14px}
   .agent-session-tokens,.agent-session-label{display:none}
-  /* Hide less important table columns on mobile */
+  /* Hide Think(3), Idle%(7), Updated(8) on mobile; keep Session/Model/Msgs/Tokens/Cost */
   .sessions-table th:nth-child(3),.sessions-table td:nth-child(3),
-  .sessions-table th:nth-child(5),.sessions-table td:nth-child(5),
-  .sessions-table th:nth-child(7),.sessions-table td:nth-child(7){display:none}
+  .sessions-table th:nth-child(7),.sessions-table td:nth-child(7),
+  .sessions-table th:nth-child(8),.sessions-table td:nth-child(8){display:none}
   .sessions-table{font-size:.72rem}
-  .sess-name{max-width:120px}
+  .sess-name{max-width:110px}
 }
 
 /* ─── Scrollbar ─── */
@@ -865,8 +865,8 @@ header{display:flex;align-items:center;justify-content:space-between;padding:16p
         <span class="agent-stat-badge idle" id="totalBadge">—</span>
       </div>
       <div class="agent-stat-value val-purple" id="totalValue">—</div>
-      <div class="agent-stat-label">Model</div>
-      <div class="agent-stat-detail" id="totalDetail">—</div>
+      <div class="agent-stat-label">Model Mix</div>
+      <div id="modelMixBars" style="margin-top:8px"></div>
     </div>
   </div>
 
@@ -2645,10 +2645,37 @@ function renderAgentMonitor() {
     subVal.textContent = fmtTokens(totalTokens);
     subBadge.className = 'agent-stat-badge active';
     subBadge.innerHTML = 'today';
-    // Show top 3 models with percentages
+    const topModel = Object.entries(models).filter(([k]) => k !== 'delivery-mirror' && k !== 'unknown').sort((a, b) => b[1] - a[1])[0];
+    subDetail.textContent = topModel ? 'Top: ' + shortModel(topModel[0]) : '—';
+
+    // Card 5: Model Mix — visual bars
     const sorted = Object.entries(models).filter(([k]) => k !== 'delivery-mirror' && k !== 'unknown').sort((a, b) => b[1] - a[1]);
-    const modelParts = sorted.slice(0, 3).map(([m, tk]) => shortModel(m) + ' ' + ((tk / (totalTokens || 1)) * 100).toFixed(0) + '%');
-    subDetail.textContent = modelParts.join(' · ') || '—';
+    const mixEl = document.getElementById('modelMixBars');
+    const totalVal5 = document.getElementById('totalValue');
+    const totalBadge5 = document.getElementById('totalBadge');
+    if (mixEl && sorted.length) {
+      totalVal5.textContent = sorted.length + ' models';
+      totalBadge5.className = 'agent-stat-badge active';
+      totalBadge5.innerHTML = 'today';
+      // Stacked bar
+      let barHtml = '<div style="display:flex;height:10px;border-radius:5px;overflow:hidden;margin-bottom:6px">';
+      const colors = {};
+      sorted.forEach(([m, tk]) => {
+        const pct = ((tk / (totalTokens || 1)) * 100);
+        const c = getModelColor(m);
+        colors[m] = c;
+        barHtml += `<div style="width:${pct}%;background:${c};min-width:2px" title="${shortModel(m)} ${pct.toFixed(0)}%"></div>`;
+      });
+      barHtml += '</div>';
+      // Legend
+      barHtml += '<div style="display:flex;flex-wrap:wrap;gap:4px 10px;font-size:.7rem">';
+      sorted.forEach(([m, tk]) => {
+        const pct = ((tk / (totalTokens || 1)) * 100).toFixed(0);
+        barHtml += `<span style="color:${colors[m]}">● ${shortModel(m)} <b>${pct}%</b></span>`;
+      });
+      barHtml += '</div>';
+      mixEl.innerHTML = barHtml;
+    }
   }).catch(() => {});
 
   // Card 3: Cron Jobs (from agent data)
@@ -2669,15 +2696,7 @@ function renderAgentMonitor() {
   hookBadge.innerHTML = d.activeSessions + ' active';
   hookDetail.textContent = (d.totalSessions || 0) + ' total';
 
-  // Card 5: Model
-  const totalVal = document.getElementById('totalValue');
-  const totalBadge = document.getElementById('totalBadge');
-  const totalDetail = document.getElementById('totalDetail');
-  const model = d.mainAgent?.model || '—';
-  totalVal.textContent = shortModel(model);
-  totalBadge.className = 'agent-stat-badge active';
-  totalBadge.innerHTML = 'primary';
-  totalDetail.textContent = d.mainAgent?.status || '—';
+  // Card 5: Model Mix — rendered by /ops/sessions fetch above
 
   // Render sessions panel
   renderSessionsPanel();
@@ -3030,6 +3049,8 @@ async function loadSessions() {
       '#general': '综合频道', '#openclaw-watch': '生态监控', '#jobs-intel': '求职情报',
       '#x-ai-socal-radar': 'X/AI雷达', '#tech-news': '科技新闻', '#podcast-video-article': '播客/视频',
       '#meta-vision-ingest': '视觉入口', '#饮酒': '饮酒', '#灰茄': '灰茄', '#品茶': '品茶',
+      '#socal-ai-events': '南加AI活动', '#event-planning': '活动策划', '#networking-log': '人脉记录',
+      '#ch-1473462528326500382': '饮酒', '#ch-1473462553592991754': '灰茄', '#ch-1473462582063927488': '品茶',
     };
 
     let html = `<table class="sessions-table">
