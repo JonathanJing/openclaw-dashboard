@@ -340,6 +340,21 @@ header{display:flex;align-items:center;justify-content:space-between;padding:16p
 .vision-count{font-size:1.4rem;font-weight:700}
 .vision-sub{font-size:.72rem;color:var(--text2);margin-top:4px}
 
+/* ─── Ops Channel Usage ─── */
+.ops-channel-list{display:flex;flex-direction:column;gap:8px}
+.ops-channel-card{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 14px;border:1px solid var(--border);border-radius:12px;background:var(--card)}
+.ops-ch-left{display:flex;flex-direction:column;gap:4px;min-width:0;flex:1}
+.ops-ch-name{font-weight:600;font-size:.9rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ops-ch-meta{font-size:.75rem;color:var(--text2);display:flex;gap:8px;flex-wrap:wrap}
+.ops-ch-right{text-align:right;flex-shrink:0}
+.ops-ch-tokens{font-size:1.1rem;font-weight:700}
+.ops-ch-cost{font-size:.78rem;color:var(--text2)}
+.ops-model-bar{display:flex;height:8px;border-radius:4px;overflow:hidden;margin-top:12px;background:var(--border)}
+.ops-model-segment{height:100%;transition:width .3s}
+.ops-model-legend{display:flex;gap:12px;flex-wrap:wrap;margin-top:8px;font-size:.75rem;color:var(--text2)}
+.ops-model-legend-item{display:flex;align-items:center;gap:4px}
+.ops-model-dot{width:8px;height:8px;border-radius:50%}
+
 /* ─── Responsive ─── */
 @media(max-width:768px){
   .ops-grid{grid-template-columns:1fr}
@@ -789,9 +804,13 @@ header{display:flex;align-items:center;justify-content:space-between;padding:16p
 
   <!-- Tab Bar -->
   <div class="tab-bar">
+    <button class="tab-btn" data-tab="ops">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;margin-right:4px"><path d="M12 20V10"/><path d="M18 20V4"/><path d="M6 20v-4"/></svg>
+      Ops
+    </button>
     <button class="tab-btn active" data-tab="tasks">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;margin-right:4px"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
-      Ops<span class="badge-count" id="taskCount">0</span>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;margin-right:4px"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+      Cron<span class="badge-count" id="taskCount">0</span>
     </button>
     <button class="tab-btn" data-tab="documents">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;margin-right:4px"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
@@ -807,7 +826,26 @@ header{display:flex;align-items:center;justify-content:space-between;padding:16p
     </button>
   </div>
 
-  <!-- ═══ Ops Panel ═══ -->
+  <!-- ═══ Ops Panel (Channel Usage) ═══ -->
+  <div class="tab-panel" id="panel-ops">
+    <div class="glass-card" style="padding:16px;margin-bottom:16px">
+      <div class="card-header">
+        <div>
+          <div class="card-title">Today's Usage (PST)</div>
+          <div class="card-sub" id="opsTotalSub">Loading…</div>
+        </div>
+        <div class="pill-row" id="opsTotalPills"></div>
+      </div>
+      <div class="ops-model-bar" id="opsModelBar"></div>
+    </div>
+    <div class="card-title" style="margin-bottom:12px">Channel Breakdown</div>
+    <div id="opsChannelList" class="ops-channel-list">
+      <div class="skeleton skeleton-card"></div>
+      <div class="skeleton skeleton-card"></div>
+    </div>
+  </div>
+
+  <!-- ═══ Cron Panel ═══ -->
   <div class="tab-panel active" id="panel-tasks">
     <div class="ops-grid">
       <div class="glass-card" style="padding:16px">
@@ -1053,6 +1091,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     btn.classList.add('active');
     document.getElementById(`panel-${btn.dataset.tab}`).classList.add('active');
     if (btn.dataset.tab === 'tasks') loadTasks(true);
+    if (btn.dataset.tab === 'ops') loadOpsChannels();
     if (btn.dataset.tab === 'documents') { loadFileList(); if (docView === 'skills') loadSkills(); }
     if (btn.dataset.tab === 'apis') renderAPIs();
     if (btn.dataset.tab === 'logs') loadLogs();
@@ -2776,10 +2815,95 @@ function fmtTime(ms) {
   } catch { return '—'; }
 }
 
-// Override tasks loader to ops loader
+// Override tasks loader to cron loader
 loadTasks = async function() {
   await loadOps();
 };
+
+// ─── Ops Channel Usage Panel ───
+const MODEL_COLORS = {
+  'claude-opus-4-6': '#c084fc', 'claude-sonnet-4-6': '#818cf8',
+  'gpt-5.2-codex': '#34d399', 'gpt-5.2': '#6ee7b7',
+  'gemini-3-pro-preview': '#fbbf24', 'gemini-3-flash-preview': '#fcd34d',
+};
+
+function getModelColor(model) {
+  const key = Object.keys(MODEL_COLORS).find(k => (model || '').includes(k));
+  return key ? MODEL_COLORS[key] : '#6b7280';
+}
+
+function shortModel(m) {
+  return (m || 'unknown').replace(/-preview$/, '').replace('claude-', '').replace('gemini-3-', 'g3-').replace('gpt-5.2-', 'gpt-');
+}
+
+function fmtTokens(n) {
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
+  if (n >= 1_000) return (n / 1_000).toFixed(0) + 'k';
+  return String(n);
+}
+
+async function loadOpsChannels() {
+  const listEl = document.getElementById('opsChannelList');
+  const subEl = document.getElementById('opsTotalSub');
+  const pillsEl = document.getElementById('opsTotalPills');
+  const barEl = document.getElementById('opsModelBar');
+  if (!listEl) return;
+
+  try {
+    const data = await apiFetch('/ops/channels');
+    const totals = data.totals || {};
+    const channels = data.channels || [];
+
+    // Total summary
+    if (subEl) subEl.textContent = `${fmtTokens(totals.totalTokens)} tokens · ${totals.messages || 0} messages · $${(totals.cost || 0).toFixed(2)}`;
+    if (pillsEl) {
+      const modelEntries = Object.entries(totals.models || {}).sort((a, b) => b[1] - a[1]);
+      pillsEl.innerHTML = modelEntries.slice(0, 4).map(([m, t]) =>
+        `<span class="pill" style="border-color:${getModelColor(m)};color:${getModelColor(m)}">${shortModel(m)} ${fmtTokens(t)}</span>`
+      ).join('');
+    }
+
+    // Model distribution bar
+    if (barEl) {
+      const modelEntries = Object.entries(totals.models || {}).sort((a, b) => b[1] - a[1]);
+      const total = totals.totalTokens || 1;
+      barEl.innerHTML = modelEntries.map(([m, t]) =>
+        `<div class="ops-model-segment" style="width:${(t/total*100).toFixed(1)}%;background:${getModelColor(m)}" title="${shortModel(m)}: ${fmtTokens(t)}"></div>`
+      ).join('');
+      barEl.innerHTML += '<div class="ops-model-legend">' + modelEntries.map(([m, t]) =>
+        `<span class="ops-model-legend-item"><span class="ops-model-dot" style="background:${getModelColor(m)}"></span>${shortModel(m)} ${((t/total)*100).toFixed(0)}%</span>`
+      ).join('') + '</div>';
+    }
+
+    // Channel list
+    if (channels.length === 0) {
+      listEl.innerHTML = '<div class="empty-state"><h3>No activity today</h3><p>Channel usage will appear here once messages flow.</p></div>';
+      return;
+    }
+    listEl.innerHTML = channels.map(ch => {
+      const modelList = Object.entries(ch.today.models || {}).sort((a, b) => b[1] - a[1]);
+      const topModel = modelList[0] ? shortModel(modelList[0][0]) : '—';
+      const icon = ch.channel === 'discord' ? '🎮' : (ch.channel === 'whatsapp' ? '📱' : '💬');
+      const name = (ch.displayName || '').replace(/^discord:\d+#/, '#');
+      return `<div class="ops-channel-card">
+        <div class="ops-ch-left">
+          <div class="ops-ch-name">${icon} ${escHtml(name)}</div>
+          <div class="ops-ch-meta">
+            <span>${ch.today.messages} msgs</span>
+            <span>${topModel}</span>
+            <span>${ch.status}</span>
+          </div>
+        </div>
+        <div class="ops-ch-right">
+          <div class="ops-ch-tokens">${fmtTokens(ch.today.totalTokens)}</div>
+          <div class="ops-ch-cost">$${(ch.today.cost || 0).toFixed(2)}</div>
+        </div>
+      </div>`;
+    }).join('');
+  } catch (e) {
+    listEl.innerHTML = `<div class="empty-state"><h3>Unable to load</h3><p>${e.message}</p></div>`;
+  }
+}
 
 // ═══ ATTACHMENTS ═══
 let currentAttachments = [];
