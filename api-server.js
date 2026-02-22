@@ -34,6 +34,20 @@ const CRON_STORE_PATH = path.join(process.env.HOME || '', '.openclaw', 'cron', '
 const CRON_RUNS_DIR = path.join(process.env.HOME || '', '.openclaw', 'cron', 'runs');
 const GATEWAY_HOOKS_URL = 'http://127.0.0.1:18789/hooks';
 const SESSIONS_JSON = path.join(process.env.HOME || '', '.openclaw', 'agents', 'main', 'sessions', 'sessions.json');
+// Load keys from keys.env if not in env
+function loadKeysEnv() {
+  try {
+    const keysFile = path.join(process.env.HOME || '', '.openclaw', 'keys.env');
+    const content = fs.readFileSync(keysFile, 'utf8');
+    for (const line of content.split('\n')) {
+      const m = line.match(/^([A-Z_]+)=(.+)$/);
+      if (m && !process.env[m[1]]) process.env[m[1]] = m[2];
+    }
+  } catch {}
+}
+loadKeysEnv();
+const OPENAI_ADMIN_KEY = process.env.OPENAI_ADMIN_KEY || '';
+const ANTHROPIC_ADMIN_KEY = process.env.ANTHROPIC_ADMIN_KEY || '';
 
 // --- Webhook: trigger instant task execution via OpenClaw hooks ---
 const HOOK_URL = 'http://127.0.0.1:18789/hooks/agent';
@@ -1500,6 +1514,107 @@ function handleOpsAlltime(req, res, method) {
   return jsonReply(res, 200, result);
 }
 
+// --- Ops: Official Provider Audit ---
+async function fetchJson(url, headers) {
+  const https = require('node:https');
+  return new Promise((resolve, reject) => {
+    const u = new URL(url);
+    const req = https.request({ hostname: u.hostname, path: u.pathname + u.search, method: 'GET', headers }, res => {
+      let body = '';
+      res.on('data', c => body += c);
+      res.on('end', () => { try { resolve(JSON.parse(body)); } catch { resolve({ raw: body }); } });
+    });
+    req.on('error', reject);
+    req.setTimeout(10000, () => { req.destroy(); reject(new Error('timeout')); });
+    req.end();
+  });
+}
+
+let _auditCache = null;
+let _auditCacheAt = 0;
+const AUDIT_CACHE_TTL = 300_000;
+
+async function handleOpsAudit(req, res, method) {
+  if (method !== 'GET') return errorReply(res, 405, 'Method not allowed');
+
+  const now = Date.now();
+  if (_auditCache && (now - _auditCacheAt) < AUDIT_CACHE_TTL) {
+    return jsonReply(res, 200, _auditCache);
+  }
+
+  const result = { openai: null, anthropic: null, google: null, fetchedAt: now };
+
+  // OpenAI usage (last 7 days)
+  if (OPENAI_ADMIN_KEY) {
+    try {
+      const start = Math.floor((now - 7 * 86400000) / 1000);
+      // Two calls: one without group_by for totals, one with group_by for model breakdown
+      const [dataAll, dataByModel] = await Promise.all([
+        fetchJson(`https://api.openai.com/v1/organization/usage/completions?start_time=${start}&limit=7`, { 'Authorization': `Bearer ${OPENAI_ADMIN_KEY}` }),
+        fetchJson(`https://api.openai.com/v1/organization/usage/completions?start_time=${start}&group_by=model&limit=7`, { 'Authorization': `Bearer ${OPENAI_ADMIN_KEY}` })
+      ]);
+      const days = {};
+      const models = {};
+      let totalIn = 0, totalOut = 0, totalCached = 0, totalReqs = 0;
+      // Process ungrouped for totals + daily
+      for (const bucket of (dataAll.data || [])) {
+        const day = (bucket.end_time_iso || '').slice(0, 10);
+        for (const r of (bucket.results || [])) {
+          const inp = r.input_tokens || 0;
+          const out = r.output_tokens || 0;
+          const cached = r.input_cached_tokens || 0;
+          const reqs = r.num_model_requests || 0;
+          totalIn += inp; totalOut += out; totalCached += cached; totalReqs += reqs;
+          if (!days[day]) days[day] = { input: 0, output: 0, requests: 0 };
+          days[day].input += inp; days[day].output += out; days[day].requests += reqs;
+        }
+      }
+      // Process model-grouped
+      for (const bucket of (dataByModel.data || [])) {
+        for (const r of (bucket.results || [])) {
+          const m = r.model || 'unknown';
+          if (!models[m]) models[m] = { input: 0, output: 0, cached: 0, requests: 0 };
+          models[m].input += r.input_tokens || 0;
+          models[m].output += r.output_tokens || 0;
+          models[m].cached += r.input_cached_tokens || 0;
+          models[m].requests += r.num_model_requests || 0;
+        }
+      }
+      result.openai = { status: 'ok', totals: { input: totalIn, output: totalOut, cached: totalCached, requests: totalReqs }, models, days };
+    } catch (e) {
+      result.openai = { status: 'error', error: e.message };
+    }
+  } else {
+    result.openai = { status: 'no_key' };
+  }
+
+  // Anthropic org info (usage API not yet public)
+  if (ANTHROPIC_ADMIN_KEY) {
+    try {
+      const org = await fetchJson(
+        'https://api.anthropic.com/v1/organizations/me',
+        { 'x-api-key': ANTHROPIC_ADMIN_KEY, 'anthropic-version': '2023-06-01' }
+      );
+      const keys = await fetchJson(
+        'https://api.anthropic.com/v1/organizations/api_keys?limit=20&status=active',
+        { 'x-api-key': ANTHROPIC_ADMIN_KEY, 'anthropic-version': '2023-06-01' }
+      );
+      const activeKeys = (keys.data || []).map(k => ({ name: k.name, hint: k.partial_key_hint, workspace: k.workspace_id }));
+      result.anthropic = { status: 'org_only', org: { id: org.id, name: org.name }, activeKeys, note: 'Usage API not yet public; using local estimates' };
+    } catch (e) {
+      result.anthropic = { status: 'error', error: e.message };
+    }
+  } else {
+    result.anthropic = { status: 'no_key' };
+  }
+
+  result.google = { status: 'no_api', note: 'Google has no public usage API' };
+
+  _auditCache = result;
+  _auditCacheAt = now;
+  return jsonReply(res, 200, result);
+}
+
 // --- Main Server ---
 const server = http.createServer((req, res) => {
   const parsed = url.parse(req.url, true);
@@ -1621,6 +1736,7 @@ button:active{opacity:.8}
     if (root === 'vision' && segments[1] === 'stats') return handleVisionStats(req, res, method);
     if (root === 'ops' && segments[1] === 'channels') return handleOpsChannels(req, res, method);
     if (root === 'ops' && segments[1] === 'alltime') return handleOpsAlltime(req, res, method);
+    if (root === 'ops' && segments[1] === 'audit') return handleOpsAudit(req, res, method);
     return errorReply(res, 404, 'Not found');
   } catch (e) {
     console.error('Unhandled error:', e);

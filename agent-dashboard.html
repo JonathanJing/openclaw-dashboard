@@ -745,30 +745,21 @@ header{display:flex;align-items:center;justify-content:space-between;padding:16p
   <div class="agent-monitor" id="agentMonitor">
     <div class="agent-stat stat-main">
       <div class="agent-stat-header">
-        <span class="agent-stat-icon">🤖</span>
-        <span class="agent-stat-badge idle" id="mainAgentBadge"><span class="pulse-dot"></span> Loading</span>
+        <span class="agent-stat-icon">💰</span>
+        <span class="agent-stat-badge idle" id="mainAgentBadge"><span class="pulse-dot"></span> today</span>
       </div>
       <div class="agent-stat-value val-active" id="mainAgentValue">—</div>
-      <div class="agent-stat-label">Main Agent</div>
-      <div class="agent-stat-detail" id="mainAgentDetail">Checking…</div>
+      <div class="agent-stat-label">Today Cost</div>
+      <div class="agent-stat-detail" id="mainAgentDetail">Loading…</div>
     </div>
     <div class="agent-stat stat-subagent">
       <div class="agent-stat-header">
-        <span class="agent-stat-icon">🔀</span>
+        <span class="agent-stat-icon">📊</span>
         <span class="agent-stat-badge idle" id="subagentBadge">—</span>
       </div>
-      <div class="agent-stat-value val-accent" id="subagentValue">0</div>
-      <div class="agent-stat-label">Sub-Agents</div>
+      <div class="agent-stat-value val-accent" id="subagentValue">—</div>
+      <div class="agent-stat-label">Today Tokens</div>
       <div class="agent-stat-detail" id="subagentDetail">—</div>
-    </div>
-    <div class="agent-stat stat-hook">
-      <div class="agent-stat-header">
-        <span class="agent-stat-icon">🪝</span>
-        <span class="agent-stat-badge idle" id="hookBadge">—</span>
-      </div>
-      <div class="agent-stat-value val-blue" id="hookValue">0</div>
-      <div class="agent-stat-label">Active Hooks</div>
-      <div class="agent-stat-detail" id="hookDetail">—</div>
     </div>
     <div class="agent-stat stat-cron">
       <div class="agent-stat-header">
@@ -779,13 +770,22 @@ header{display:flex;align-items:center;justify-content:space-between;padding:16p
       <div class="agent-stat-label">Cron Jobs</div>
       <div class="agent-stat-detail" id="cronDetail">—</div>
     </div>
+    <div class="agent-stat stat-hook">
+      <div class="agent-stat-header">
+        <span class="agent-stat-icon">💬</span>
+        <span class="agent-stat-badge idle" id="hookBadge">—</span>
+      </div>
+      <div class="agent-stat-value val-blue" id="hookValue">0</div>
+      <div class="agent-stat-label">Sessions</div>
+      <div class="agent-stat-detail" id="hookDetail">—</div>
+    </div>
     <div class="agent-stat stat-total">
       <div class="agent-stat-header">
-        <span class="agent-stat-icon">📊</span>
+        <span class="agent-stat-icon">🧠</span>
         <span class="agent-stat-badge idle" id="totalBadge">—</span>
       </div>
-      <div class="agent-stat-value val-purple" id="totalValue">0</div>
-      <div class="agent-stat-label">Total Sessions</div>
+      <div class="agent-stat-value val-purple" id="totalValue">—</div>
+      <div class="agent-stat-label">Model</div>
       <div class="agent-stat-detail" id="totalDetail">—</div>
     </div>
   </div>
@@ -854,7 +854,12 @@ header{display:flex;align-items:center;justify-content:space-between;padding:16p
       <div id="alltimeModels" class="ops-channel-list" style="margin-bottom:12px"></div>
       <div class="card-title" style="font-size:.85rem;margin-bottom:8px">Daily (Last 14 Days)</div>
       <canvas id="dailyChart" height="120" style="width:100%;border-radius:8px"></canvas>
-      <div class="card-sub" style="margin-top:12px;font-size:.72rem" id="auditStatus"></div>
+    </div>
+
+    <div class="glass-card" style="padding:16px;margin-top:16px" id="auditCard">
+      <div class="card-title">🔍 Provider Audit (Official APIs)</div>
+      <div class="card-sub" style="margin-bottom:12px">Cross-reference with provider billing data</div>
+      <div id="auditContent"><div class="skeleton skeleton-card"></div></div>
     </div>
   </div>
 
@@ -1104,7 +1109,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     btn.classList.add('active');
     document.getElementById(`panel-${btn.dataset.tab}`).classList.add('active');
     if (btn.dataset.tab === 'tasks') loadTasks(true);
-    if (btn.dataset.tab === 'ops') { loadOpsChannels(); loadOpsAlltime(); }
+    if (btn.dataset.tab === 'ops') { loadOpsChannels(); loadOpsAlltime(); loadOpsAudit(); }
     if (btn.dataset.tab === 'documents') { loadFileList(); if (docView === 'skills') loadSkills(); }
     if (btn.dataset.tab === 'apis') renderAPIs();
     if (btn.dataset.tab === 'logs') loadLogs();
@@ -2474,65 +2479,56 @@ function renderAgentMonitor() {
   if (!agentData) return;
   const d = agentData;
 
-  // Main Agent
-  const mainBadge = document.getElementById('mainAgentBadge');
-  const mainValue = document.getElementById('mainAgentValue');
-  const mainDetail = document.getElementById('mainAgentDetail');
+  // Fetch today's ops data for header cards
+  apiFetch('/ops/channels').then(ops => {
+    const t = ops.totals || {};
+    // Card 1: Today Cost
+    const mainBadge = document.getElementById('mainAgentBadge');
+    const mainValue = document.getElementById('mainAgentValue');
+    const mainDetail = document.getElementById('mainAgentDetail');
+    mainBadge.className = 'agent-stat-badge active';
+    mainBadge.innerHTML = '<span class="pulse-dot"></span> today';
+    mainValue.textContent = '$' + (t.cost || 0).toFixed(2);
+    mainDetail.textContent = (t.messages || 0) + ' messages';
 
-  if (d.mainAgent) {
-    const isActive = d.mainAgent.status === 'active';
-    mainBadge.className = `agent-stat-badge ${isActive ? 'active' : 'idle'}`;
-    mainBadge.innerHTML = `<span class="pulse-dot"></span> ${isActive ? 'Active' : 'Idle'}`;
-    mainValue.textContent = isActive ? '●' : '○';
-    const model = d.mainAgent.model ? d.mainAgent.model.replace('claude-', '').replace('anthropic/', '') : '—';
-    const tokens = d.mainAgent.totalTokens ? `${Math.round(d.mainAgent.totalTokens / 1000)}k tokens` : '';
-    mainDetail.textContent = `${model}${tokens ? ' · ' + tokens : ''}`;
-  }
+    // Card 2: Today Tokens
+    const subVal = document.getElementById('subagentValue');
+    const subBadge = document.getElementById('subagentBadge');
+    const subDetail = document.getElementById('subagentDetail');
+    subVal.textContent = fmtTokens(t.totalTokens || 0);
+    subBadge.className = 'agent-stat-badge active';
+    subBadge.innerHTML = 'today';
+    const topModel = Object.entries(t.models || {}).sort((a, b) => b[1] - a[1])[0];
+    subDetail.textContent = topModel ? shortModel(topModel[0]) + ' ' + ((topModel[1] / (t.totalTokens || 1)) * 100).toFixed(0) + '%' : '—';
+  }).catch(() => {});
 
-  // Sub-Agents
-  const subVal = document.getElementById('subagentValue');
-  const subBadge = document.getElementById('subagentBadge');
-  const subDetail = document.getElementById('subagentDetail');
-  subVal.textContent = d.subagents.active;
-  subBadge.className = `agent-stat-badge ${d.subagents.active > 0 ? 'active' : 'idle'}`;
-  subBadge.innerHTML = d.subagents.active > 0
-    ? `<span class="pulse-dot"></span> ${d.subagents.active} running`
-    : `${d.subagents.total} total`;
-  subDetail.textContent = d.subagents.total > 0
-    ? `${d.subagents.total} total · max 8`
-    : 'No sub-agents';
-
-  // Hooks
-  const hookVal = document.getElementById('hookValue');
-  const hookBadge = document.getElementById('hookBadge');
-  const hookDetail = document.getElementById('hookDetail');
-  hookVal.textContent = d.hooks.active;
-  hookBadge.className = `agent-stat-badge ${d.hooks.active > 0 ? 'active' : 'idle'}`;
-  hookBadge.innerHTML = d.hooks.active > 0
-    ? `<span class="pulse-dot"></span> ${d.hooks.active} active`
-    : `${d.hooks.total} total`;
-  const dashboardHooks = d.hooks.sessions.filter(s => s.hookSource === 'dashboard').length;
-  hookDetail.textContent = `${d.hooks.total} total${dashboardHooks ? ' · ' + dashboardHooks + ' dashboard' : ''}`;
-
-  // Cron Jobs
+  // Card 3: Cron Jobs (from agent data)
   const cronVal = document.getElementById('cronValue');
   const cronBadge = document.getElementById('cronBadge');
   const cronDetail = document.getElementById('cronDetail');
-  cronVal.textContent = d.crons.active;
-  cronBadge.className = `agent-stat-badge ${d.crons.active > 0 ? 'active' : 'idle'}`;
-  cronBadge.innerHTML = d.crons.active > 0
-    ? `<span class="pulse-dot"></span> ${d.crons.active} running`
-    : `${d.crons.total} total`;
-  cronDetail.textContent = `${d.crons.total} total sessions`;
+  cronVal.textContent = d.crons?.total || 0;
+  cronBadge.className = `agent-stat-badge ${d.crons?.active > 0 ? 'active' : 'idle'}`;
+  cronBadge.innerHTML = d.crons?.active > 0 ? `<span class="pulse-dot"></span> ${d.crons.active} running` : `${d.crons?.total || 0} total`;
+  cronDetail.textContent = d.crons?.active > 0 ? d.crons.active + ' running' : 'all idle';
 
-  // Total
+  // Card 4: Sessions
+  const hookVal = document.getElementById('hookValue');
+  const hookBadge = document.getElementById('hookBadge');
+  const hookDetail = document.getElementById('hookDetail');
+  hookVal.textContent = d.activeSessions || 0;
+  hookBadge.className = `agent-stat-badge ${d.activeSessions > 0 ? 'active' : 'idle'}`;
+  hookBadge.innerHTML = d.activeSessions + ' active';
+  hookDetail.textContent = (d.totalSessions || 0) + ' total';
+
+  // Card 5: Model
   const totalVal = document.getElementById('totalValue');
   const totalBadge = document.getElementById('totalBadge');
   const totalDetail = document.getElementById('totalDetail');
-  totalVal.textContent = d.activeSessions;
-  totalBadge.className = `agent-stat-badge ${d.activeSessions > 0 ? 'active' : 'idle'}`;
-  totalBadge.innerHTML = `${d.activeSessions} active`;
-  totalDetail.textContent = `${d.totalSessions} total · ${d.groups.total} groups`;
+  const model = d.mainAgent?.model || '—';
+  totalVal.textContent = shortModel(model);
+  totalBadge.className = 'agent-stat-badge active';
+  totalBadge.innerHTML = 'primary';
+  totalDetail.textContent = d.mainAgent?.status || '—';
 
   // Render sessions panel
   renderSessionsPanel();
@@ -2963,6 +2959,54 @@ async function loadOpsAlltime() {
     }
   } catch (e) {
     modelsEl.innerHTML = `<div class="empty-state"><p>${e.message}</p></div>`;
+  }
+}
+
+async function loadOpsAudit() {
+  const el = document.getElementById('auditContent');
+  if (!el) return;
+  try {
+    const data = await apiFetch('/ops/audit');
+    let html = '';
+
+    // OpenAI
+    const oi = data.openai;
+    if (oi?.status === 'ok') {
+      const t = oi.totals;
+      const modelRows = Object.entries(oi.models || {}).sort((a, b) => b[1].input - a[1].input).map(([m, d]) =>
+        `<div class="ops-channel-card" style="padding:8px 12px">
+          <div class="ops-ch-left"><div class="ops-ch-name" style="font-size:.82rem">🟢 ${escHtml(m)}</div>
+          <div class="ops-ch-meta"><span>${d.requests} reqs</span><span>cached: ${fmtTokens(d.cached)}</span></div></div>
+          <div class="ops-ch-right"><div class="ops-ch-tokens">${fmtTokens(d.input + d.output)}</div></div></div>`
+      ).join('');
+      html += `<div style="margin-bottom:12px">
+        <div style="font-weight:600;margin-bottom:6px">OpenAI <span class="pill" style="border-color:#34d399;color:#34d399">✓ verified</span></div>
+        <div class="ops-ch-meta" style="margin-bottom:8px">7d: ${fmtTokens(t.input)} in + ${fmtTokens(t.output)} out · ${t.requests} reqs · ${fmtTokens(t.cached)} cached</div>
+        <div class="ops-channel-list">${modelRows}</div>
+        ${Object.keys(oi.days||{}).length > 0 ? `<div class="ops-ch-meta" style="margin-top:6px">Days: ${Object.entries(oi.days).sort().map(([d,v])=>d.slice(5)+':'+fmtTokens(v.input+v.output)).join(' · ')}</div>` : ''}
+      </div>`;
+    } else {
+      html += `<div style="margin-bottom:8px">OpenAI <span class="pill">${oi?.status || 'unknown'}</span> ${oi?.error || ''}</div>`;
+    }
+
+    // Anthropic
+    const ac = data.anthropic;
+    if (ac?.status === 'org_only') {
+      html += `<div style="margin-bottom:8px">
+        <div style="font-weight:600;margin-bottom:4px">Anthropic <span class="pill" style="border-color:#c084fc;color:#c084fc">org verified</span></div>
+        <div class="ops-ch-meta">Org: ${escHtml(ac.org?.name)} · ${ac.activeKeys?.length || 0} active keys</div>
+        <div class="ops-ch-meta" style="margin-top:2px;font-style:italic">${ac.note}</div>
+      </div>`;
+    } else {
+      html += `<div style="margin-bottom:8px">Anthropic <span class="pill">${ac?.status || 'unknown'}</span></div>`;
+    }
+
+    // Google
+    html += `<div>Google <span class="pill">${data.google?.status || 'no_api'}</span> <span class="ops-ch-meta">${data.google?.note || ''}</span></div>`;
+
+    el.innerHTML = html;
+  } catch (e) {
+    el.innerHTML = `<div class="ops-ch-meta">Failed: ${e.message}</div>`;
   }
 }
 
