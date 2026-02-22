@@ -1832,6 +1832,22 @@ function handleOpsConfig(req, res, method) {
         });
       }
 
+      // Mask secrets in core config files (openclaw.json etc.)
+      // Uses [^\s"',] to match any non-whitespace secret chars including hyphens
+      if (cf.category === 'core') {
+        content = content.replace(/(sk-ant-[^\s"',]{4})[^\s"',]{8,}/g, '$1···MASKED');
+        content = content.replace(/(sk-proj-[^\s"',]{4})[^\s"',]{8,}/g, '$1···MASKED');
+        content = content.replace(/(sk-admin-[^\s"',]{4})[^\s"',]{8,}/g, '$1···MASKED');
+        content = content.replace(/(AIzaSy[^\s"',]{4})[^\s"',]{8,}/g, '$1···MASKED');
+        content = content.replace(/(xai-[^\s"',]{4})[^\s"',]{8,}/g, '$1···MASKED');
+        // Mask Discord bot tokens (base64-encoded snowflake pattern)
+        content = content.replace(/(MTQ3[^\s"',]{4})[^\s"',]{8,}/g, '$1···MASKED');
+        // Mask any remaining long values after known key names in JSON
+        content = content.replace(/("(?:[A-Z_]*(?:KEY|TOKEN|SECRET|BEARER)[A-Z_]*)":\s*")([^"]{16,})"/gi, (m, prefix, val) => {
+          return prefix + val.slice(0, 8) + '···' + val.slice(-4) + '"';
+        });
+      }
+
       files.push({
         label: cf.label,
         category: cf.category,
