@@ -410,6 +410,8 @@ header{display:flex;align-items:center;justify-content:space-between;padding:16p
 .sess-status{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:4px}
 .sess-status.active{background:#34d399}.sess-status.idle{background:#6b7280}.sess-status.error{background:#f87171}.sess-status.stale{background:#fbbf24}
 .sess-model{font-size:.72rem;padding:2px 6px;border-radius:4px;border:1px solid var(--border)}
+.model-select{font-size:.7rem;padding:2px 4px;border-radius:4px;border:1px solid var(--border);background:var(--bg2);color:var(--text);cursor:pointer;outline:none;max-width:80px;transition:all .3s}
+.model-select:focus{border-color:var(--blue)}
 .sess-alert{padding:8px 12px;border-radius:8px;margin-bottom:6px;font-size:.82rem;display:flex;align-items:center;gap:8px}
 .sess-alert.error{background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.3)}
 .sess-alert.waste{background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.3)}
@@ -3028,6 +3030,50 @@ loadTasks = async function() {
 };
 
 // ─── Sessions Panel ───
+// ─── Model Selector ───
+const MODEL_OPTIONS = [
+  { value: 'default', label: '默认', short: 'default' },
+  { value: 'opus',   label: 'Opus',   full: 'claude-opus-4-6' },
+  { value: 'sonnet', label: 'Sonnet', full: 'claude-sonnet-4-6' },
+  { value: 'flash',  label: 'Flash',  full: 'gemini-3.0-flash' },
+  { value: 'pro',    label: 'Pro',    full: 'gemini-3.1-pro' },
+  { value: 'codex',  label: 'Codex',  full: 'gpt-5.3-codex' },
+];
+
+function buildModelSelect(currentModel, id, type) {
+  // type: 'session' (channelId) or 'cron' (jobId)
+  const opts = MODEL_OPTIONS.map(o => {
+    const isCurrent = o.full ? currentModel.includes(o.full) : (!currentModel || currentModel === 'unknown');
+    return `<option value="${o.value}" ${isCurrent ? 'selected' : ''}>${o.label}</option>`;
+  }).join('');
+  const color = getModelColor(currentModel);
+  return `<select class="model-select" style="border-color:${color};color:${color}"
+    onchange="changeModel('${type}','${id}',this.value,this)">${opts}</select>`;
+}
+
+async function changeModel(type, id, model, el) {
+  el.disabled = true;
+  el.style.opacity = '0.5';
+  const endpoint = type === 'session' ? '/ops/session-model' : '/ops/cron-model';
+  const body = type === 'session' ? { channelId: id, model } : { jobId: id, model };
+  try {
+    await apiFetch(endpoint, { method: 'POST', body: JSON.stringify(body) });
+    el.style.borderColor = 'var(--green)';
+    el.style.color = 'var(--green)';
+    setTimeout(() => {
+      el.style.opacity = '1';
+      if (type === 'session') loadSessions();
+      else loadCronEnhanced();
+    }, 800);
+  } catch (e) {
+    el.style.borderColor = '#f87171';
+    el.style.color = '#f87171';
+    el.disabled = false;
+    el.style.opacity = '1';
+    alert('模型切换失败: ' + e.message);
+  }
+}
+
 async function loadSessions() {
   const alertsEl = document.getElementById('sessionsAlerts');
   const tableEl = document.getElementById('sessionsTable');
@@ -3136,10 +3182,13 @@ async function loadSessions() {
         ? `<span class="sess-name">${escHtml(s.displayName)}</span><br><span style="color:var(--text2);font-size:.65rem">${cn}</span>`
         : `<span class="sess-name">${escHtml(s.displayName)}</span>`;
 
+      // Model selector dropdown
+      const modelSelect = s.channelId ? buildModelSelect(s.model, s.channelId, 'session') : `<span class="sess-model" style="border-color:${getModelColor(s.model)};color:${getModelColor(s.model)}">${shortModel(s.model)}</span>`;
+
       html += `<tr>
         <td><span class="sess-status ${s.status}"></span>${nameHtml}</td>
         <td style="font-size:.7rem">${taskTag}</td>
-        <td><span class="sess-model" style="border-color:${getModelColor(s.model)};color:${getModelColor(s.model)}">${shortModel(s.model)}</span></td>
+        <td>${modelSelect}</td>
         <td>${s.today.messages}<span style="color:var(--text2);font-size:.65rem"><br>${eff} 有效</span></td>
         <td>${fmtTokens(s.today.totalTokens)}</td>
         <td style="font-weight:600">$${s.today.cost.toFixed(2)}</td>
@@ -3353,7 +3402,7 @@ async function loadCronEnhanced() {
         <div class="cron-desc">${escHtml(j.description)}</div>
         <div class="cron-footer">
           <span>📋 ${j.payloadKind || '—'}</span>
-          <span>🎯 ${j.sessionTarget || '—'}</span>
+          <span>🧠 ${buildModelSelect(j.model || '', j.id, 'cron')}</span>
           <span>⏱ 上次: ${lastRunText}</span>
         </div>
       </div>`;

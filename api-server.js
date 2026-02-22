@@ -1711,8 +1711,9 @@ function handleOpsSessions(req, res, method) {
     // Include Discord sessions without sessionFile as inactive placeholders
     if (!sessionFile) {
       if (ch === 'discord') {
+        const chIdM = key.match(/channel:(\d+)$/);
         rows.push({
-          key, displayName, channel: ch, model: sess.model || 'unknown',
+          key, channelId: chIdM ? chIdM[1] : null, displayName, channel: ch, model: sess.model || 'unknown',
           thinkingLevel: sess.thinkingLevel || '—', status: 'idle',
           updatedAt: sess.updatedAt, daysSinceUpdate: 99,
           allTime: { tokens: sess.totalTokens || 0 },
@@ -1777,8 +1778,13 @@ function handleOpsSessions(req, res, method) {
     const effectiveMessages = today.messages - today.noReply - today.heartbeat;
     const noReplyRate = today.messages > 0 ? ((today.noReply + today.heartbeat) / today.messages * 100).toFixed(0) : 0;
 
+    // Extract channel ID for model override
+    const chIdMatch = key.match(/channel:(\d+)$/);
+    const channelId = chIdMatch ? chIdMatch[1] : null;
+
     const row = {
       key,
+      channelId,
       displayName,
       channel: ch,
       model: sess.model || 'unknown',
@@ -2148,6 +2154,7 @@ function handleOpsCron(req, res, method) {
       description: desc || summary,
       sessionTarget: j.sessionTarget,
       payloadKind: j.payload?.kind,
+      model: j.payload?.model || null,
       lastRun,
     };
   });
@@ -2158,6 +2165,108 @@ function handleOpsCron(req, res, method) {
     enabled: result.filter(j => j.enabled).length,
     disabled: result.filter(j => !j.enabled).length,
   });
+}
+
+// ─── POST /ops/session-model ─── Set per-channel model override via openclaw.json
+const OPENCLAW_CONFIG = path.join(process.env.HOME || '', '.openclaw', 'openclaw.json');
+const AVAILABLE_MODELS = {
+  'opus':    'anthropic/claude-opus-4-6',
+  'sonnet':  'anthropic/claude-sonnet-4-6',
+  'flash':   'google/gemini-3.0-flash',
+  'pro':     'google/gemini-3.1-pro',
+  'codex':   'openai/gpt-5.3-codex',
+};
+
+function handleOpsSessionModel(req, res, method) {
+  if (method !== 'POST') return errorReply(res, 405, 'POST only');
+  return readJsonBody(req).then(body => {
+    const { channelId, model } = body;
+    if (!channelId) return errorReply(res, 400, 'channelId required');
+    if (!model) return errorReply(res, 400, 'model required');
+
+    const fullModel = AVAILABLE_MODELS[model] || model;
+
+    // Read current config
+    let config;
+    try { config = JSON.parse(fs.readFileSync(OPENCLAW_CONFIG, 'utf8')); }
+    catch (e) { return errorReply(res, 500, 'Cannot read openclaw.json: ' + e.message); }
+
+    // Update channels.modelByChannel
+    if (!config.channels) config.channels = {};
+    if (!config.channels.modelByChannel) config.channels.modelByChannel = {};
+
+    if (model === 'default') {
+      delete config.channels.modelByChannel[channelId];
+    } else {
+      config.channels.modelByChannel[channelId] = fullModel;
+    }
+
+    // Write back
+    try { fs.writeFileSync(OPENCLAW_CONFIG, JSON.stringify(config, null, 2), 'utf8'); }
+    catch (e) { return errorReply(res, 500, 'Cannot write openclaw.json: ' + e.message); }
+
+    // Signal gateway to reload config (SIGUSR1)
+    try {
+      const { execSync } = require('child_process');
+      const pid = execSync('pgrep -f "openclaw.*gateway"', { encoding: 'utf8' }).trim().split('\n')[0];
+      if (pid) process.kill(+pid, 'SIGUSR1');
+    } catch {}
+
+    // Clear sessions cache so next fetch picks up new model
+    _sessionsCache = null;
+
+    return jsonReply(res, 200, {
+      ok: true,
+      channelId,
+      model: model === 'default' ? '(default)' : fullModel,
+      note: 'Gateway config updated. SIGUSR1 sent.',
+    });
+  }).catch(e => errorReply(res, 400, e.message));
+}
+
+// ─── POST /ops/cron-model ─── Set model override for a cron job
+function handleOpsCronModel(req, res, method) {
+  if (method !== 'POST') return errorReply(res, 405, 'POST only');
+  return readJsonBody(req).then(body => {
+    const { jobId, model } = body;
+    if (!jobId) return errorReply(res, 400, 'jobId required');
+    if (!model) return errorReply(res, 400, 'model required');
+
+    const fullModel = AVAILABLE_MODELS[model] || model;
+
+    let store;
+    try { store = JSON.parse(fs.readFileSync(CRON_STORE_PATH, 'utf8')); }
+    catch (e) { return errorReply(res, 500, 'Cannot read cron store: ' + e.message); }
+
+    const job = store.jobs.find(j => j.id === jobId);
+    if (!job) return errorReply(res, 404, 'Job not found');
+
+    if (!job.payload) job.payload = {};
+    if (model === 'default') {
+      delete job.payload.model;
+    } else {
+      job.payload.model = fullModel;
+    }
+    job.updatedAtMs = Date.now();
+
+    try { fs.writeFileSync(CRON_STORE_PATH, JSON.stringify(store, null, 2), 'utf8'); }
+    catch (e) { return errorReply(res, 500, 'Cannot write cron store: ' + e.message); }
+
+    // Signal gateway
+    try {
+      const { execSync } = require('child_process');
+      const pid = execSync('pgrep -f "openclaw.*gateway"', { encoding: 'utf8' }).trim().split('\n')[0];
+      if (pid) process.kill(+pid, 'SIGUSR1');
+    } catch {}
+
+    return jsonReply(res, 200, {
+      ok: true,
+      jobId,
+      jobName: job.name,
+      model: model === 'default' ? '(default)' : fullModel,
+      note: 'Cron job model updated. Gateway signaled.',
+    });
+  }).catch(e => errorReply(res, 400, e.message));
 }
 
 // --- Main Server ---
@@ -2313,6 +2422,8 @@ button:active{opacity:.8}
     if (root === 'ops' && segments[1] === 'cron') return handleOpsCron(req, res, method);
     if (root === 'ops' && segments[1] === 'cron-costs') return handleOpsCronCosts(req, res, method);
     if (root === 'ops' && segments[1] === 'system') return handleOpsSystem(req, res, method);
+    if (root === 'ops' && segments[1] === 'session-model') return handleOpsSessionModel(req, res, method);
+    if (root === 'ops' && segments[1] === 'cron-model') return handleOpsCronModel(req, res, method);
     if (root === 'backup') return handleBackup(req, res, method);
     if (root === 'memory') return handleMemory(req, res, method, parsed);
     return errorReply(res, 404, 'Not found');
