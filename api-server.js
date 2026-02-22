@@ -1810,7 +1810,7 @@ function handleOpsSessions(req, res, method) {
 
   // Sort: active first (by today cost desc), then idle, then stale
   const statusOrder = { error: 0, active: 1, idle: 2, stale: 3 };
-  rows.sort((a, b) => (statusOrder[a.status] || 9) - (statusOrder[b.status] || 9) || b.today.cost - a.today.cost);
+  rows.sort((a, b) => (statusOrder[a.status] || 9) - (statusOrder[b.status] || 9) || b.today.totalTokens - a.today.totalTokens);
 
   const result = {
     sessions: rows,
@@ -1835,6 +1835,57 @@ function handleOpsSessions(req, res, method) {
 }
 
 // --- Ops: Config Files Viewer ---
+// --- Ops: System Info ---
+function handleOpsSystem(req, res, method) {
+  if (method !== 'GET') return errorReply(res, 405, 'Method not allowed');
+  const os = require('os');
+  const { execSync } = require('child_process');
+
+  const totalMem = os.totalmem();
+  const freeMem = os.freemem();
+  const usedMem = totalMem - freeMem;
+
+  // CPU usage via load average
+  const loadAvg = os.loadavg();
+  const cpuCount = os.cpus().length;
+
+  // Disk usage
+  let disk = {};
+  try {
+    const df = execSync("df -h / | tail -1", { timeout: 3000 }).toString().trim().split(/\s+/);
+    disk = { total: df[1], used: df[2], available: df[3], usePct: df[4] };
+  } catch {}
+
+  // macOS system info
+  let macModel = '', macOS = '';
+  try { macModel = execSync("sysctl -n hw.model", { timeout: 2000 }).toString().trim(); } catch {}
+  try { macOS = execSync("sw_vers -productVersion", { timeout: 2000 }).toString().trim(); } catch {}
+
+  // OpenClaw version
+  let clawVersion = '';
+  try { clawVersion = execSync("openclaw --version 2>/dev/null || echo unknown", { timeout: 3000 }).toString().trim(); } catch {}
+
+  // Process uptime
+  const dashboardUptime = process.uptime();
+
+  return jsonReply(res, 200, {
+    hostname: os.hostname(),
+    platform: os.platform(),
+    arch: os.arch(),
+    macModel, macOS,
+    cpus: cpuCount,
+    loadAvg: { '1m': loadAvg[0], '5m': loadAvg[1], '15m': loadAvg[2] },
+    memory: {
+      total: totalMem, free: freeMem, used: usedMem,
+      usePct: ((usedMem / totalMem) * 100).toFixed(1),
+    },
+    disk,
+    nodeVersion: process.version,
+    clawVersion,
+    dashboardUptime: Math.floor(dashboardUptime),
+  });
+}
+
 function handleOpsConfig(req, res, method) {
   if (method !== 'GET') return errorReply(res, 405, 'Method not allowed');
 
@@ -2146,6 +2197,7 @@ button:active{opacity:.8}
     if (root === 'ops' && segments[1] === 'sessions') return handleOpsSessions(req, res, method);
     if (root === 'ops' && segments[1] === 'config') return handleOpsConfig(req, res, method);
     if (root === 'ops' && segments[1] === 'cron') return handleOpsCron(req, res, method);
+    if (root === 'ops' && segments[1] === 'system') return handleOpsSystem(req, res, method);
     if (root === 'backup') return handleBackup(req, res, method);
     if (root === 'memory') return handleMemory(req, res, method, parsed);
     return errorReply(res, 404, 'Not found');

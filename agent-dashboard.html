@@ -1243,7 +1243,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     document.getElementById(`panel-${btn.dataset.tab}`).classList.add('active');
     if (btn.dataset.tab === 'sessions') loadSessions();
     if (btn.dataset.tab === 'tasks') { loadCronEnhanced(); loadTasks(true); }
-    if (btn.dataset.tab === 'ops') { loadOpsChannels(); loadOpsAlltime(); }
+    if (btn.dataset.tab === 'ops') { loadOpsChannels(); loadOpsAlltime(); loadOpsAudit(); }
     if (btn.dataset.tab === 'quality') loadQuality();
     if (btn.dataset.tab === 'audit') loadAudit();
     if (btn.dataset.tab === 'config') loadConfig();
@@ -2729,7 +2729,9 @@ function renderSessionsPanel() {
   }
   addSessions(agentData.subagents.sessions, 'subagent');
   addSessions(agentData.hooks.sessions, 'hook');
-  addSessions(agentData.crons.sessions, 'cron');
+  // Filter out cron :run: child sessions to avoid duplicates
+  const cronSessions = (agentData.crons.sessions || []).filter(s => !/:run:/.test(s.key));
+  addSessions(cronSessions, 'cron');
 
   count.textContent = allActive.length;
 
@@ -3114,7 +3116,7 @@ async function loadQuality() {
     // Sort by idle rate desc
     sessions.sort((a, b) => b.today.noReplyRate - a.today.noReplyRate);
 
-    let html = '<div class="glass-card" style="padding:16px;margin-bottom:12px"><div class="card-title">Session Quality (Today)</div><div class="card-sub">Idle% = NO_REPLY + HEARTBEAT_OK / total messages</div></div>';
+    let html = '<div class="glass-card" style="padding:16px;margin-bottom:12px"><div class="card-title">Session Quality (Today)</div><div class="card-sub">静默率 = (NO_REPLY 无回复 + HEARTBEAT_OK 心跳) / 总消息数。高静默率说明该频道大量消息不需要回复，可考虑降级模型节省成本。</div></div>';
     html += '<div class="ops-channel-list">';
     for (const s of sessions) {
       const barWidth = Math.min(s.today.noReplyRate, 100);
@@ -3127,7 +3129,7 @@ async function loadQuality() {
           </div>
           <div class="ops-ch-meta"><span>${s.today.messages} msgs</span><span>${s.today.effectiveMessages} effective</span><span>${s.today.noReply} silent</span><span>${s.today.heartbeat} heartbeat</span></div>
         </div>
-        <div class="ops-ch-right"><div class="ops-ch-tokens" style="color:${color}">${s.today.noReplyRate}%</div><div class="ops-ch-cost">idle</div></div>
+        <div class="ops-ch-right"><div class="ops-ch-tokens" style="color:${color}">${s.today.noReplyRate}%</div><div class="ops-ch-cost">静默率</div></div>
       </div>`;
     }
     html += '</div>';
@@ -3187,6 +3189,40 @@ async function loadAudit() {
         html += `<div><strong>Anthropic</strong> <span class="pill" style="border-color:#c084fc;color:#c084fc">org ✓</span> ${ac.org.name} · ${ac.activeKeys?.length} keys</div>`;
       }
       html += '</div>';
+    } catch {}
+
+    // System info
+    try {
+      const sys = await apiFetch('/ops/system');
+      const memPct = sys.memory?.usePct || '—';
+      const memUsed = ((sys.memory?.used || 0) / 1073741824).toFixed(1);
+      const memTotal = ((sys.memory?.total || 0) / 1073741824).toFixed(1);
+      const load = sys.loadAvg?.['1m']?.toFixed(2) || '—';
+      const uptimeH = Math.floor((sys.dashboardUptime || 0) / 3600);
+      const uptimeM = Math.floor(((sys.dashboardUptime || 0) % 3600) / 60);
+      html += `<div class="glass-card" style="padding:16px;margin-top:12px">
+        <div class="card-title">🖥️ System (${escHtml(sys.hostname || '')})</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px;font-size:.82rem">
+          <div>💻 <strong>${escHtml(sys.macModel || sys.platform)}</strong></div>
+          <div>🍎 macOS ${escHtml(sys.macOS || '—')}</div>
+          <div>🧮 CPU: ${sys.cpus} cores · Load: ${load}</div>
+          <div>💾 RAM: ${memUsed}/${memTotal} GB (${memPct}%)</div>
+          <div>💿 Disk: ${sys.disk?.used || '—'} / ${sys.disk?.total || '—'} (${sys.disk?.usePct || '—'})</div>
+          <div>⏱️ Dashboard: ${uptimeH}h ${uptimeM}m</div>
+          <div>📦 Node: ${escHtml(sys.nodeVersion || '—')}</div>
+          <div>🦞 OpenClaw: ${escHtml(sys.clawVersion || '—')}</div>
+        </div>
+        <div style="margin-top:8px">
+          <div style="font-size:.72rem;color:var(--text2);margin-bottom:2px">Memory ${memPct}%</div>
+          <div style="height:8px;border-radius:4px;background:rgba(255,255,255,.1);overflow:hidden">
+            <div style="height:100%;width:${memPct}%;background:${+memPct>80?'var(--red)':+memPct>60?'var(--yellow)':'var(--green)'};border-radius:4px;transition:width .5s"></div>
+          </div>
+          <div style="font-size:.72rem;color:var(--text2);margin:4px 0 2px">Disk ${sys.disk?.usePct || '—'}</div>
+          <div style="height:8px;border-radius:4px;background:rgba(255,255,255,.1);overflow:hidden">
+            <div style="height:100%;width:${sys.disk?.usePct || '0%'};background:${parseInt(sys.disk?.usePct)>80?'var(--red)':parseInt(sys.disk?.usePct)>60?'var(--yellow)':'var(--green)'};border-radius:4px;transition:width .5s"></div>
+          </div>
+        </div>
+      </div>`;
     } catch {}
 
     el.innerHTML = html;
