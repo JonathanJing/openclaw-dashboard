@@ -1034,6 +1034,21 @@ header{display:flex;align-items:center;justify-content:space-between;padding:16p
         </div>
       </div>
     </div>
+
+    <!-- Cron Cost Analysis -->
+    <div class="glass-card" style="padding:16px;margin-top:16px">
+      <div class="card-title">💰 Cron 成本分析</div>
+      <div class="card-sub" id="cronCostSummary">Loading...</div>
+      <div id="cronCostContent" style="margin-top:12px"></div>
+    </div>
+
+    <!-- Fixed vs Variable Trend -->
+    <div class="glass-card" style="padding:16px;margin-top:12px">
+      <div class="card-title">📈 固定成本 vs 浮动成本趋势</div>
+      <div class="card-sub">Cron（固定）= 每日自动任务 · 交互（浮动）= 人工触发的对话</div>
+      <canvas id="cronTrendChart" height="160" style="width:100%;margin-top:8px"></canvas>
+      <div id="cronTrendLegend" style="margin-top:6px;font-size:.72rem;display:flex;gap:16px"></div>
+    </div>
   </div>
 
   <!-- ═══ Documents Panel ═══ -->
@@ -1247,7 +1262,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     btn.classList.add('active');
     document.getElementById(`panel-${btn.dataset.tab}`).classList.add('active');
     if (btn.dataset.tab === 'sessions') loadSessions();
-    if (btn.dataset.tab === 'tasks') { loadCronEnhanced(); loadTasks(true); }
+    if (btn.dataset.tab === 'tasks') { loadCronEnhanced(); loadTasks(true); loadCronCosts(); }
     if (btn.dataset.tab === 'ops') { loadOpsChannels(); loadOpsAlltime(); loadOpsAudit(); }
     if (btn.dataset.tab === 'quality') loadQuality();
     if (btn.dataset.tab === 'audit') loadAudit();
@@ -3377,6 +3392,88 @@ function fmtTokens(n) {
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
   if (n >= 1_000) return (n / 1_000).toFixed(0) + 'k';
   return String(n);
+}
+
+async function loadCronCosts() {
+  const summaryEl = document.getElementById('cronCostSummary');
+  const contentEl = document.getElementById('cronCostContent');
+  const canvas = document.getElementById('cronTrendChart');
+  const legendEl = document.getElementById('cronTrendLegend');
+  if (!contentEl) return;
+
+  try {
+    const data = await apiFetch('/ops/cron-costs');
+    const s = data.summary || {};
+
+    summaryEl.textContent = `累计 ${s.totalRuns} 次执行 · 总花费 $${s.totalCronCost} · 日均固定成本 $${s.avgDailyCronCost} · ${s.days} 天`;
+
+    // Per-job cost table
+    let html = '<table class="sessions-table"><thead><tr><th>Cron 任务</th><th>次数</th><th>$/次</th><th>总花费</th><th>模型</th></tr></thead><tbody>';
+    for (const j of data.jobs || []) {
+      html += `<tr>
+        <td style="font-weight:600;font-size:.78rem">${escHtml(j.name)}</td>
+        <td>${j.runs}</td>
+        <td style="color:${j.costPerRun > 0.2 ? '#fbbf24' : 'var(--green)'}">$${j.costPerRun.toFixed(3)}</td>
+        <td style="font-weight:600">$${j.totalCost.toFixed(2)}</td>
+        <td><span class="sess-model" style="border-color:${getModelColor(j.model)};color:${getModelColor(j.model)}">${shortModel(j.model)}</span></td>
+      </tr>`;
+    }
+    html += '</tbody></table>';
+    contentEl.innerHTML = html;
+
+    // Trend chart: stacked bar (cron fixed + interactive variable)
+    const trend = data.dailyTrend || [];
+    if (canvas && trend.length > 1) {
+      const ctx = canvas.getContext('2d');
+      const W = canvas.parentElement.clientWidth - 32;
+      const H = 160;
+      canvas.width = W * 2; canvas.height = H * 2;
+      canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+      ctx.scale(2, 2);
+
+      const maxCost = Math.max(...trend.map(d => d.totalCost), 1);
+      const barW = Math.min(40, (W - 40) / trend.length - 4);
+      const startX = 36;
+      const chartH = H - 30;
+
+      ctx.clearRect(0, 0, W, H);
+
+      // Y axis labels
+      ctx.fillStyle = '#8b949e'; ctx.font = '10px sans-serif'; ctx.textAlign = 'right';
+      for (let i = 0; i <= 4; i++) {
+        const y = 10 + chartH - (i / 4) * chartH;
+        ctx.fillText('$' + (maxCost * i / 4).toFixed(0), 30, y + 3);
+        ctx.strokeStyle = 'rgba(255,255,255,0.05)'; ctx.beginPath(); ctx.moveTo(startX, y); ctx.lineTo(W, y); ctx.stroke();
+      }
+
+      trend.forEach((d, i) => {
+        const x = startX + i * ((W - startX) / trend.length) + 2;
+        const cronH = (d.cronCost / maxCost) * chartH;
+        const interH = (d.interactiveCost / maxCost) * chartH;
+        const baseY = 10 + chartH;
+
+        // Interactive (variable) — bottom
+        ctx.fillStyle = 'rgba(124,92,252,0.6)';
+        ctx.fillRect(x, baseY - cronH - interH, barW, interH);
+
+        // Cron (fixed) — top of stack
+        ctx.fillStyle = 'rgba(45,212,160,0.8)';
+        ctx.fillRect(x, baseY - cronH, barW, cronH);
+
+        // Date label
+        ctx.fillStyle = '#8b949e'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center';
+        ctx.fillText(d.date.slice(5), x + barW / 2, baseY + 12);
+
+        // Total label
+        ctx.fillStyle = '#e6edf3'; ctx.font = 'bold 9px sans-serif';
+        ctx.fillText('$' + d.totalCost.toFixed(0), x + barW / 2, baseY - cronH - interH - 3);
+      });
+
+      legendEl.innerHTML = '<span style="color:#2dd4a0">■ Cron 固定成本</span><span style="color:#7c5cfc">■ 交互浮动成本</span>';
+    }
+  } catch (e) {
+    contentEl.innerHTML = `<p>${e.message}</p>`;
+  }
 }
 
 async function loadOpsChannels() {

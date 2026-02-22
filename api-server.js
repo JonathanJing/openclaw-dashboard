@@ -1955,6 +1955,119 @@ function handleOpsConfig(req, res, method) {
 }
 
 // --- Ops: Enhanced Cron ---
+// --- Ops: Cron Costs ---
+function handleOpsCronCosts(req, res, method) {
+  if (method !== 'GET') return errorReply(res, 405, 'Method not allowed');
+
+  let jobs;
+  try { jobs = JSON.parse(fs.readFileSync(CRON_STORE_PATH, 'utf8')).jobs || []; } catch { jobs = []; }
+  const jobMap = {};
+  jobs.forEach(j => jobMap[j.id] = j.name || j.id.slice(0, 8));
+
+  const files = fs.readdirSync(CRON_RUNS_DIR).filter(f => f.endsWith('.jsonl'));
+  const byJob = {};
+  const byDay = {};
+
+  for (const f of files) {
+    const jobId = f.replace('.jsonl', '');
+    const name = jobMap[jobId] || jobId.slice(0, 8);
+    let lines;
+    try { lines = fs.readFileSync(path.join(CRON_RUNS_DIR, f), 'utf8').trim().split('\n'); } catch { continue; }
+
+    for (const l of lines) {
+      try {
+        const j = JSON.parse(l);
+        if (j.action !== 'finished') continue;
+        const u = j.usage || {};
+        const inp = u.input_tokens || u.input || 0;
+        const out = u.output_tokens || u.output || 0;
+        const cost = estimateCost(j.model, (u.total_tokens || u.totalTokens || 0), inp, out, u.cost);
+        const ts = j.startedAt || j.ts || Date.now();
+        const day = new Date(ts).toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
+
+        if (!byJob[name]) byJob[name] = { runs: 0, totalCost: 0, model: j.model || 'unknown', avgDurationMs: 0, totalDurationMs: 0 };
+        byJob[name].runs++;
+        byJob[name].totalCost += cost;
+        byJob[name].totalDurationMs += j.durationMs || 0;
+
+        if (!byDay[day]) byDay[day] = { cronCost: 0, cronRuns: 0 };
+        byDay[day].cronCost += cost;
+        byDay[day].cronRuns++;
+      } catch {}
+    }
+  }
+
+  // Compute per-job averages
+  const jobStats = Object.entries(byJob).map(([name, d]) => ({
+    name, runs: d.runs, totalCost: +d.totalCost.toFixed(4),
+    costPerRun: +(d.totalCost / d.runs).toFixed(4),
+    model: d.model,
+    avgDurationSec: +(d.totalDurationMs / d.runs / 1000).toFixed(1),
+  })).sort((a, b) => b.totalCost - a.totalCost);
+
+  // Merge with alltime daily data for fixed vs variable trend
+  // Get total daily cost from alltime cache or compute
+  const dailyTrend = [];
+  const sortedDays = Object.keys(byDay).sort();
+
+  // Try to get total daily costs from session JSONL (reuse alltime logic)
+  let totalDailyMap = {};
+  try {
+    // Quick scan: read alltime endpoint data
+    const sessions = JSON.parse(fs.readFileSync(SESSIONS_JSON, 'utf8'));
+    for (const [key, sess] of Object.entries(sessions)) {
+      if (!sess.sessionFile) continue;
+      try {
+        const stat = fs.statSync(sess.sessionFile);
+        const readSize = Math.min(1_000_000, stat.size);
+        const buf = Buffer.alloc(readSize);
+        const fd = fs.openSync(sess.sessionFile, 'r');
+        fs.readSync(fd, buf, 0, readSize, Math.max(0, stat.size - readSize));
+        fs.closeSync(fd);
+        const lines = buf.toString('utf8').split('\n').filter(Boolean);
+        for (const line of lines) {
+          if (!line.includes('"usage"')) continue;
+          try {
+            const j = JSON.parse(line);
+            if (j.type !== 'message' || !j.message?.usage) continue;
+            const u = j.message.usage;
+            const day = new Date(j.timestamp).toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
+            const cost = estimateCost(j.message.model, u.totalTokens || 0,
+              (u.input || 0) + (u.cacheRead || 0) + (u.cacheWrite || 0), u.output || 0, u.cost);
+            totalDailyMap[day] = (totalDailyMap[day] || 0) + cost;
+          } catch {}
+        }
+      } catch {}
+    }
+  } catch {}
+
+  for (const day of sortedDays) {
+    const cron = byDay[day].cronCost;
+    const total = totalDailyMap[day] || cron;
+    dailyTrend.push({
+      date: day,
+      cronCost: +cron.toFixed(2),
+      cronRuns: byDay[day].cronRuns,
+      totalCost: +total.toFixed(2),
+      interactiveCost: +((total - cron) > 0 ? (total - cron) : 0).toFixed(2),
+    });
+  }
+
+  const totalCronCost = jobStats.reduce((s, j) => s + j.totalCost, 0);
+  const avgDailyCron = sortedDays.length > 0 ? totalCronCost / sortedDays.length : 0;
+
+  return jsonReply(res, 200, {
+    jobs: jobStats,
+    dailyTrend,
+    summary: {
+      totalCronCost: +totalCronCost.toFixed(2),
+      avgDailyCronCost: +avgDailyCron.toFixed(2),
+      totalRuns: jobStats.reduce((s, j) => s + j.runs, 0),
+      days: sortedDays.length,
+    },
+  });
+}
+
 function handleOpsCron(req, res, method) {
   if (method !== 'GET') return errorReply(res, 405, 'Method not allowed');
 
@@ -2198,6 +2311,7 @@ button:active{opacity:.8}
     if (root === 'ops' && segments[1] === 'sessions') return handleOpsSessions(req, res, method);
     if (root === 'ops' && segments[1] === 'config') return handleOpsConfig(req, res, method);
     if (root === 'ops' && segments[1] === 'cron') return handleOpsCron(req, res, method);
+    if (root === 'ops' && segments[1] === 'cron-costs') return handleOpsCronCosts(req, res, method);
     if (root === 'ops' && segments[1] === 'system') return handleOpsSystem(req, res, method);
     if (root === 'backup') return handleBackup(req, res, method);
     if (root === 'memory') return handleMemory(req, res, method, parsed);
