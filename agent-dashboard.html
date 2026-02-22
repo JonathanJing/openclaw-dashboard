@@ -372,6 +372,16 @@ header{display:flex;align-items:center;justify-content:space-between;padding:16p
 .ops-cost-label{color:var(--text2)}
 .ops-cost-value{color:var(--text);font-family:var(--mono);font-size:.8rem}
 
+/* ─── Cost Heatmap ─── */
+.cost-heatmap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.cost-heatmap table{width:100%;border-collapse:collapse;font-size:.75rem}
+.cost-heatmap th{padding:6px 4px;text-align:center;color:var(--text2);font-weight:500;white-space:nowrap;position:sticky;top:0;background:var(--bg)}
+.cost-heatmap th:first-child{text-align:left;min-width:90px}
+.cost-heatmap td{padding:5px 4px;text-align:center;border-radius:4px;white-space:nowrap}
+.cost-heatmap td:first-child{text-align:left;font-weight:600;color:var(--text1)}
+.cost-heatmap .heat-cell{display:inline-block;padding:2px 6px;border-radius:4px;min-width:40px;font-variant-numeric:tabular-nums}
+.cost-heatmap .total-row td{border-top:1px solid var(--border);font-weight:700}
+
 /* ─── Responsive ─── */
 @media(max-width:768px){
   .ops-mgmt-grid{grid-template-columns:1fr}
@@ -876,6 +886,8 @@ header{display:flex;align-items:center;justify-content:space-between;padding:16p
       <div class="card-title" style="font-size:.85rem;margin:12px 0 8px">Daily Cost by Model</div>
       <canvas id="dailyCostChart" height="120" style="width:100%;border-radius:8px"></canvas>
       <div class="ops-model-legend chart-cost-legend" style="margin-top:6px"></div>
+      <div class="card-title" style="font-size:.85rem;margin:12px 0 8px">Cost Heatmap (Model × Day)</div>
+      <div id="costHeatmap" class="cost-heatmap"></div>
     </div>
 
     <div class="glass-card" style="padding:16px;margin-top:16px" id="auditCard">
@@ -3020,6 +3032,7 @@ async function loadOpsAlltime() {
     const costCanvas = document.getElementById('dailyCostChart');
     if (costCanvas && daily.length > 0) {
       drawDailyCostChart(costCanvas, daily);
+      renderCostHeatmap(daily);
     }
 
     // Audit status
@@ -3230,6 +3243,68 @@ function drawDailyChart(canvas, daily) {
       `<span class="ops-model-legend-item"><span class="ops-model-dot" style="background:${getModelColor(m)}"></span>${shortModel(m)}</span>`
     ).join('');
   }
+}
+
+function renderCostHeatmap(daily) {
+  const el = document.getElementById('costHeatmap');
+  if (!el || !daily.length) return;
+
+  // Collect all models with cost > 0
+  const allModels = new Set();
+  daily.forEach(d => Object.entries(d.modelCosts || {}).forEach(([m, c]) => { if (c > 0.01) allModels.add(m); }));
+  const models = [...allModels].sort((a, b) => {
+    const ta = daily.reduce((s, d) => s + (d.modelCosts?.[a] || 0), 0);
+    const tb = daily.reduce((s, d) => s + (d.modelCosts?.[b] || 0), 0);
+    return tb - ta;
+  });
+
+  // Find max cell value for heat coloring
+  let maxCell = 0;
+  daily.forEach(d => models.forEach(m => { maxCell = Math.max(maxCell, d.modelCosts?.[m] || 0); }));
+
+  function heatBg(val) {
+    if (val < 0.01) return 'transparent';
+    const intensity = Math.min(val / maxCell, 1);
+    // From dark to bright: low=dim, high=vivid
+    const alpha = 0.15 + intensity * 0.65;
+    return `rgba(124, 92, 252, ${alpha.toFixed(2)})`;
+  }
+
+  function fmtCost(v) {
+    if (v < 0.01) return '—';
+    if (v < 1) return '$' + v.toFixed(2);
+    return '$' + v.toFixed(0);
+  }
+
+  // Header: Model | Day1 | Day2 | ... | Total
+  let html = '<table><thead><tr><th></th>';
+  daily.forEach(d => { html += `<th>${d.date.slice(5)}</th>`; });
+  html += '<th>Total</th></tr></thead><tbody>';
+
+  // Rows: one per model
+  models.forEach(m => {
+    html += `<tr><td><span class="ops-model-dot" style="background:${getModelColor(m)};display:inline-block;margin-right:4px;vertical-align:middle"></span>${shortModel(m)}</td>`;
+    let rowTotal = 0;
+    daily.forEach(d => {
+      const v = d.modelCosts?.[m] || 0;
+      rowTotal += v;
+      html += `<td><span class="heat-cell" style="background:${heatBg(v)}">${fmtCost(v)}</span></td>`;
+    });
+    html += `<td><strong>${fmtCost(rowTotal)}</strong></td></tr>`;
+  });
+
+  // Total row
+  html += '<tr class="total-row"><td>Total</td>';
+  let grandTotal = 0;
+  daily.forEach(d => {
+    const dayTotal = d.cost || 0;
+    grandTotal += dayTotal;
+    html += `<td><strong>${fmtCost(dayTotal)}</strong></td>`;
+  });
+  html += `<td><strong>${fmtCost(grandTotal)}</strong></td></tr>`;
+
+  html += '</tbody></table>';
+  el.innerHTML = html;
 }
 
 function drawDailyCostChart(canvas, daily) {
