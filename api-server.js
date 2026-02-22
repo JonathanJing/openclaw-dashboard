@@ -1367,6 +1367,139 @@ function handleOpsChannels(req, res, method) {
   return jsonReply(res, 200, result);
 }
 
+// --- Ops: All-Time Usage ---
+let _allTimeCache = null;
+let _allTimeCacheAt = 0;
+const ALLTIME_CACHE_TTL = 300_000; // 5 min
+
+function handleOpsAlltime(req, res, method) {
+  if (method !== 'GET') return errorReply(res, 405, 'Method not allowed');
+
+  const now = Date.now();
+  if (_allTimeCache && (now - _allTimeCacheAt) < ALLTIME_CACHE_TTL) {
+    return jsonReply(res, 200, _allTimeCache);
+  }
+
+  const sessDir = path.dirname(SESSIONS_JSON);
+  let files;
+  try {
+    files = fs.readdirSync(sessDir).filter(f => f.includes('.jsonl'));
+  } catch (e) {
+    return errorReply(res, 500, 'Cannot read sessions dir: ' + e.message);
+  }
+
+  const models = {};
+  const daily = {}; // YYYY-MM-DD → { tokens, cost, models }
+  let totalTokens = 0, totalInput = 0, totalOutput = 0, totalCost = 0, totalMessages = 0;
+
+  for (const f of files) {
+    try {
+      const data = fs.readFileSync(path.join(sessDir, f), 'utf8');
+      for (const line of data.split('\n')) {
+        if (!line.includes('"usage"')) continue;
+        try {
+          const j = JSON.parse(line);
+          if (j.type !== 'message' || !j.message?.usage) continue;
+          const u = j.message.usage;
+          const m = j.message.model || 'unknown';
+          const tokens = u.totalTokens || 0;
+          const input = u.input || 0;
+          const output = u.output || 0;
+          let cost = u.cost?.total || 0;
+          if (cost === 0 && tokens > 0) cost = estimateCost(m, tokens);
+
+          totalTokens += tokens;
+          totalInput += input;
+          totalOutput += output;
+          totalCost += cost;
+          totalMessages++;
+
+          if (!models[m]) models[m] = { tokens: 0, input: 0, output: 0, cost: 0, messages: 0 };
+          models[m].tokens += tokens;
+          models[m].input += input;
+          models[m].output += output;
+          models[m].cost += cost;
+          models[m].messages++;
+
+          // Daily bucket (PST)
+          if (j.timestamp) {
+            const d = new Date(j.timestamp);
+            const pst = new Date(d.toLocaleString('en-US', { timeZone: 'America/Los_Angeles' }));
+            const day = pst.toISOString().slice(0, 10);
+            if (!daily[day]) daily[day] = { tokens: 0, cost: 0, models: {} };
+            daily[day].tokens += tokens;
+            daily[day].cost += cost;
+            daily[day].models[m] = (daily[day].models[m] || 0) + tokens;
+          }
+        } catch {}
+      }
+    } catch {}
+  }
+
+  // Also scan cron runs
+  try {
+    const cronFiles = fs.readdirSync(CRON_RUNS_DIR).filter(f => f.endsWith('.jsonl'));
+    for (const cf of cronFiles) {
+      try {
+        const raw = fs.readFileSync(path.join(CRON_RUNS_DIR, cf), 'utf8').trim();
+        for (const line of raw.split('\n')) {
+          try {
+            const j = JSON.parse(line);
+            if (j.action !== 'finished' || !j.usage) continue;
+            const m = j.model || 'cron';
+            const tokens = j.usage.total_tokens || j.usage.totalTokens || 0;
+            if (tokens === 0) continue;
+            let cost = estimateCost(m, tokens);
+            totalTokens += tokens;
+            totalCost += cost;
+            totalMessages++;
+            if (!models[m]) models[m] = { tokens: 0, input: 0, output: 0, cost: 0, messages: 0 };
+            models[m].tokens += tokens;
+            models[m].cost += cost;
+            models[m].messages++;
+            if (j.ts) {
+              const d = new Date(j.ts);
+              const pst = new Date(d.toLocaleString('en-US', { timeZone: 'America/Los_Angeles' }));
+              const day = pst.toISOString().slice(0, 10);
+              if (!daily[day]) daily[day] = { tokens: 0, cost: 0, models: {} };
+              daily[day].tokens += tokens;
+              daily[day].cost += cost;
+              daily[day].models[m] = (daily[day].models[m] || 0) + tokens;
+            }
+          } catch {}
+        }
+      } catch {}
+    }
+  } catch {}
+
+  // Sort models by tokens desc
+  const sortedModels = Object.entries(models)
+    .filter(([k]) => k !== 'delivery-mirror' && k !== 'unknown')
+    .sort((a, b) => b[1].tokens - a[1].tokens)
+    .map(([name, data]) => ({ name, ...data }));
+
+  // Last 14 days for chart
+  const days = Object.keys(daily).sort().slice(-14);
+  const recentDaily = days.map(d => ({ date: d, ...daily[d] }));
+
+  const result = {
+    totals: { tokens: totalTokens, input: totalInput, output: totalOutput, cost: totalCost, messages: totalMessages },
+    models: sortedModels,
+    recentDaily,
+    sessionFiles: files.length,
+    audit: {
+      openai: { status: 'needs_scope', note: 'API key needs api.usage.read scope' },
+      anthropic: { status: 'needs_admin_key', note: 'Requires Anthropic admin API key' },
+      google: { status: 'no_api', note: 'No public usage API available' }
+    },
+    cachedAt: now
+  };
+
+  _allTimeCache = result;
+  _allTimeCacheAt = now;
+  return jsonReply(res, 200, result);
+}
+
 // --- Main Server ---
 const server = http.createServer((req, res) => {
   const parsed = url.parse(req.url, true);
@@ -1487,6 +1620,7 @@ button:active{opacity:.8}
     if (root === 'cron') return handleCron(req, res, parsed, segments, method);
     if (root === 'vision' && segments[1] === 'stats') return handleVisionStats(req, res, method);
     if (root === 'ops' && segments[1] === 'channels') return handleOpsChannels(req, res, method);
+    if (root === 'ops' && segments[1] === 'alltime') return handleOpsAlltime(req, res, method);
     return errorReply(res, 404, 'Not found');
   } catch (e) {
     console.error('Unhandled error:', e);
