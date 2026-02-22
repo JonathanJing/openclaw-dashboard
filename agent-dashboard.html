@@ -2601,27 +2601,35 @@ function renderAgentMonitor() {
   if (!agentData) return;
   const d = agentData;
 
-  // Fetch today's ops data for header cards
-  apiFetch('/ops/channels').then(ops => {
-    const t = ops.totals || {};
+  // Fetch today's ops data for header cards — use /ops/sessions for accurate totals (includes all channels)
+  apiFetch('/ops/sessions').then(sessData => {
+    let totalCost = 0, totalTokens = 0, totalMsgs = 0, models = {};
+    (sessData.sessions || []).forEach(s => {
+      const t = s.today || {};
+      totalCost += t.cost || 0;
+      totalTokens += t.tokens || 0;
+      totalMsgs += t.messages || 0;
+      if (s.model) models[s.model] = (models[s.model] || 0) + (t.tokens || 0);
+    });
+
     // Card 1: Today Cost
     const mainBadge = document.getElementById('mainAgentBadge');
     const mainValue = document.getElementById('mainAgentValue');
     const mainDetail = document.getElementById('mainAgentDetail');
     mainBadge.className = 'agent-stat-badge active';
     mainBadge.innerHTML = '<span class="pulse-dot"></span> today';
-    mainValue.textContent = '$' + (t.cost || 0).toFixed(2);
-    mainDetail.textContent = (t.messages || 0) + ' messages';
+    mainValue.textContent = '$' + totalCost.toFixed(2);
+    mainDetail.textContent = totalMsgs + ' messages';
 
     // Card 2: Today Tokens
     const subVal = document.getElementById('subagentValue');
     const subBadge = document.getElementById('subagentBadge');
     const subDetail = document.getElementById('subagentDetail');
-    subVal.textContent = fmtTokens(t.totalTokens || 0);
+    subVal.textContent = fmtTokens(totalTokens);
     subBadge.className = 'agent-stat-badge active';
     subBadge.innerHTML = 'today';
-    const topModel = Object.entries(t.models || {}).sort((a, b) => b[1] - a[1])[0];
-    subDetail.textContent = topModel ? shortModel(topModel[0]) + ' ' + ((topModel[1] / (t.totalTokens || 1)) * 100).toFixed(0) + '%' : '—';
+    const topModel = Object.entries(models).sort((a, b) => b[1] - a[1])[0];
+    subDetail.textContent = topModel ? shortModel(topModel[0]) + ' ' + ((topModel[1] / (totalTokens || 1)) * 100).toFixed(0) + '%' : '—';
   }).catch(() => {});
 
   // Card 3: Cron Jobs (from agent data)
