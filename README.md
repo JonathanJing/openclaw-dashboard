@@ -148,6 +148,20 @@ The dashboard connects to standard OpenClaw REST endpoints:
 
 Authentication is handled via `?token=` query parameter, read dynamically from the URL.
 
+### Vision Ingestion (Notion)
+
+If you want the **Vision Ingestion** panel (Networking / Wine / Cigar / Tea) to show daily counts, set these env vars:
+
+```bash
+NOTION_API_KEY=ntn_...
+VISION_DB_NETWORKING=xxxxxxxx
+VISION_DB_WINE=xxxxxxxx
+VISION_DB_CIGAR=xxxxxxxx
+VISION_DB_TEA=xxxxxxxx
+```
+
+If not configured, the panel will display `Notion not configured` and show zeros.
+
 ## Author
 
 <table>
