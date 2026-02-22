@@ -871,6 +871,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:16p
       <div id="alltimeModels" class="ops-channel-list" style="margin-bottom:12px"></div>
       <div class="card-title" style="font-size:.85rem;margin-bottom:8px">Daily (Last 14 Days)</div>
       <canvas id="dailyChart" height="120" style="width:100%;border-radius:8px"></canvas>
+      <div class="ops-model-legend chart-legend" style="margin-top:6px"></div>
     </div>
 
     <div class="glass-card" style="padding:16px;margin-top:16px" id="auditCard">
@@ -2928,14 +2929,18 @@ async function loadOpsChannels() {
 
     // Model distribution bar
     if (barEl) {
-      const modelEntries = Object.entries(totals.models || {}).sort((a, b) => b[1] - a[1]);
+      const modelEntries = Object.entries(totals.models || {}).filter(([,t]) => t > 0).sort((a, b) => b[1] - a[1]);
       const total = totals.totalTokens || 1;
-      barEl.innerHTML = modelEntries.map(([m, t]) =>
-        `<div class="ops-model-segment" style="width:${(t/total*100).toFixed(1)}%;background:${getModelColor(m)}" title="${shortModel(m)}: ${fmtTokens(t)}"></div>`
-      ).join('');
-      barEl.innerHTML += '<div class="ops-model-legend">' + modelEntries.map(([m, t]) =>
-        `<span class="ops-model-legend-item"><span class="ops-model-dot" style="background:${getModelColor(m)}"></span>${shortModel(m)} ${((t/total)*100).toFixed(0)}%</span>`
-      ).join('') + '</div>';
+      // Bar segments (flex container) + legend below (separate div)
+      barEl.innerHTML =
+        '<div style="display:flex;height:8px;border-radius:4px;overflow:hidden;background:var(--border)">' +
+        modelEntries.map(([m, t]) =>
+          `<div style="width:${(t/total*100).toFixed(1)}%;background:${getModelColor(m)};height:100%" title="${shortModel(m)}: ${fmtTokens(t)}"></div>`
+        ).join('') +
+        '</div>' +
+        '<div class="ops-model-legend">' + modelEntries.map(([m, t]) =>
+          `<span class="ops-model-legend-item"><span class="ops-model-dot" style="background:${getModelColor(m)}"></span>${shortModel(m)} ${((t/total)*100).toFixed(0)}%</span>`
+        ).join('') + '</div>';
     }
 
     // Channel list
@@ -3144,6 +3149,15 @@ function drawDailyChart(canvas, daily) {
   const maxTokens = Math.max(...daily.map(d => d.tokens), 1);
   const barW = Math.max(4, (cW / daily.length) - 2);
 
+  // Collect all models across days
+  const allModels = new Set();
+  daily.forEach(d => Object.keys(d.models || {}).forEach(m => { if ((d.models[m] || 0) > 0) allModels.add(m); }));
+  const modelList = [...allModels].sort((a, b) => {
+    const ta = daily.reduce((s, d) => s + (d.models?.[a] || 0), 0);
+    const tb = daily.reduce((s, d) => s + (d.models?.[b] || 0), 0);
+    return tb - ta;
+  });
+
   ctx.clearRect(0, 0, W, H);
 
   // Grid lines
@@ -3154,26 +3168,27 @@ function drawDailyChart(canvas, daily) {
     ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(W - pad.right, y); ctx.stroke();
   }
 
-  // Bars
+  // Stacked bars by model
   daily.forEach((d, i) => {
     const x = pad.left + (i * cW / daily.length) + 1;
-    const h = (d.tokens / maxTokens) * cH;
-    const y = pad.top + cH - h;
+    let yOffset = pad.top + cH; // bottom
 
-    const grad = ctx.createLinearGradient(x, y, x, pad.top + cH);
-    grad.addColorStop(0, '#7c5cfc');
-    grad.addColorStop(1, '#7c5cfc33');
-    ctx.fillStyle = grad;
-    ctx.beginPath();
-    ctx.roundRect(x, y, barW, h, 2);
-    ctx.fill();
+    modelList.forEach(m => {
+      const t = d.models?.[m] || 0;
+      if (t <= 0) return;
+      const h = (t / maxTokens) * cH;
+      yOffset -= h;
+      ctx.fillStyle = getModelColor(m);
+      ctx.beginPath();
+      ctx.roundRect(x, yOffset, barW, h, 1);
+      ctx.fill();
+    });
 
     // Date label
     ctx.fillStyle = '#8b949e';
     ctx.font = '9px -apple-system, sans-serif';
     ctx.textAlign = 'center';
-    const label = d.date.slice(5); // MM-DD
-    ctx.fillText(label, x + barW / 2, pad.top + cH + 14);
+    ctx.fillText(d.date.slice(5), x + barW / 2, pad.top + cH + 14);
   });
 
   // Y-axis labels
@@ -3184,6 +3199,14 @@ function drawDailyChart(canvas, daily) {
     const val = maxTokens * (4 - i) / 4;
     const y = pad.top + (cH * i / 4) + 3;
     ctx.fillText(fmtTokens(val), pad.left - 6, y);
+  }
+
+  // Legend below chart
+  const legendEl = canvas.parentElement?.querySelector('.chart-legend');
+  if (legendEl) {
+    legendEl.innerHTML = modelList.map(m =>
+      `<span class="ops-model-legend-item"><span class="ops-model-dot" style="background:${getModelColor(m)}"></span>${shortModel(m)}</span>`
+    ).join('');
   }
 }
 
