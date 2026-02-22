@@ -614,12 +614,12 @@ header{display:flex;align-items:center;justify-content:space-between;padding:16p
   .agent-stat-value{font-size:1.6rem}
   .agent-stat{padding:12px 14px}
   .agent-session-tokens,.agent-session-label{display:none}
-  /* Hide Think(3), Idle%(7), Updated(8) on mobile; keep Session/Model/Msgs/Tokens/Cost */
-  .sessions-table th:nth-child(3),.sessions-table td:nth-child(3),
-  .sessions-table th:nth-child(7),.sessions-table td:nth-child(7),
+  /* Mobile: hide 任务(2), Tokens(5), 匹配(8); keep 频道/模型/消息/花费/$/条 */
+  .sessions-table th:nth-child(2),.sessions-table td:nth-child(2),
+  .sessions-table th:nth-child(5),.sessions-table td:nth-child(5),
   .sessions-table th:nth-child(8),.sessions-table td:nth-child(8){display:none}
   .sessions-table{font-size:.72rem}
-  .sess-name{max-width:110px}
+  .sess-name{max-width:100px}
 }
 
 /* ─── Scrollbar ─── */
@@ -875,16 +875,16 @@ header{display:flex;align-items:center;justify-content:space-between;padding:16p
     <div style="display:flex;flex-wrap:wrap;gap:6px 16px;align-items:center" id="systemInfoContent"></div>
   </div>
 
-  <!-- Active Sessions Detail Panel -->
-  <div class="agent-sessions-panel" id="agentSessionsPanel" style="display:none">
-    <div class="agent-sessions-header" onclick="this.classList.toggle('collapsed');toggleSessionsPanel()">
+  <!-- Today's Cron Runs -->
+  <div class="agent-sessions-panel" id="cronRunsPanel">
+    <div class="agent-sessions-header" onclick="this.classList.toggle('collapsed');this.nextElementSibling.style.maxHeight=this.classList.contains('collapsed')?'0':'400px'">
       <div class="agent-sessions-title">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
-        Active Sessions
+        今日 Cron 执行记录
       </div>
-      <span class="agent-sessions-count" id="activeSessionsCount">0</span>
+      <span class="agent-sessions-count" id="cronRunsCount">0</span>
     </div>
-    <div class="agent-sessions-body" id="agentSessionsBody"></div>
+    <div class="agent-sessions-body" id="cronRunsBody" style="max-height:400px;transition:max-height .4s"></div>
   </div>
 
   <!-- Tab Bar -->
@@ -941,10 +941,11 @@ header{display:flex;align-items:center;justify-content:space-between;padding:16p
       <div id="costHeatmap" class="cost-heatmap"></div>
     </div>
 
-    <div class="glass-card" style="padding:16px;margin-top:16px" id="auditCard">
+    <!-- Provider Audit hidden — no useful billing API from Anthropic/Google yet -->
+    <div class="glass-card" style="padding:16px;margin-top:16px;display:none" id="auditCard">
       <div class="card-title">🔍 Provider Audit (Official APIs)</div>
       <div class="card-sub" style="margin-bottom:12px">Cross-reference with provider billing data</div>
-      <div id="auditContent"><div class="skeleton skeleton-card"></div></div>
+      <div id="auditContent"></div>
     </div>
 
     <!-- ─── Operations Management ─── -->
@@ -2732,86 +2733,46 @@ function renderAgentMonitor() {
 }
 
 function renderSessionsPanel() {
-  if (!agentData) return;
-  const panel = document.getElementById('agentSessionsPanel');
-  const body = document.getElementById('agentSessionsBody');
-  const count = document.getElementById('activeSessionsCount');
+  // Load today's cron runs instead of active sessions
+  loadCronRuns();
+}
 
-  // Collect all active sessions from all categories
-  const allActive = [];
-  const addSessions = (sessions, type) => {
-    sessions.forEach(s => {
-      if (s.isActive) allActive.push({ ...s, displayType: type });
-    });
-  };
+async function loadCronRuns() {
+  const body = document.getElementById('cronRunsBody');
+  const count = document.getElementById('cronRunsCount');
+  if (!body) return;
 
-  if (agentData.mainAgent && agentData.mainAgent.status === 'active') {
-    allActive.push({
-      key: 'agent:main:main',
-      displayType: 'main',
-      isActive: true,
-      ageMinutes: agentData.mainAgent.ageMinutes,
-      totalTokens: agentData.mainAgent.totalTokens,
-      model: agentData.mainAgent.model,
-      label: '',
-    });
-  }
-  addSessions(agentData.subagents.sessions, 'subagent');
-  addSessions(agentData.hooks.sessions, 'hook');
-  // Filter out cron :run: child sessions to avoid duplicates
-  const cronSessions = (agentData.crons.sessions || []).filter(s => !/:run:/.test(s.key));
-  addSessions(cronSessions, 'cron');
+  try {
+    const data = await apiFetch('/cron/today');
+    const runs = data.todayJobs || [];
+    count.textContent = runs.length;
 
-  count.textContent = allActive.length;
-
-  if (allActive.length === 0) {
-    panel.style.display = 'none';
-    return;
-  }
-
-  panel.style.display = '';
-
-  // Sort by most recently updated
-  allActive.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
-
-  // Friendly name resolver for active sessions
-  const cronNames = {
-    'openclaw-watch': '🔍 生态监控', 'Heartbeat': '💓 心跳检查', 'cnBeta Tech Digest': '📰 cnBeta 摘要',
-    'jobs-intel daily scan': '💼 求职扫描', 'Nightly Memory': '🧹 夜间记忆整理',
-    'SoCal + NorCal AI Events Weekly Scan': '🎯 加州AI活动', 'Daily Bible Reading Check': '📖 灵修晨检',
-    'X Content Drafts': '🐦 X 内容草稿', 'Platform Council Nightly': '🛡️ 平台审计',
-    'Daily Tech News Digest': '📰 每日科技摘要', 'Weekly AI Events Scan': '🎯 每周活动扫描',
-  };
-  function friendlySessionName(s) {
-    // Cron: use label/name or match from cronNames
-    if (s.displayType === 'cron') {
-      const name = s.label || s.name || '';
-      for (const [k, v] of Object.entries(cronNames)) { if (name.includes(k)) return v; }
-      if (name) return name.substring(0, 30);
-      return '⏰ Cron 任务';
+    if (runs.length === 0) {
+      body.innerHTML = '<div style="padding:12px 18px;font-size:.8rem;color:var(--text2)">今日暂无 Cron 执行记录</div>';
+      return;
     }
-    // Subagent: use label or task preview
-    if (s.displayType === 'subagent') {
-      return s.label || (s.task ? s.task.substring(0, 40) : '🤖 子代理');
-    }
-    // Main
-    if (s.displayType === 'main') return '🧠 主代理';
-    return s.key.replace('agent:main:', '').substring(0, 30);
+
+    // Sort by time descending (most recent first)
+    runs.sort((a, b) => (b.finishedAt || b.startedAt || 0) - (a.finishedAt || a.startedAt || 0));
+
+    body.innerHTML = runs.map(r => {
+      const name = r.jobName || r.jobId?.slice(0, 8) || '—';
+      const status = r.status === 'ok' ? '✅' : r.status === 'error' ? '❌' : '⏳';
+      const time = r.finishedAt ? new Date(r.finishedAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'America/Los_Angeles' }) : '—';
+      const dur = r.durationMs ? (r.durationMs / 1000).toFixed(1) + 's' : '';
+      const tokens = r.tokens ? fmtTokens(r.tokens) : '';
+
+      return `<div class="agent-session-row">
+        <span style="font-size:.9rem">${status}</span>
+        <span class="agent-session-key" style="flex:1;font-family:inherit;font-size:.78rem">${escHtml(name)}</span>
+        <span class="agent-session-tokens">${tokens}</span>
+        <span class="agent-session-tokens">${dur}</span>
+        <span class="agent-session-age">${time}</span>
+      </div>`;
+    }).join('');
+  } catch (e) {
+    body.innerHTML = `<div style="padding:12px 18px;font-size:.8rem;color:var(--text2)">${e.message}</div>`;
   }
-
-  body.innerHTML = allActive.map(s => {
-    const name = friendlySessionName(s);
-    const age = s.ageMinutes != null ? formatAge(s.ageMinutes) : '—';
-    const tokens = s.totalTokens ? `${Math.round(s.totalTokens / 1000)}k` : '';
-
-    return `<div class="agent-session-row">
-      <span class="agent-session-dot ${s.isActive ? 'active' : 'idle'}"></span>
-      <span class="agent-session-type type-${s.displayType}">${s.displayType}</span>
-      <span class="agent-session-key" title="${escHtml(s.key || '')}">${escHtml(name)}</span>
-      <span class="agent-session-tokens">${tokens}</span>
-      <span class="agent-session-age">${age}</span>
-    </div>`;
-  }).join('');
 }
 
 function formatAge(minutes) {
@@ -3097,36 +3058,78 @@ async function loadSessions() {
       return;
     }
 
-    // Chinese names for Discord channels
-    const chineseNames = {
-      '#dev_build': '开发构建', '#ai-learning': 'AI学习', '#ops-report': '运维报告',
-      '#general': '综合频道', '#openclaw-watch': '生态监控', '#jobs-intel': '求职情报',
-      '#x-ai-socal-radar': 'X/AI雷达', '#tech-news': '科技新闻',
-      '#podcast_video_article': '播客/视频/文章', '#meta-vision-ingest': '视觉入口',
-      '#socal-ai-events': '南加AI活动', '#event-planning': '活动策划',
-      '#networking-log': '人脉记录', '#工作搭子碎碎念': '工作搭子',
+    // Chinese names + task type for Discord channels
+    const channelMeta = {
+      '#dev_build':              { cn: '开发构建', task: '🔧 深度开发', tier: 'hard' },
+      '#ai-learning':            { cn: 'AI学习', task: '🧠 架构讨论', tier: 'hard' },
+      '#ops-report':             { cn: '运维报告', task: '📊 汇报转发', tier: 'easy' },
+      '#general':                { cn: '综合频道', task: '💬 闲聊', tier: 'easy' },
+      '#openclaw-watch':         { cn: '生态监控', task: '🔍 监控播报', tier: 'medium' },
+      '#jobs-intel':             { cn: '求职情报', task: '💼 搜索整理', tier: 'medium' },
+      '#x-ai-socal-radar':      { cn: 'X/AI雷达', task: '🐦 内容创作', tier: 'hard' },
+      '#tech-news':              { cn: '科技新闻', task: '📰 摘要生成', tier: 'medium' },
+      '#podcast_video_article':  { cn: '播客/视频', task: '📝 内容摘要', tier: 'medium' },
+      '#meta-vision-ingest':     { cn: '视觉入口', task: '👁️ 图片路由', tier: 'easy' },
+      '#socal-ai-events':        { cn: '南加AI活动', task: '🎯 活动搜索', tier: 'medium' },
+      '#event-planning':         { cn: '活动策划', task: '📅 规划', tier: 'easy' },
+      '#networking-log':         { cn: '人脉记录', task: '👤 信息录入', tier: 'easy' },
+      '#工作搭子碎碎念':          { cn: '工作搭子', task: '💬 闲聊', tier: 'easy' },
+      '#饮酒':                   { cn: '饮酒', task: '🍷 品鉴记录', tier: 'easy' },
+      '#灰茄':                   { cn: '灰茄', task: '🚬 品鉴记录', tier: 'easy' },
+      '#品茶':                   { cn: '品茶', task: '🍵 品鉴记录', tier: 'easy' },
+      '#养花':                   { cn: '养花', task: '🌱 记录', tier: 'easy' },
+      '#灵修':                   { cn: '灵修', task: '📖 灵修提醒', tier: 'easy' },
     };
+
+    // Model tier: what complexity level is this model suited for
+    const modelTier = m => {
+      if (!m) return 'easy';
+      if (m.includes('opus')) return 'hard';
+      if (m.includes('sonnet') || m.includes('codex') || m.includes('pro')) return 'medium';
+      return 'easy'; // flash, etc.
+    };
+
+    // Fit assessment
+    function fitLabel(s) {
+      const meta = channelMeta[s.displayName];
+      const taskTier = meta?.tier || 'medium';
+      const mTier = modelTier(s.model);
+      const tiers = { easy: 0, medium: 1, hard: 2 };
+      const diff = tiers[mTier] - tiers[taskTier];
+      if (diff >= 2) return { emoji: '🔴', text: '过高', tip: '模型远超任务需求，建议降级' };
+      if (diff === 1) return { emoji: '🟡', text: '偏高', tip: '可考虑降级节省成本' };
+      if (diff === 0) return { emoji: '🟢', text: '匹配', tip: '模型与任务复杂度匹配' };
+      if (diff === -1) return { emoji: '🔵', text: '偏低', tip: '任务较复杂，可考虑升级' };
+      return { emoji: '⚪', text: '—', tip: '' };
+    }
 
     let html = `<table class="sessions-table">
       <thead><tr>
-        <th>Session</th><th>Model</th><th>Think</th><th>Msgs</th><th>Tokens</th><th>Cost</th><th>Idle%</th><th>Updated</th>
+        <th>频道</th><th>任务</th><th>模型</th><th>消息</th><th>Tokens</th><th>花费</th><th>$/条</th><th>匹配</th>
       </tr></thead><tbody>`;
 
     for (const s of sessions) {
-      const timeAgo = s.updatedAt ? timeSince(s.updatedAt) : '—';
-      const cn = chineseNames[s.displayName] || '';
+      const meta = channelMeta[s.displayName] || {};
+      const cn = meta.cn || '';
+      const taskTag = meta.task || '';
+      const eff = s.today.effectiveMessages || 0;
+      const costPerMsg = eff > 0 ? (s.today.cost / eff) : 0;
+      const costColor = costPerMsg > 1.5 ? '#f87171' : costPerMsg > 0.5 ? '#fbbf24' : 'var(--green)';
+      const fit = fitLabel(s);
+
       const nameHtml = cn
-        ? `<span class="sess-name">${escHtml(s.displayName)}</span> <span style="color:var(--text2);font-size:.7rem">${cn}</span>`
+        ? `<span class="sess-name">${escHtml(s.displayName)}</span><br><span style="color:var(--text2);font-size:.65rem">${cn}</span>`
         : `<span class="sess-name">${escHtml(s.displayName)}</span>`;
+
       html += `<tr>
         <td><span class="sess-status ${s.status}"></span>${nameHtml}</td>
+        <td style="font-size:.7rem">${taskTag}</td>
         <td><span class="sess-model" style="border-color:${getModelColor(s.model)};color:${getModelColor(s.model)}">${shortModel(s.model)}</span></td>
-        <td>${s.thinkingLevel}</td>
-        <td>${s.today.messages}<span style="color:var(--text2);font-size:.7rem"> (${s.today.effectiveMessages} eff)</span></td>
+        <td>${s.today.messages}<span style="color:var(--text2);font-size:.65rem"><br>${eff} 有效</span></td>
         <td>${fmtTokens(s.today.totalTokens)}</td>
         <td style="font-weight:600">$${s.today.cost.toFixed(2)}</td>
-        <td style="color:${s.today.noReplyRate > 50 ? '#fbbf24' : 'var(--text2)'}">${s.today.noReplyRate}%</td>
-        <td style="color:var(--text2);font-size:.72rem">${timeAgo}</td>
+        <td style="color:${costColor};font-weight:600">${eff > 0 ? '$' + costPerMsg.toFixed(2) : '—'}</td>
+        <td title="${fit.tip}">${fit.emoji} <span style="font-size:.65rem">${fit.text}</span></td>
       </tr>`;
     }
     html += '</tbody></table>';
