@@ -1294,13 +1294,14 @@ function handleOpsChannels(req, res, method) {
   }
 
   // Today start in PST as ISO string
-  const todayPst = new Date();
-  const pstStr = todayPst.toLocaleString('en-US', { timeZone: 'America/Los_Angeles' });
-  const pstDate = new Date(pstStr);
-  pstDate.setHours(0, 0, 0, 0);
-  // Convert PST midnight back to UTC ISO
-  const offsetMs = todayPst.getTime() - pstDate.getTime();
-  const todayStartUtc = new Date(todayPst.getTime() - offsetMs);
+  // Get today's date in PST, then find UTC midnight of that PST date
+  const nowDate = new Date();
+  const todayPstDate = nowDate.toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' }); // YYYY-MM-DD
+  // PST is UTC-8, PDT is UTC-7; use the offset from the locale
+  const pstNow = new Date(nowDate.toLocaleString('en-US', { timeZone: 'America/Los_Angeles' }));
+  const utcNow = new Date(nowDate.toLocaleString('en-US', { timeZone: 'UTC' }));
+  const offsetMs = utcNow.getTime() - pstNow.getTime();
+  const todayStartUtc = new Date(new Date(todayPstDate + 'T00:00:00').getTime() + offsetMs);
   const todayStartIso = todayStartUtc.toISOString();
 
   const channels = {}; // keyed by channel display name
@@ -1446,8 +1447,8 @@ function handleOpsAlltime(req, res, method) {
           // Daily bucket (PST)
           if (j.timestamp) {
             const d = new Date(j.timestamp);
-            const pst = new Date(d.toLocaleString('en-US', { timeZone: 'America/Los_Angeles' }));
-            const day = pst.toISOString().slice(0, 10);
+            const pstStr = d.toLocaleString("en-CA", { timeZone: "America/Los_Angeles" });
+            const day = pstStr.slice(0, 10);
             if (!daily[day]) daily[day] = { tokens: 0, cost: 0, models: {}, modelCosts: {} };
             daily[day].tokens += tokens;
             daily[day].cost += cost;
@@ -1482,8 +1483,8 @@ function handleOpsAlltime(req, res, method) {
             models[m].messages++;
             if (j.ts) {
               const d = new Date(j.ts);
-              const pst = new Date(d.toLocaleString('en-US', { timeZone: 'America/Los_Angeles' }));
-              const day = pst.toISOString().slice(0, 10);
+              const pstStr = d.toLocaleString("en-CA", { timeZone: "America/Los_Angeles" });
+              const day = pstStr.slice(0, 10);
               if (!daily[day]) daily[day] = { tokens: 0, cost: 0, models: {}, modelCosts: {} };
               daily[day].tokens += tokens;
               daily[day].cost += cost;
