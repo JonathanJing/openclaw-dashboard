@@ -1977,6 +1977,29 @@ const server = http.createServer((req, res) => {
     return jsonReply(res, 200, { status: 'ok', uptime: process.uptime() });
   }
 
+  // PWA assets (no auth required)
+  if (pathname === '/icon.svg' && method === 'GET') {
+    try {
+      const svg = fs.readFileSync(path.join(__dirname, 'icon.svg'), 'utf8');
+      setCors(res);
+      res.writeHead(200, { 'Content-Type': 'image/svg+xml', 'Cache-Control': 'public, max-age=86400' });
+      return res.end(svg);
+    } catch { return errorReply(res, 404, 'Not found'); }
+  }
+  if (pathname === '/manifest.json' && method === 'GET') {
+    setCors(res);
+    res.writeHead(200, { 'Content-Type': 'application/manifest+json' });
+    return res.end(JSON.stringify({
+      name: "Jony's OpenClaw Dashboard",
+      short_name: 'Dashboard',
+      start_url: '/',
+      display: 'standalone',
+      background_color: '#0d1117',
+      theme_color: '#0d1117',
+      icons: [{ src: '/icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any maskable' }]
+    }));
+  }
+
   // Login page (no auth required)
   if (pathname === '/login') {
     if (method === 'GET') {
