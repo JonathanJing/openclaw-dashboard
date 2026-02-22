@@ -1838,6 +1838,151 @@ function handleOpsSessions(req, res, method) {
   return jsonReply(res, 200, result);
 }
 
+// --- Ops: Config Files Viewer ---
+function handleOpsConfig(req, res, method) {
+  if (method !== 'GET') return errorReply(res, 405, 'Method not allowed');
+
+  const home = process.env.HOME || '';
+  const ws = path.join(home, '.openclaw', 'workspace');
+  const configDir = path.join(home, '.openclaw');
+
+  const files = [];
+
+  // Core config
+  const configFiles = [
+    { path: path.join(configDir, 'openclaw.json'), label: 'openclaw.json', category: 'core' },
+    { path: path.join(configDir, 'keys.env'), label: 'keys.env', category: 'keys' },
+    { path: path.join(configDir, 'exec-approvals.json'), label: 'exec-approvals.json', category: 'core' },
+  ];
+
+  // Workspace personality files
+  try {
+    const wsFiles = fs.readdirSync(ws).filter(f => /^(SOUL|AGENTS|USER|IDENTITY|HEARTBEAT|MEMORY|TOOLS).*\.md$/i.test(f));
+    wsFiles.sort().forEach(f => configFiles.push({ path: path.join(ws, f), label: f, category: 'personality' }));
+  } catch {}
+
+  for (const cf of configFiles) {
+    try {
+      let content = fs.readFileSync(cf.path, 'utf8');
+      const stat = fs.statSync(cf.path);
+
+      // Mask sensitive keys (show first 8 + last 4 chars)
+      if (cf.category === 'keys') {
+        content = content.replace(/^([A-Z_]+=)(.{12,})$/gm, (_, prefix, val) => {
+          const clean = val.replace(/\s+/g, '');
+          if (clean.length > 16) {
+            return prefix + clean.slice(0, 8) + '···' + clean.slice(-4);
+          }
+          return prefix + val;
+        });
+      }
+
+      files.push({
+        label: cf.label,
+        category: cf.category,
+        size: stat.size,
+        modified: stat.mtimeMs,
+        content: content.slice(0, 50000), // cap at 50KB
+      });
+    } catch {}
+  }
+
+  return jsonReply(res, 200, { files });
+}
+
+// --- Ops: Enhanced Cron ---
+function handleOpsCron(req, res, method) {
+  if (method !== 'GET') return errorReply(res, 405, 'Method not allowed');
+
+  let jobs;
+  try {
+    const data = JSON.parse(fs.readFileSync(CRON_STORE_PATH, 'utf8'));
+    jobs = data.jobs || [];
+  } catch (e) {
+    return errorReply(res, 500, 'Cannot read cron: ' + e.message);
+  }
+
+  // Chinese descriptions for known jobs
+  const cronDescriptions = {
+    'openclaw-watch': '🔍 监控 OpenClaw 生态动态（GitHub releases、社区讨论、安全公告）',
+    'SoCal + NorCal AI Events Weekly Scan': '🎯 每日扫描加州 AI 线下活动 → 写入 Notion + Discord',
+    'jobs-intel daily scan': '💼 AI 求职机会扫描（LinkedIn/Wellfound）→ #jobs-intel 播报',
+    'cnBeta Tech Digest': '📰 cnBeta 科技新闻摘要 → Notion 内容摄入',
+    'Heartbeat': '💓 系统心跳检查（内存清理、Cron 恢复、日记维护）',
+  };
+
+  const result = jobs.map(j => {
+    // Parse schedule to human-readable
+    let scheduleText = '';
+    if (j.schedule?.kind === 'cron') {
+      scheduleText = j.schedule.expr || '';
+    } else if (j.schedule?.kind === 'every') {
+      const mins = Math.round((j.schedule.everyMs || 0) / 60000);
+      scheduleText = mins >= 60 ? `每 ${(mins / 60).toFixed(0)} 小时` : `每 ${mins} 分钟`;
+    } else if (j.schedule?.kind === 'at') {
+      scheduleText = '一次性: ' + (j.schedule.at || '');
+    }
+
+    // Parse cron expression to Chinese
+    if (j.schedule?.kind === 'cron' && j.schedule.expr) {
+      const parts = j.schedule.expr.split(' ');
+      if (parts.length >= 5) {
+        const [min, hour, dom, mon, dow] = parts;
+        if (dow !== '*' && dom === '*') {
+          const days = {'1':'一','2':'二','3':'三','4':'四','5':'五','6':'六','0':'日'};
+          scheduleText = `每周${dow.split(',').map(d => days[d] || d).join('、')} ${hour}:${min.padStart(2, '0')}`;
+        } else if (dom === '*' && mon === '*' && dow === '*') {
+          scheduleText = `每天 ${hour}:${min.padStart(2, '0')}`;
+          if (hour.includes(',')) scheduleText = `每天 ${hour.split(',').map(h => h + ':' + min.padStart(2, '0')).join(' / ')}`;
+        }
+      }
+    }
+
+    // Get last run info
+    let lastRun = null;
+    try {
+      const runFile = path.join(CRON_RUNS_DIR, j.id + '.jsonl');
+      const raw = fs.readFileSync(runFile, 'utf8').trim();
+      const lines = raw.split('\n').filter(Boolean);
+      const last = lines.length > 0 ? JSON.parse(lines[lines.length - 1]) : null;
+      if (last) {
+        lastRun = {
+          ts: last.ts,
+          status: last.status || last.action,
+          durationMs: last.durationMs,
+          tokens: last.usage?.total_tokens || last.usage?.totalTokens,
+          model: last.model,
+        };
+      }
+    } catch {}
+
+    // Match description
+    const desc = cronDescriptions[j.name] || null;
+    // Extract first line of payload text as summary
+    const payloadText = j.payload?.text || j.payload?.message || '';
+    const summary = payloadText.split('\n').find(l => l.trim().length > 10)?.trim().slice(0, 100) || '';
+
+    return {
+      id: j.id,
+      name: j.name || '(unnamed)',
+      enabled: j.enabled !== false,
+      schedule: scheduleText,
+      scheduleRaw: j.schedule,
+      description: desc || summary,
+      sessionTarget: j.sessionTarget,
+      payloadKind: j.payload?.kind,
+      lastRun,
+    };
+  });
+
+  return jsonReply(res, 200, {
+    jobs: result,
+    total: result.length,
+    enabled: result.filter(j => j.enabled).length,
+    disabled: result.filter(j => !j.enabled).length,
+  });
+}
+
 // --- Main Server ---
 const server = http.createServer((req, res) => {
   const parsed = url.parse(req.url, true);
@@ -1962,6 +2107,8 @@ button:active{opacity:.8}
     if (root === 'ops' && segments[1] === 'audit') return handleOpsAudit(req, res, method);
     if (root === 'ops' && segments[1] === 'secaudit') return handleOpsSecAudit(req, res, method);
     if (root === 'ops' && segments[1] === 'sessions') return handleOpsSessions(req, res, method);
+    if (root === 'ops' && segments[1] === 'config') return handleOpsConfig(req, res, method);
+    if (root === 'ops' && segments[1] === 'cron') return handleOpsCron(req, res, method);
     if (root === 'backup') return handleBackup(req, res, method);
     if (root === 'memory') return handleMemory(req, res, method, parsed);
     return errorReply(res, 404, 'Not found');
