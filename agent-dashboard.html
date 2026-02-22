@@ -2752,15 +2752,16 @@ async function loadCronRuns() {
       return;
     }
 
-    // Sort by time descending (most recent first)
-    runs.sort((a, b) => (b.finishedAt || b.startedAt || 0) - (a.finishedAt || a.startedAt || 0));
+    // Sort by last run time descending
+    runs.sort((a, b) => (b.last?.endedAt || b.last?.startedAt || 0) - (a.last?.endedAt || a.last?.startedAt || 0));
 
     body.innerHTML = runs.map(r => {
-      const name = r.jobName || r.jobId?.slice(0, 8) || '—';
-      const status = r.status === 'ok' ? '✅' : r.status === 'error' ? '❌' : '⏳';
-      const time = r.finishedAt ? new Date(r.finishedAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'America/Los_Angeles' }) : '—';
-      const dur = r.durationMs ? (r.durationMs / 1000).toFixed(1) + 's' : '';
-      const tokens = r.tokens ? fmtTokens(r.tokens) : '';
+      const last = r.last || {};
+      const name = r.name || r.id?.slice(0, 8) || '—';
+      const status = last.status === 'ok' ? '✅' : last.status === 'error' ? '❌' : '⏳';
+      const time = last.endedAt ? new Date(last.endedAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'America/Los_Angeles' }) : (last.startedAt ? new Date(last.startedAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'America/Los_Angeles' }) : '—');
+      const dur = (last.endedAt && last.startedAt) ? ((last.endedAt - last.startedAt) / 1000).toFixed(1) + 's' : '';
+      const tokens = last.tokens ? fmtTokens(last.tokens) : '';
 
       return `<div class="agent-session-row">
         <span style="font-size:.9rem">${status}</span>
