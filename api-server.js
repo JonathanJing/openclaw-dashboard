@@ -1237,14 +1237,16 @@ let _opsCache = null;
 let _opsCacheAt = 0;
 const OPS_CACHE_TTL = 60_000; // 60s
 
-function todayPstStartUtcMs() {
-  // PST = UTC-8; get midnight PST as UTC ms
+function getTodayPstStartIso() {
   const now = new Date();
-  const pst = new Date(now.toLocaleString('en-US', { timeZone: 'America/Los_Angeles' }));
-  pst.setHours(0, 0, 0, 0);
-  // Convert back to UTC
-  const diff = now.getTime() - pst.getTime();
-  return now.getTime() - diff - (now.getTime() - pst.getTime()) + pst.getTime();
+  const todayPst = now.toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' }); // YYYY-MM-DD
+  const pstNow = new Date(now.toLocaleString('en-US', { timeZone: 'America/Los_Angeles' }));
+  const utcNow = new Date(now.toLocaleString('en-US', { timeZone: 'UTC' }));
+  const diffMs = utcNow.getTime() - pstNow.getTime(); // positive, e.g. +8h
+  const offsetHours = -Math.round(diffMs / 3600000); // negative, e.g. -8
+  const sign = offsetHours >= 0 ? '+' : '-';
+  const tz = sign + String(Math.abs(offsetHours)).padStart(2, '0') + ':00';
+  return new Date(todayPst + 'T00:00:00' + tz).toISOString();
 }
 
 function scanSessionUsageToday(sessionFile, todayStartIso) {
@@ -1264,22 +1266,18 @@ function scanSessionUsageToday(sessionFile, todayStartIso) {
         if (j.type !== 'message' || !j.message?.usage) continue;
         if (j.timestamp < todayStartIso) continue;
         const u = j.message.usage;
-        result.input += u.input || 0;
-        result.output += u.output || 0;
+        const inp = u.input || 0;
+        const out = u.output || 0;
+        result.input += inp;
+        result.output += out;
         result.totalTokens += u.totalTokens || 0;
-        result.cost += u.cost?.total || 0;
         const m = j.message.model || 'unknown';
+        result.cost += estimateCost(m, u.totalTokens || 0, inp, out);
         result.models[m] = (result.models[m] || 0) + (u.totalTokens || 0);
         result.messages++;
       } catch {}
     }
   } catch {}
-  // If provider cost is 0, estimate
-  if (result.cost === 0 && result.totalTokens > 0) {
-    for (const [m, t] of Object.entries(result.models)) {
-      result.cost += estimateCost(m, t, result.input, result.output);
-    }
-  }
   return result;
 }
 
@@ -1298,16 +1296,7 @@ function handleOpsChannels(req, res, method) {
     return errorReply(res, 500, 'Cannot read sessions: ' + e.message);
   }
 
-  // Today start in PST as ISO string
-  // Get today's date in PST, then find UTC midnight of that PST date
-  const nowDate = new Date();
-  const todayPstDate = nowDate.toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' }); // YYYY-MM-DD
-  // PST is UTC-8, PDT is UTC-7; use the offset from the locale
-  const pstNow = new Date(nowDate.toLocaleString('en-US', { timeZone: 'America/Los_Angeles' }));
-  const utcNow = new Date(nowDate.toLocaleString('en-US', { timeZone: 'UTC' }));
-  const offsetMs = utcNow.getTime() - pstNow.getTime();
-  const todayStartUtc = new Date(new Date(todayPstDate + 'T00:00:00').getTime() + offsetMs);
-  const todayStartIso = todayStartUtc.toISOString();
+  const todayStartIso = getTodayPstStartIso();
 
   const channels = {}; // keyed by channel display name
   let grandTotal = { input: 0, output: 0, totalTokens: 0, cost: 0, messages: 0, models: {} };
@@ -1351,31 +1340,6 @@ function handleOpsChannels(req, res, method) {
     grandTotal.cost += usage.cost;
     grandTotal.messages += usage.messages;
   }
-
-  // Also scan cron runs for today
-  try {
-    const cronFiles = fs.readdirSync(CRON_RUNS_DIR).filter(f => f.endsWith('.jsonl'));
-    for (const cf of cronFiles) {
-      const fp = path.join(CRON_RUNS_DIR, cf);
-      try {
-        const raw = fs.readFileSync(fp, 'utf8').trim();
-        const lines = raw.split('\n').filter(Boolean);
-        for (const line of lines) {
-          try {
-            const j = JSON.parse(line);
-            if (!j.ts || new Date(j.ts).toISOString() < todayStartIso) continue;
-            if (j.action !== 'finished' || !j.usage) continue;
-            const m = j.model || 'cron';
-            const tokens = j.usage.total_tokens || j.usage.totalTokens || 0;
-            if (tokens === 0) continue;
-            grandTotal.totalTokens += tokens;
-            grandTotal.models[m] = (grandTotal.models[m] || 0) + tokens;
-            grandTotal.cost += estimateCost(m, tokens);
-          } catch {}
-        }
-      } catch {}
-    }
-  } catch {}
 
   // Filter out noise models
   const cleanModels = {};
@@ -1433,8 +1397,7 @@ function handleOpsAlltime(req, res, method) {
           const tokens = u.totalTokens || 0;
           const input = u.input || 0;
           const output = u.output || 0;
-          let cost = u.cost?.total || 0;
-          if (cost === 0 && tokens > 0) cost = estimateCost(m, tokens, input, output);
+          const cost = estimateCost(m, tokens, input, output);
 
           totalTokens += tokens;
           totalInput += input;
@@ -1709,14 +1672,7 @@ function handleOpsSessions(req, res, method) {
     return errorReply(res, 500, 'Cannot read sessions: ' + e.message);
   }
 
-  // Today PST
-  const nowDate = new Date();
-  const todayPstDate = nowDate.toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
-  const pstNow = new Date(nowDate.toLocaleString('en-US', { timeZone: 'America/Los_Angeles' }));
-  const utcNow = new Date(nowDate.toLocaleString('en-US', { timeZone: 'UTC' }));
-  const offsetMs = utcNow.getTime() - pstNow.getTime();
-  const todayStartUtc = new Date(new Date(todayPstDate + 'T00:00:00').getTime() + offsetMs);
-  const todayStartIso = todayStartUtc.toISOString();
+  const todayStartIso = getTodayPstStartIso();
 
   const rows = [];
   const alerts = [];
@@ -1758,9 +1714,8 @@ function handleOpsSessions(req, res, method) {
               today.input += u.input || 0;
               today.output += u.output || 0;
               today.totalTokens += u.totalTokens || 0;
-              let cost = u.cost?.total || 0;
               const m = j.message.model || 'unknown';
-              if (cost === 0 && (u.totalTokens || 0) > 0) cost = estimateCost(m, u.totalTokens, u.input, u.output);
+              const cost = estimateCost(m, u.totalTokens || 0, u.input || 0, u.output || 0);
               today.cost += cost;
               today.models[m] = (today.models[m] || 0) + (u.totalTokens || 0);
             }
