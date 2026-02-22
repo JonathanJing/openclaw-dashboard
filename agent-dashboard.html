@@ -349,8 +349,9 @@ header{display:flex;align-items:center;justify-content:space-between;padding:16p
 .ops-ch-right{text-align:right;flex-shrink:0}
 .ops-ch-tokens{font-size:1.1rem;font-weight:700}
 .ops-ch-cost{font-size:.78rem;color:var(--text2)}
-.ops-model-bar{display:flex;height:8px;border-radius:4px;overflow:hidden;margin-top:12px;background:var(--border)}
-.ops-model-segment{height:100%;transition:width .3s}
+.ops-model-bar{margin-top:12px}
+.ops-bar-track{display:flex;height:8px;border-radius:4px;overflow:hidden;background:var(--border)}
+.ops-bar-track>div{height:100%;flex-shrink:0}
 .ops-model-legend{display:flex;gap:12px;flex-wrap:wrap;margin-top:8px;font-size:.75rem;color:var(--text2)}
 .ops-model-legend-item{display:flex;align-items:center;gap:4px}
 .ops-model-dot{width:8px;height:8px;border-radius:50%}
@@ -2921,7 +2922,7 @@ async function loadOpsChannels() {
     // Total summary
     if (subEl) subEl.textContent = `${fmtTokens(totals.totalTokens)} tokens · ${totals.messages || 0} messages · $${(totals.cost || 0).toFixed(2)}`;
     if (pillsEl) {
-      const modelEntries = Object.entries(totals.models || {}).sort((a, b) => b[1] - a[1]);
+      const modelEntries = Object.entries(totals.models || {}).filter(([,t]) => t > 0).sort((a, b) => b[1] - a[1]);
       pillsEl.innerHTML = modelEntries.slice(0, 4).map(([m, t]) =>
         `<span class="pill" style="border-color:${getModelColor(m)};color:${getModelColor(m)}">${shortModel(m)} ${fmtTokens(t)}</span>`
       ).join('');
@@ -2933,9 +2934,9 @@ async function loadOpsChannels() {
       const total = totals.totalTokens || 1;
       // Bar segments (flex container) + legend below (separate div)
       barEl.innerHTML =
-        '<div style="display:flex;height:8px;border-radius:4px;overflow:hidden;background:var(--border)">' +
+        '<div class="ops-bar-track">' +
         modelEntries.map(([m, t]) =>
-          `<div style="width:${(t/total*100).toFixed(1)}%;background:${getModelColor(m)};height:100%" title="${shortModel(m)}: ${fmtTokens(t)}"></div>`
+          `<div style="width:${(t/total*100).toFixed(2)}%;background:${getModelColor(m)}" title="${shortModel(m)}: ${fmtTokens(t)}"></div>`
         ).join('') +
         '</div>' +
         '<div class="ops-model-legend">' + modelEntries.map(([m, t]) =>

@@ -1370,6 +1370,13 @@ function handleOpsChannels(req, res, method) {
     }
   } catch {}
 
+  // Filter out noise models
+  const cleanModels = {};
+  for (const [k, v] of Object.entries(grandTotal.models)) {
+    if (v > 0 && k !== 'delivery-mirror' && k !== 'unknown') cleanModels[k] = v;
+  }
+  grandTotal.models = cleanModels;
+
   const result = {
     channels: Object.values(channels).sort((a, b) => b.today.totalTokens - a.today.totalTokens),
     totals: grandTotal,
