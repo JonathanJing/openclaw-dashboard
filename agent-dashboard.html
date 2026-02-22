@@ -432,7 +432,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:16p
   .vision-grid{grid-template-columns:1fr 1fr}
 
   body{padding-bottom:calc(64px + env(safe-area-inset-bottom))}
-  header{flex-direction:column;gap:8px;text-align:center;padding:12px 0 16px}
+  header{flex-direction:column;gap:8px;text-align:center;padding:calc(12px + env(safe-area-inset-top)) 0 16px}
   .header-right{justify-content:center;flex-wrap:wrap;gap:8px}
   /* Bottom nav bar on mobile */
   .tab-bar{
@@ -610,7 +610,16 @@ header{display:flex;align-items:center;justify-content:space-between;padding:16p
 
 @media(max-width:768px){
   .agent-monitor{grid-template-columns:repeat(2,1fr);gap:8px}
+  .agent-monitor .agent-stat:last-child{grid-column:1 / -1}
+  .agent-stat-value{font-size:1.6rem}
+  .agent-stat{padding:12px 14px}
   .agent-session-tokens,.agent-session-label{display:none}
+  /* Hide less important table columns on mobile */
+  .sessions-table th:nth-child(3),.sessions-table td:nth-child(3),
+  .sessions-table th:nth-child(5),.sessions-table td:nth-child(5),
+  .sessions-table th:nth-child(7),.sessions-table td:nth-child(7){display:none}
+  .sessions-table{font-size:.72rem}
+  .sess-name{max-width:120px}
 }
 
 /* ─── Scrollbar ─── */
@@ -3015,6 +3024,14 @@ async function loadSessions() {
       return;
     }
 
+    // Chinese names for Discord channels
+    const chineseNames = {
+      '#dev-build': '开发构建', '#ai-learning': 'AI学习', '#ops-report': '运维报告',
+      '#general': '综合频道', '#openclaw-watch': '生态监控', '#jobs-intel': '求职情报',
+      '#x-ai-socal-radar': 'X/AI雷达', '#tech-news': '科技新闻', '#podcast-video-article': '播客/视频',
+      '#meta-vision-ingest': '视觉入口', '#饮酒': '饮酒', '#灰茄': '灰茄', '#品茶': '品茶',
+    };
+
     let html = `<table class="sessions-table">
       <thead><tr>
         <th>Session</th><th>Model</th><th>Think</th><th>Msgs</th><th>Tokens</th><th>Cost</th><th>Idle%</th><th>Updated</th>
@@ -3022,8 +3039,12 @@ async function loadSessions() {
 
     for (const s of sessions) {
       const timeAgo = s.updatedAt ? timeSince(s.updatedAt) : '—';
+      const cn = chineseNames[s.displayName] || '';
+      const nameHtml = cn
+        ? `<span class="sess-name">${escHtml(s.displayName)}</span> <span style="color:var(--text2);font-size:.7rem">${cn}</span>`
+        : `<span class="sess-name">${escHtml(s.displayName)}</span>`;
       html += `<tr>
-        <td><span class="sess-status ${s.status}"></span><span class="sess-name">${escHtml(s.displayName)}</span></td>
+        <td><span class="sess-status ${s.status}"></span>${nameHtml}</td>
         <td><span class="sess-model" style="border-color:${getModelColor(s.model)};color:${getModelColor(s.model)}">${shortModel(s.model)}</span></td>
         <td>${s.thinkingLevel}</td>
         <td>${s.today.messages}<span style="color:var(--text2);font-size:.7rem"> (${s.today.effectiveMessages} eff)</span></td>
