@@ -2743,17 +2743,40 @@ function renderSessionsPanel() {
   // Sort by most recently updated
   allActive.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
 
+  // Friendly name resolver for active sessions
+  const cronNames = {
+    'openclaw-watch': '🔍 生态监控', 'Heartbeat': '💓 心跳检查', 'cnBeta Tech Digest': '📰 cnBeta 摘要',
+    'jobs-intel daily scan': '💼 求职扫描', 'Nightly Memory': '🧹 夜间记忆整理',
+    'SoCal + NorCal AI Events Weekly Scan': '🎯 加州AI活动', 'Daily Bible Reading Check': '📖 灵修晨检',
+    'X Content Drafts': '🐦 X 内容草稿', 'Platform Council Nightly': '🛡️ 平台审计',
+    'Daily Tech News Digest': '📰 每日科技摘要', 'Weekly AI Events Scan': '🎯 每周活动扫描',
+  };
+  function friendlySessionName(s) {
+    // Cron: use label/name or match from cronNames
+    if (s.displayType === 'cron') {
+      const name = s.label || s.name || '';
+      for (const [k, v] of Object.entries(cronNames)) { if (name.includes(k)) return v; }
+      if (name) return name.substring(0, 30);
+      return '⏰ Cron 任务';
+    }
+    // Subagent: use label or task preview
+    if (s.displayType === 'subagent') {
+      return s.label || (s.task ? s.task.substring(0, 40) : '🤖 子代理');
+    }
+    // Main
+    if (s.displayType === 'main') return '🧠 主代理';
+    return s.key.replace('agent:main:', '').substring(0, 30);
+  }
+
   body.innerHTML = allActive.map(s => {
-    const shortKey = s.key.replace('agent:main:', '').substring(0, 50);
+    const name = friendlySessionName(s);
     const age = s.ageMinutes != null ? formatAge(s.ageMinutes) : '—';
     const tokens = s.totalTokens ? `${Math.round(s.totalTokens / 1000)}k` : '';
-    const label = s.label || s.task?.substring(0, 80) || '';
 
     return `<div class="agent-session-row">
       <span class="agent-session-dot ${s.isActive ? 'active' : 'idle'}"></span>
       <span class="agent-session-type type-${s.displayType}">${s.displayType}</span>
-      <span class="agent-session-key" title="${escHtml(s.key || '')}">${escHtml(shortKey)}</span>
-      ${label ? `<span class="agent-session-label" title="${escHtml(label)}">${escHtml(label)}</span>` : ''}
+      <span class="agent-session-key" title="${escHtml(s.key || '')}">${escHtml(name)}</span>
       <span class="agent-session-tokens">${tokens}</span>
       <span class="agent-session-age">${age}</span>
     </div>`;
@@ -3045,12 +3068,12 @@ async function loadSessions() {
 
     // Chinese names for Discord channels
     const chineseNames = {
-      '#dev-build': '开发构建', '#ai-learning': 'AI学习', '#ops-report': '运维报告',
+      '#dev_build': '开发构建', '#ai-learning': 'AI学习', '#ops-report': '运维报告',
       '#general': '综合频道', '#openclaw-watch': '生态监控', '#jobs-intel': '求职情报',
-      '#x-ai-socal-radar': 'X/AI雷达', '#tech-news': '科技新闻', '#podcast-video-article': '播客/视频',
-      '#meta-vision-ingest': '视觉入口', '#饮酒': '饮酒', '#灰茄': '灰茄', '#品茶': '品茶',
-      '#socal-ai-events': '南加AI活动', '#event-planning': '活动策划', '#networking-log': '人脉记录',
-      '#ch-1473462528326500382': '饮酒', '#ch-1473462553592991754': '灰茄', '#ch-1473462582063927488': '品茶',
+      '#x-ai-socal-radar': 'X/AI雷达', '#tech-news': '科技新闻',
+      '#podcast_video_article': '播客/视频/文章', '#meta-vision-ingest': '视觉入口',
+      '#socal-ai-events': '南加AI活动', '#event-planning': '活动策划',
+      '#networking-log': '人脉记录', '#工作搭子碎碎念': '工作搭子',
     };
 
     let html = `<table class="sessions-table">
