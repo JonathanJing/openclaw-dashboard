@@ -843,6 +843,19 @@ header{display:flex;align-items:center;justify-content:space-between;padding:16p
       <div class="skeleton skeleton-card"></div>
       <div class="skeleton skeleton-card"></div>
     </div>
+
+    <div class="glass-card" style="padding:16px;margin-top:16px">
+      <div class="card-header">
+        <div>
+          <div class="card-title">All-Time Usage</div>
+          <div class="card-sub" id="alltimeSub">Loading…</div>
+        </div>
+      </div>
+      <div id="alltimeModels" class="ops-channel-list" style="margin-bottom:12px"></div>
+      <div class="card-title" style="font-size:.85rem;margin-bottom:8px">Daily (Last 14 Days)</div>
+      <canvas id="dailyChart" height="120" style="width:100%;border-radius:8px"></canvas>
+      <div class="card-sub" style="margin-top:12px;font-size:.72rem" id="auditStatus"></div>
+    </div>
   </div>
 
   <!-- ═══ Cron Panel ═══ -->
@@ -1091,7 +1104,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     btn.classList.add('active');
     document.getElementById(`panel-${btn.dataset.tab}`).classList.add('active');
     if (btn.dataset.tab === 'tasks') loadTasks(true);
-    if (btn.dataset.tab === 'ops') loadOpsChannels();
+    if (btn.dataset.tab === 'ops') { loadOpsChannels(); loadOpsAlltime(); }
     if (btn.dataset.tab === 'documents') { loadFileList(); if (docView === 'skills') loadSkills(); }
     if (btn.dataset.tab === 'apis') renderAPIs();
     if (btn.dataset.tab === 'logs') loadLogs();
@@ -2902,6 +2915,112 @@ async function loadOpsChannels() {
     }).join('');
   } catch (e) {
     listEl.innerHTML = `<div class="empty-state"><h3>Unable to load</h3><p>${e.message}</p></div>`;
+  }
+}
+
+async function loadOpsAlltime() {
+  const modelsEl = document.getElementById('alltimeModels');
+  const subEl = document.getElementById('alltimeSub');
+  const auditEl = document.getElementById('auditStatus');
+  const canvas = document.getElementById('dailyChart');
+  if (!modelsEl) return;
+
+  try {
+    const data = await apiFetch('/ops/alltime');
+    const t = data.totals || {};
+
+    if (subEl) subEl.textContent = `${fmtTokens(t.tokens)} tokens · ${t.messages || 0} messages · $${(t.cost || 0).toFixed(2)} est. · ${data.sessionFiles || 0} sessions`;
+
+    // Model breakdown
+    const models = data.models || [];
+    modelsEl.innerHTML = models.map(m => {
+      const pct = t.tokens > 0 ? ((m.tokens / t.tokens) * 100).toFixed(1) : '0';
+      return `<div class="ops-channel-card">
+        <div class="ops-ch-left">
+          <div class="ops-ch-name" style="font-size:.85rem"><span class="ops-model-dot" style="background:${getModelColor(m.name)};display:inline-block;margin-right:6px"></span>${shortModel(m.name)}</div>
+          <div class="ops-ch-meta"><span>${m.messages} msgs</span><span>${pct}%</span></div>
+        </div>
+        <div class="ops-ch-right">
+          <div class="ops-ch-tokens">${fmtTokens(m.tokens)}</div>
+          <div class="ops-ch-cost">$${(m.cost || 0).toFixed(2)}</div>
+        </div>
+      </div>`;
+    }).join('');
+
+    // Daily chart
+    const daily = data.recentDaily || [];
+    if (canvas && daily.length > 0) {
+      drawDailyChart(canvas, daily);
+    }
+
+    // Audit status
+    if (auditEl && data.audit) {
+      const a = data.audit;
+      auditEl.innerHTML = `🔍 <strong>Third-party Audit:</strong>
+        OpenAI <span class="pill">${a.openai?.status}</span>
+        Anthropic <span class="pill">${a.anthropic?.status}</span>
+        Google <span class="pill">${a.google?.status}</span>`;
+    }
+  } catch (e) {
+    modelsEl.innerHTML = `<div class="empty-state"><p>${e.message}</p></div>`;
+  }
+}
+
+function drawDailyChart(canvas, daily) {
+  const ctx = canvas.getContext('2d');
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  ctx.scale(dpr, dpr);
+  const W = rect.width, H = rect.height;
+  const pad = { top: 10, right: 10, bottom: 24, left: 50 };
+  const cW = W - pad.left - pad.right;
+  const cH = H - pad.top - pad.bottom;
+
+  const maxTokens = Math.max(...daily.map(d => d.tokens), 1);
+  const barW = Math.max(4, (cW / daily.length) - 2);
+
+  ctx.clearRect(0, 0, W, H);
+
+  // Grid lines
+  ctx.strokeStyle = '#1a1f2e';
+  ctx.lineWidth = 0.5;
+  for (let i = 0; i <= 4; i++) {
+    const y = pad.top + (cH * i / 4);
+    ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(W - pad.right, y); ctx.stroke();
+  }
+
+  // Bars
+  daily.forEach((d, i) => {
+    const x = pad.left + (i * cW / daily.length) + 1;
+    const h = (d.tokens / maxTokens) * cH;
+    const y = pad.top + cH - h;
+
+    const grad = ctx.createLinearGradient(x, y, x, pad.top + cH);
+    grad.addColorStop(0, '#7c5cfc');
+    grad.addColorStop(1, '#7c5cfc33');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.roundRect(x, y, barW, h, 2);
+    ctx.fill();
+
+    // Date label
+    ctx.fillStyle = '#8b949e';
+    ctx.font = '9px -apple-system, sans-serif';
+    ctx.textAlign = 'center';
+    const label = d.date.slice(5); // MM-DD
+    ctx.fillText(label, x + barW / 2, pad.top + cH + 14);
+  });
+
+  // Y-axis labels
+  ctx.fillStyle = '#8b949e';
+  ctx.font = '9px -apple-system, sans-serif';
+  ctx.textAlign = 'right';
+  for (let i = 0; i <= 4; i++) {
+    const val = maxTokens * (4 - i) / 4;
+    const y = pad.top + (cH * i / 4) + 3;
+    ctx.fillText(fmtTokens(val), pad.left - 6, y);
   }
 }
 
