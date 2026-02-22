@@ -372,6 +372,31 @@ header{display:flex;align-items:center;justify-content:space-between;padding:16p
 .ops-cost-label{color:var(--text2)}
 .ops-cost-value{color:var(--text);font-family:var(--mono);font-size:.8rem}
 
+/* ─── Config Viewer ─── */
+.config-file{margin-bottom:12px;border:1px solid var(--border);border-radius:12px;overflow:hidden}
+.config-file-header{padding:10px 14px;background:var(--card);cursor:pointer;display:flex;justify-content:space-between;align-items:center;font-weight:600;font-size:.85rem}
+.config-file-header:hover{background:rgba(124,92,252,.06)}
+.config-file-meta{font-size:.72rem;color:var(--text2);font-weight:400}
+.config-file-body{display:none;padding:12px;background:var(--bg);border-top:1px solid var(--border);max-height:400px;overflow:auto}
+.config-file-body.open{display:block}
+.config-file-body pre{font-family:'SF Mono',monospace;font-size:.75rem;white-space:pre-wrap;word-break:break-all;margin:0;line-height:1.5;color:var(--text1)}
+.config-cat{font-size:.72rem;padding:2px 8px;border-radius:4px;margin-left:8px}
+.config-cat.core{background:rgba(124,92,252,.15);color:#c084fc}
+.config-cat.keys{background:rgba(248,113,113,.15);color:#f87171}
+.config-cat.personality{background:rgba(52,211,153,.15);color:#34d399}
+
+/* ─── Enhanced Cron ─── */
+.cron-card{border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:10px;background:var(--card)}
+.cron-card.disabled{opacity:.5}
+.cron-header{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
+.cron-name{font-weight:700;font-size:.9rem}
+.cron-schedule{font-size:.78rem;color:var(--accent);font-weight:500}
+.cron-desc{font-size:.82rem;color:var(--text2);margin:6px 0;line-height:1.4}
+.cron-footer{display:flex;gap:12px;font-size:.72rem;color:var(--text2);flex-wrap:wrap;margin-top:8px}
+.cron-status{display:inline-flex;align-items:center;gap:4px}
+.cron-status .dot{width:6px;height:6px;border-radius:50%}
+.cron-status .dot.ok{background:#34d399}.cron-status .dot.fail{background:#f87171}.cron-status .dot.off{background:#6b7280}
+
 /* ─── Sessions Table ─── */
 .sessions-table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
 .sessions-table{width:100%;border-collapse:collapse;font-size:.78rem}
@@ -852,6 +877,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:16p
     <button class="tab-btn" data-tab="tasks">Cron<span class="badge-count" id="taskCount">0</span></button>
     <button class="tab-btn" data-tab="quality">Quality</button>
     <button class="tab-btn" data-tab="audit">Audit</button>
+    <button class="tab-btn" data-tab="config">Config</button>
   </div>
 
   <!-- ═══ Sessions Panel ═══ -->
@@ -951,6 +977,11 @@ header{display:flex;align-items:center;justify-content:space-between;padding:16p
   <!-- ═══ Audit Panel ═══ -->
   <div class="tab-panel" id="panel-audit">
     <div id="auditContent2"><div class="skeleton skeleton-card"></div></div>
+  </div>
+
+  <!-- ═══ Config Panel ═══ -->
+  <div class="tab-panel" id="panel-config">
+    <div id="configContent"><div class="skeleton skeleton-card"></div></div>
   </div>
 
   <!-- ═══ Cron Panel ═══ -->
@@ -1199,10 +1230,11 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     btn.classList.add('active');
     document.getElementById(`panel-${btn.dataset.tab}`).classList.add('active');
     if (btn.dataset.tab === 'sessions') loadSessions();
-    if (btn.dataset.tab === 'tasks') loadTasks(true);
-    if (btn.dataset.tab === 'ops') { loadOpsChannels(); loadOpsAlltime(); loadOpsAudit(); }
+    if (btn.dataset.tab === 'tasks') { loadCronEnhanced(); loadTasks(true); }
+    if (btn.dataset.tab === 'ops') { loadOpsChannels(); loadOpsAlltime(); }
     if (btn.dataset.tab === 'quality') loadQuality();
     if (btn.dataset.tab === 'audit') loadAudit();
+    if (btn.dataset.tab === 'config') loadConfig();
   });
 });
 
@@ -3084,6 +3116,88 @@ function timeSince(ts) {
   if (s < 3600) return Math.floor(s / 60) + 'm ago';
   if (s < 86400) return Math.floor(s / 3600) + 'h ago';
   return Math.floor(s / 86400) + 'd ago';
+}
+
+// ─── Config Viewer ───
+async function loadConfig() {
+  const el = document.getElementById('configContent');
+  if (!el) return;
+  try {
+    const data = await apiFetch('/ops/config');
+    const files = data.files || [];
+    const cats = { core: '⚙️ Core Config', keys: '🔑 API Keys', personality: '🎭 Personality & Agents' };
+    const grouped = {};
+    files.forEach(f => {
+      const cat = f.category || 'other';
+      if (!grouped[cat]) grouped[cat] = [];
+      grouped[cat].push(f);
+    });
+
+    let html = '';
+    for (const [cat, label] of Object.entries(cats)) {
+      if (!grouped[cat]) continue;
+      html += `<div class="card-title" style="margin:12px 0 8px">${label}</div>`;
+      for (const f of grouped[cat]) {
+        const id = 'cfg-' + f.label.replace(/[^a-z0-9]/gi, '-');
+        const sizeKb = (f.size / 1024).toFixed(1);
+        const modified = new Date(f.modified).toLocaleString('en-US', { timeZone: 'America/Los_Angeles', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+        html += `<div class="config-file">
+          <div class="config-file-header" onclick="document.getElementById('${id}').classList.toggle('open')">
+            <span>${escHtml(f.label)}<span class="config-cat ${cat}">${cat}</span></span>
+            <span class="config-file-meta">${sizeKb}KB · ${modified}</span>
+          </div>
+          <div class="config-file-body" id="${id}"><pre>${escHtml(f.content)}</pre></div>
+        </div>`;
+      }
+    }
+    el.innerHTML = html;
+  } catch (e) { el.innerHTML = `<p>${e.message}</p>`; }
+}
+
+// ─── Enhanced Cron ───
+async function loadCronEnhanced() {
+  const panel = document.getElementById('panel-tasks');
+  if (!panel) return;
+  try {
+    const data = await apiFetch('/ops/cron');
+    const jobs = data.jobs || [];
+
+    let html = `<div class="glass-card" style="padding:14px;margin-bottom:12px">
+      <div class="card-title">Cron Jobs</div>
+      <div class="card-sub">${data.total} 个任务 · ${data.enabled} 启用 · ${data.disabled} 停用</div>
+    </div>`;
+
+    for (const j of jobs) {
+      const statusDot = !j.enabled ? 'off' : (j.lastRun?.status === 'finished' ? 'ok' : (j.lastRun?.status ? 'fail' : 'ok'));
+      const lastRunText = j.lastRun ? (() => {
+        const ago = timeSince(j.lastRun.ts || Date.now());
+        const dur = j.lastRun.durationMs ? (j.lastRun.durationMs / 1000).toFixed(0) + 's' : '';
+        const tokens = j.lastRun.tokens ? fmtTokens(j.lastRun.tokens) : '';
+        return [ago, dur, tokens, j.lastRun.model ? shortModel(j.lastRun.model) : ''].filter(Boolean).join(' · ');
+      })() : '尚未运行';
+
+      html += `<div class="cron-card ${j.enabled ? '' : 'disabled'}">
+        <div class="cron-header">
+          <div>
+            <div class="cron-name">${escHtml(j.name)}</div>
+            <div class="cron-schedule">🕐 ${escHtml(j.schedule)}</div>
+          </div>
+          <span class="cron-status"><span class="dot ${statusDot}"></span>${j.enabled ? '启用' : '停用'}</span>
+        </div>
+        <div class="cron-desc">${escHtml(j.description)}</div>
+        <div class="cron-footer">
+          <span>📋 ${j.payloadKind || '—'}</span>
+          <span>🎯 ${j.sessionTarget || '—'}</span>
+          <span>⏱ 上次: ${lastRunText}</span>
+        </div>
+      </div>`;
+    }
+
+    // Keep existing ops-grid content below (cron timeline + vision)
+    const existingOps = panel.querySelector('.ops-grid');
+    const existingVision = panel.querySelector('.ops-grid:last-child');
+    panel.innerHTML = html + (existingOps ? existingOps.outerHTML : '') + (existingVision && existingVision !== existingOps ? existingVision.outerHTML : '');
+  } catch (e) { /* fallback to existing */ }
 }
 
 // ─── Ops Channel Usage Panel ───
