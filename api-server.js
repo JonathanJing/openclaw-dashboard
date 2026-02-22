@@ -20,6 +20,15 @@ const MAX_BODY = 1 * 1024 * 1024; // 1 MB
 const MAX_UPLOAD = 20 * 1024 * 1024; // 20 MB for file uploads
 const ATTACHMENTS_DIR = path.join(__dirname, 'attachments');
 
+// Vision ingestion (Notion)
+const NOTION_API_KEY = process.env.NOTION_API_KEY || '';
+const VISION_DB = {
+  NETWORKING: process.env.VISION_DB_NETWORKING || '',
+  WINE: process.env.VISION_DB_WINE || '',
+  CIGAR: process.env.VISION_DB_CIGAR || '',
+  TEA: process.env.VISION_DB_TEA || '',
+};
+
 // --- Cron Config ---
 const CRON_STORE_PATH = path.join(process.env.HOME || '', '.openclaw', 'cron', 'jobs.json');
 const CRON_RUNS_DIR = path.join(process.env.HOME || '', '.openclaw', 'cron', 'runs');
@@ -879,6 +888,41 @@ function loadCronRuns(jobId, limit) {
   } catch { return []; }
 }
 
+function loadLastCronRun(jobId) {
+  const filePath = path.join(CRON_RUNS_DIR, `${jobId}.jsonl`);
+  if (!fs.existsSync(filePath)) return null;
+  const raw = fs.readFileSync(filePath, 'utf-8').trim();
+  if (!raw) return null;
+  const lastLine = raw.split('\n').filter(Boolean).slice(-1)[0];
+  try { return JSON.parse(lastLine); } catch { return null; }
+}
+
+function startOfTodayMs() {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d.getTime();
+}
+
+function endOfTodayMs() {
+  const d = new Date();
+  d.setHours(23, 59, 59, 999);
+  return d.getTime();
+}
+
+function computeNextRun(schedule, lastRunMs) {
+  if (!schedule) return null;
+  if (schedule.kind === 'every' && schedule.everyMs) {
+    const base = lastRunMs || Date.now();
+    return base + schedule.everyMs;
+  }
+  if (schedule.kind === 'at' && schedule.at) {
+    const t = Date.parse(schedule.at);
+    return Number.isFinite(t) ? t : null;
+  }
+  // cron: rely on scheduler state (nextRunAtMs) if available
+  return null;
+}
+
 function triggerCronRunNow(job) {
   return new Promise((resolve, reject) => {
     const payload = JSON.stringify({
@@ -1042,6 +1086,118 @@ function handleCron(req, res, parsed, segments, method) {
   return errorReply(res, 405, 'Method not allowed');
 }
 
+// --- Cron Today (timeline) ---
+function handleCronToday(req, res, method) {
+  if (method !== 'GET') return errorReply(res, 405, 'Method not allowed');
+  const store = loadCronStore();
+  const jobs = (store.jobs || []).filter(j => j.enabled !== false);
+  const start = startOfTodayMs();
+  const end = endOfTodayMs();
+
+  const todayJobs = [];
+  jobs.forEach(job => {
+    const lastRun = loadLastCronRun(job.id);
+    const lastStarted = lastRun?.runAtMs || job.state?.lastRunAtMs || null;
+    const lastDuration = lastRun?.durationMs || job.state?.lastDurationMs || null;
+    const lastStatus = (lastRun?.status || job.state?.lastStatus || null);
+    const lastEnded = lastStarted && lastDuration ? lastStarted + lastDuration : null;
+
+    const nextRun = job.state?.nextRunAtMs || lastRun?.nextRunAtMs || computeNextRun(job.schedule, lastStarted);
+
+    const hasTodayRun = lastStarted && lastStarted >= start && lastStarted <= end;
+    const hasTodayNext = nextRun && nextRun >= start && nextRun <= end;
+    if (!hasTodayRun && !hasTodayNext) return;
+
+    todayJobs.push({
+      id: job.id,
+      name: job.name,
+      schedule: job.schedule,
+      nextRun,
+      last: {
+        status: lastStatus || (lastRun?.action === 'started' ? 'running' : null),
+        startedAt: lastStarted,
+        endedAt: lastEnded,
+        durationMs: lastDuration,
+      }
+    });
+  });
+
+  todayJobs.sort((a, b) => (a.nextRun || Infinity) - (b.nextRun || Infinity));
+
+  const stats = { total: todayJobs.length, success: 0, failed: 0, running: 0 };
+  todayJobs.forEach(j => {
+    const s = (j.last?.status || '').toLowerCase();
+    if (!j.last?.startedAt) return;
+    if (s === 'ok' || s === 'success') stats.success++;
+    else if (s === 'running' || s === 'in_progress') stats.running++;
+    else if (s) stats.failed++;
+  });
+
+  return jsonReply(res, 200, { todayJobs, stats });
+}
+
+// --- Vision Ingestion Stats (Notion) ---
+async function handleVisionStats(req, res, method) {
+  if (method !== 'GET') return errorReply(res, 405, 'Method not allowed');
+  const start = new Date(startOfTodayMs()).toISOString();
+  const end = new Date(endOfTodayMs()).toISOString();
+
+  const categories = {
+    NETWORKING: { db: VISION_DB.NETWORKING },
+    WINE: { db: VISION_DB.WINE },
+    CIGAR: { db: VISION_DB.CIGAR },
+    TEA: { db: VISION_DB.TEA },
+  };
+
+  if (!NOTION_API_KEY || !Object.values(categories).some(c => c.db)) {
+    Object.keys(categories).forEach(k => categories[k].count = 0);
+    return jsonReply(res, 200, { status: 'not_configured', categories });
+  }
+
+  try {
+    for (const [k, v] of Object.entries(categories)) {
+      if (!v.db) { v.count = 0; continue; }
+      v.count = await notionCount(v.db, start, end);
+    }
+    return jsonReply(res, 200, { status: 'ok', categories });
+  } catch (e) {
+    Object.keys(categories).forEach(k => categories[k].count = 0);
+    return jsonReply(res, 200, { status: 'error', message: e.message, categories });
+  }
+}
+
+async function notionCount(dbId, startIso, endIso) {
+  let total = 0;
+  let cursor = undefined;
+  do {
+    const body = {
+      page_size: 100,
+      filter: {
+        and: [
+          { timestamp: 'created_time', created_time: { on_or_after: startIso } },
+          { timestamp: 'created_time', created_time: { before: endIso } }
+        ]
+      }
+    };
+    if (cursor) body.start_cursor = cursor;
+
+    const resp = await fetch(`https://api.notion.com/v1/databases/${dbId}/query`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${NOTION_API_KEY}`,
+        'Notion-Version': '2022-06-28',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(body)
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data?.message || 'Notion API error');
+    total += (data.results || []).length;
+    cursor = data.has_more ? data.next_cursor : undefined;
+  } while (cursor);
+  return total;
+}
+
 // --- Main Server ---
 const server = http.createServer((req, res) => {
   const parsed = url.parse(req.url, true);
@@ -1158,7 +1314,9 @@ button:active{opacity:.8}
     if (root === 'skills') return handleSkills(req, res, method);
     if (root === 'logs') return handleLogs(req, res, parsed, segments, method);
     if (root === 'agents') return handleAgents(req, res, parsed, segments, method);
+    if (root === 'cron' && segments[1] === 'today') return handleCronToday(req, res, method);
     if (root === 'cron') return handleCron(req, res, parsed, segments, method);
+    if (root === 'vision' && segments[1] === 'stats') return handleVisionStats(req, res, method);
     return errorReply(res, 404, 'Not found');
   } catch (e) {
     console.error('Unhandled error:', e);

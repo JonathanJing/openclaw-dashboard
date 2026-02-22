@@ -313,8 +313,38 @@ header{display:flex;align-items:center;justify-content:space-between;padding:16p
 
 @keyframes cardIn{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
 
+/* ─── Ops (Cron + Vision) ─── */
+.ops-grid{display:grid;grid-template-columns:2fr 1fr;gap:16px}
+.card-header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}
+.card-title{font-weight:700;font-size:1rem}
+.card-sub{font-size:.82rem;color:var(--text2)}
+.pill-row{display:flex;gap:6px;flex-wrap:wrap}
+.pill{font-size:.72rem;padding:4px 8px;border-radius:999px;border:1px solid var(--border);background:var(--card);color:var(--text2)}
+.pill.ok{color:var(--green);border-color:rgba(45,212,160,0.35)}
+.pill.fail{color:var(--red);border-color:rgba(248,81,73,0.35)}
+.pill.run{color:var(--yellow);border-color:rgba(245,166,35,0.35)}
+.timeline-list{display:flex;flex-direction:column;gap:8px}
+.timeline-item.ops{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;border:1px solid var(--border);border-radius:12px;background:var(--card)}
+.timeline-left{display:flex;flex-direction:column;gap:4px;min-width:0}
+.timeline-title{font-weight:600;font-size:.9rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.timeline-meta{font-size:.75rem;color:var(--text2)}
+.timeline-status{display:inline-flex;align-items:center;gap:6px;font-size:.75rem}
+.timeline-dot{width:8px;height:8px;border-radius:50%}
+.timeline-dot.ok{background:var(--green)}
+.timeline-dot.fail{background:var(--red)}
+.timeline-dot.run{background:var(--yellow)}
+.timeline-right{font-size:.78rem;color:var(--text2);text-align:right;white-space:nowrap}
+.vision-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+.vision-card{padding:12px;border:1px solid var(--border);border-radius:12px;background:var(--card)}
+.vision-label{font-size:.78rem;color:var(--text2);margin-bottom:6px}
+.vision-count{font-size:1.4rem;font-weight:700}
+.vision-sub{font-size:.72rem;color:var(--text2);margin-top:4px}
+
 /* ─── Responsive ─── */
 @media(max-width:768px){
+  .ops-grid{grid-template-columns:1fr}
+  .vision-grid{grid-template-columns:1fr 1fr}
+
   body{padding-bottom:calc(64px + env(safe-area-inset-bottom))}
   header{flex-direction:column;gap:8px;text-align:center;padding:12px 0 16px}
   .header-right{justify-content:center;flex-wrap:wrap;gap:8px}
@@ -761,7 +791,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:16p
   <div class="tab-bar">
     <button class="tab-btn active" data-tab="tasks">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;margin-right:4px"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
-      Tasks<span class="badge-count" id="taskCount">0</span>
+      Ops<span class="badge-count" id="taskCount">0</span>
     </button>
     <button class="tab-btn" data-tab="documents">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;margin-right:4px"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
@@ -777,63 +807,39 @@ header{display:flex;align-items:center;justify-content:space-between;padding:16p
     </button>
   </div>
 
-  <!-- ═══ Tasks Panel ═══ -->
+  <!-- ═══ Ops Panel ═══ -->
   <div class="tab-panel active" id="panel-tasks">
-    <!-- Batch Selection Bar (hidden by default) -->
-    <div id="batchBar" class="batch-bar" style="display:none">
-      <span class="batch-bar-count" id="batchCount">0 selected</span>
-      <button class="batch-run-btn" onclick="spawnBatch()">⚡ Run Selected in Parallel</button>
-      <button class="batch-deselect-btn" onclick="clearSelection()">Deselect All</button>
-      <span style="flex:1"></span>
-      <button class="batch-deselect-btn" onclick="selectAllNew()">Select All New</button>
-    </div>
+    <div class="ops-grid">
+      <div class="glass-card" style="padding:16px">
+        <div class="card-header">
+          <div>
+            <div class="card-title">Cron Timeline (Today)</div>
+            <div class="card-sub">Next runs + last status</div>
+          </div>
+          <div class="pill-row" id="cronStats"></div>
+        </div>
+        <div id="cronTimeline" class="timeline-list">
+          <div class="skeleton skeleton-card"></div>
+          <div class="skeleton skeleton-card"></div>
+          <div class="skeleton skeleton-card"></div>
+        </div>
+      </div>
 
-    <!-- Parallel Execution Monitor -->
-    <div id="parallelPanel" class="parallel-panel" style="display:none">
-      <div class="parallel-header">
-        <span class="parallel-title">⚡ Parallel Execution Monitor</span>
-        <span class="parallel-count" id="parallelCount">0 running</span>
-      </div>
-      <div class="parallel-tasks" id="parallelTasks"></div>
-      <div class="parallel-actions">
-        <button class="parallel-clear-btn" onclick="clearCompletedParallel()">Clear Completed</button>
-        <span style="flex:1"></span>
-        <button class="parallel-clear-btn" onclick="hideParallelPanel()">Hide</button>
+      <div class="glass-card" style="padding:16px">
+        <div class="card-header">
+          <div>
+            <div class="card-title">Vision Ingestion</div>
+            <div class="card-sub" id="visionStatus">Notion source</div>
+          </div>
+        </div>
+        <div id="visionGrid" class="vision-grid">
+          <div class="skeleton skeleton-card" style="height:80px"></div>
+          <div class="skeleton skeleton-card" style="height:80px"></div>
+          <div class="skeleton skeleton-card" style="height:80px"></div>
+          <div class="skeleton skeleton-card" style="height:80px"></div>
+        </div>
       </div>
     </div>
-
-    <div class="tasks-toolbar">
-      <div class="view-toggle-tasks" id="taskViewToggle">
-        <button class="active" data-view="list" onclick="setTaskView('list')">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
-          List
-        </button>
-        <button data-view="kanban" onclick="setTaskView('kanban')">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="5" height="18" rx="1"/><rect x="10" y="3" width="5" height="12" rx="1"/><rect x="17" y="3" width="5" height="15" rx="1"/></svg>
-          Kanban
-        </button>
-      </div>
-      <div class="filter-group" id="statusFilters">
-        <button class="filter-btn active" data-filter="all">All</button>
-        <button class="filter-btn" data-filter="new">New</button>
-        <button class="filter-btn" data-filter="in-progress">In Progress</button>
-        <button class="filter-btn" data-filter="done">Done</button>
-        <button class="filter-btn" data-filter="failed">Failed</button>
-      </div>
-      <input type="text" class="search-input" id="taskSearch" placeholder="Search tasks…">
-      <span class="spacer"></span>
-      <button class="spawn-btn" onclick="toggleSelectionMode()" id="selectionModeBtn" title="Toggle selection mode for parallel execution">⚡ Parallel</button>
-      <button class="create-btn" onclick="openCreateModal()">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-        New Task
-      </button>
-    </div>
-    <div id="taskList" class="task-list">
-      <div class="skeleton skeleton-card"></div>
-      <div class="skeleton skeleton-card"></div>
-      <div class="skeleton skeleton-card"></div>
-    </div>
-    <div id="kanbanBoard" class="kanban-board" style="display:none"></div>
   </div>
 
   <!-- ═══ Documents Panel ═══ -->
@@ -1270,20 +1276,26 @@ async function addNote(taskId) {
   } catch(e) { toast(`Failed: ${e.message}`, 'error'); }
 }
 
-// Filters
-document.getElementById('statusFilters').addEventListener('click', e => {
-  const btn = e.target.closest('.filter-btn');
-  if (!btn) return;
-  document.querySelectorAll('#statusFilters .filter-btn').forEach(b => b.classList.remove('active'));
-  btn.classList.add('active');
-  currentFilter = btn.dataset.filter;
-  renderTasks();
-});
+// Filters (guarded for Ops view)
+const _statusFilters = document.getElementById('statusFilters');
+if (_statusFilters) {
+  _statusFilters.addEventListener('click', e => {
+    const btn = e.target.closest('.filter-btn');
+    if (!btn) return;
+    document.querySelectorAll('#statusFilters .filter-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    currentFilter = btn.dataset.filter;
+    renderTasks();
+  });
+}
 
-document.getElementById('taskSearch').addEventListener('input', () => {
-  if (taskView === 'kanban') renderKanban();
-  else renderTasks();
-});
+const _taskSearch = document.getElementById('taskSearch');
+if (_taskSearch) {
+  _taskSearch.addEventListener('input', () => {
+    if (taskView === 'kanban') renderKanban();
+    else renderTasks();
+  });
+}
 
 // Create Modal — Pending Attachments
 let pendingCreateFiles = [];
@@ -2684,11 +2696,89 @@ function hideParallelPanel() {
   document.getElementById('parallelPanel').style.display = 'none';
 }
 
-// Update parallel panel on task data refresh
-const _origLoadTasks = loadTasks;
-loadTasks = async function(force) {
-  await _origLoadTasks(force);
-  if (parallelRuns.size > 0) renderParallelPanel();
+// ─── Ops Dashboard (Cron + Vision) ───
+async function loadOps() {
+  const cronEl = document.getElementById('cronTimeline');
+  const visionEl = document.getElementById('visionGrid');
+  const statsEl = document.getElementById('cronStats');
+  const visionStatus = document.getElementById('visionStatus');
+  if (!cronEl || !visionEl) return;
+
+  try {
+    const [cron, vision] = await Promise.all([
+      apiFetch('/cron/today'),
+      apiFetch('/vision/stats')
+    ]);
+    renderCronTimeline(cron, cronEl, statsEl);
+    renderVisionStats(vision, visionEl, visionStatus);
+    const count = cron?.stats?.total ?? (cron?.todayJobs?.length || 0);
+    const badge = document.getElementById('taskCount');
+    if (badge) badge.textContent = count;
+  } catch (e) {
+    cronEl.innerHTML = `<div class="empty-state"><h3>Unable to Load Cron Timeline</h3><p>${e.message}</p></div>`;
+    if (visionEl) visionEl.innerHTML = `<div class="empty-state"><h3>Unable to Load Vision Stats</h3><p>${e.message}</p></div>`;
+  }
+}
+
+function renderCronTimeline(data, cronEl, statsEl) {
+  const jobs = data?.todayJobs || [];
+  const stats = data?.stats || { total: jobs.length, success: 0, failed: 0, running: 0 };
+  if (statsEl) {
+    statsEl.innerHTML = `
+      <span class="pill">Total ${stats.total || 0}</span>
+      <span class="pill ok">OK ${stats.success || 0}</span>
+      <span class="pill fail">Fail ${stats.failed || 0}</span>
+      <span class="pill run">Running ${stats.running || 0}</span>`;
+  }
+  if (jobs.length === 0) {
+    cronEl.innerHTML = `<div class="empty-state"><h3>No cron runs today</h3><p>Next runs will appear here when scheduled.</p></div>`;
+    return;
+  }
+  cronEl.innerHTML = jobs.map(j => {
+    const next = j.nextRun ? fmtTime(j.nextRun) : '—';
+    const last = j.last || {};
+    const status = (last.status || 'unknown').toLowerCase();
+    const dotClass = status === 'ok' ? 'ok' : (status === 'running' ? 'run' : (status === 'error' || status === 'failed' ? 'fail' : 'run'));
+    const dur = last.durationMs ? `${Math.round(last.durationMs/1000)}s` : '—';
+    const lastTime = last.startedAt ? fmtTime(last.startedAt) : '—';
+    return `<div class="timeline-item ops">
+      <div class="timeline-left">
+        <div class="timeline-title" title="${escHtml(j.name || j.id)}">${escHtml(j.name || j.id)}</div>
+        <div class="timeline-meta">Next: ${next} · Last: ${lastTime} · ${dur}</div>
+      </div>
+      <div class="timeline-right">
+        <div class="timeline-status"><span class="timeline-dot ${dotClass}"></span>${status}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderVisionStats(data, visionEl, statusEl) {
+  const cats = data?.categories || {};
+  if (statusEl) statusEl.textContent = data?.status === 'not_configured' ? 'Notion not configured' : 'Notion source';
+  const entries = Object.entries(cats);
+  if (entries.length === 0) {
+    visionEl.innerHTML = `<div class="empty-state"><h3>No vision stats</h3><p>Configure Notion databases to see ingestion counts.</p></div>`;
+    return;
+  }
+  visionEl.innerHTML = entries.map(([k, v]) => {
+    return `<div class="vision-card">
+      <div class="vision-label">${k}</div>
+      <div class="vision-count">${v.count ?? 0}</div>
+      <div class="vision-sub">Today</div>
+    </div>`;
+  }).join('');
+}
+
+function fmtTime(ms) {
+  try {
+    return new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  } catch { return '—'; }
+}
+
+// Override tasks loader to ops loader
+loadTasks = async function() {
+  await loadOps();
 };
 
 // ═══ ATTACHMENTS ═══
