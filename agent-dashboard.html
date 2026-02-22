@@ -372,6 +372,21 @@ header{display:flex;align-items:center;justify-content:space-between;padding:16p
 .ops-cost-label{color:var(--text2)}
 .ops-cost-value{color:var(--text);font-family:var(--mono);font-size:.8rem}
 
+/* ─── Sessions Table ─── */
+.sessions-table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.sessions-table{width:100%;border-collapse:collapse;font-size:.78rem}
+.sessions-table th{padding:8px 6px;text-align:left;color:var(--text2);font-weight:500;white-space:nowrap;position:sticky;top:0;background:var(--bg);border-bottom:1px solid var(--border)}
+.sessions-table td{padding:7px 6px;border-bottom:1px solid var(--border);white-space:nowrap;vertical-align:middle}
+.sessions-table tr:hover{background:rgba(124,92,252,.06)}
+.sess-name{font-weight:600;max-width:160px;overflow:hidden;text-overflow:ellipsis}
+.sess-status{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:4px}
+.sess-status.active{background:#34d399}.sess-status.idle{background:#6b7280}.sess-status.error{background:#f87171}.sess-status.stale{background:#fbbf24}
+.sess-model{font-size:.72rem;padding:2px 6px;border-radius:4px;border:1px solid var(--border)}
+.sess-alert{padding:8px 12px;border-radius:8px;margin-bottom:6px;font-size:.82rem;display:flex;align-items:center;gap:8px}
+.sess-alert.error{background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.3)}
+.sess-alert.waste{background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.3)}
+.sess-alert.stale{background:rgba(107,114,128,.1);border:1px solid rgba(107,114,128,.3)}
+
 /* ─── Cost Heatmap ─── */
 .cost-heatmap{overflow-x:auto;-webkit-overflow-scrolling:touch}
 .cost-heatmap table{width:100%;border-collapse:collapse;font-size:.75rem}
@@ -832,29 +847,22 @@ header{display:flex;align-items:center;justify-content:space-between;padding:16p
 
   <!-- Tab Bar -->
   <div class="tab-bar">
-    <button class="tab-btn" data-tab="ops">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;margin-right:4px"><path d="M12 20V10"/><path d="M18 20V4"/><path d="M6 20v-4"/></svg>
-      Ops
-    </button>
-    <button class="tab-btn active" data-tab="tasks">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;margin-right:4px"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-      Cron<span class="badge-count" id="taskCount">0</span>
-    </button>
-    <button class="tab-btn" data-tab="documents">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;margin-right:4px"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-      Documents
-    </button>
-    <button class="tab-btn" data-tab="apis">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;margin-right:4px"><path d="M4 11a9 9 0 0 1 9 9"/><path d="M4 4a16 16 0 0 1 16 16"/><circle cx="5" cy="19" r="1"/></svg>
-      APIs<span class="badge-count" id="apiCount">0</span>
-    </button>
-    <button class="tab-btn" data-tab="logs">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;margin-right:4px"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-      Logs
-    </button>
+    <button class="tab-btn active" data-tab="sessions">Sessions</button>
+    <button class="tab-btn" data-tab="ops">Cost</button>
+    <button class="tab-btn" data-tab="tasks">Cron<span class="badge-count" id="taskCount">0</span></button>
+    <button class="tab-btn" data-tab="quality">Quality</button>
+    <button class="tab-btn" data-tab="audit">Audit</button>
   </div>
 
-  <!-- ═══ Ops Panel (Channel Usage) ═══ -->
+  <!-- ═══ Sessions Panel ═══ -->
+  <div class="tab-panel active" id="panel-sessions">
+    <div id="sessionsAlerts" style="margin-bottom:12px"></div>
+    <div id="sessionsTable" class="sessions-table-wrap">
+      <div class="skeleton skeleton-card"></div>
+    </div>
+  </div>
+
+  <!-- ═══ Cost Panel ═══ -->
   <div class="tab-panel" id="panel-ops">
     <div class="glass-card" style="padding:16px;margin-bottom:16px">
       <div class="card-header">
@@ -935,7 +943,18 @@ header{display:flex;align-items:center;justify-content:space-between;padding:16p
   </div>
 
   <!-- ═══ Cron Panel ═══ -->
-  <div class="tab-panel active" id="panel-tasks">
+  <!-- ═══ Quality Panel ═══ -->
+  <div class="tab-panel" id="panel-quality">
+    <div id="qualityContent"><div class="skeleton skeleton-card"></div></div>
+  </div>
+
+  <!-- ═══ Audit Panel ═══ -->
+  <div class="tab-panel" id="panel-audit">
+    <div id="auditContent2"><div class="skeleton skeleton-card"></div></div>
+  </div>
+
+  <!-- ═══ Cron Panel ═══ -->
+  <div class="tab-panel" id="panel-tasks">
     <div class="ops-grid">
       <div class="glass-card" style="padding:16px">
         <div class="card-header">
@@ -1179,11 +1198,11 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
     btn.classList.add('active');
     document.getElementById(`panel-${btn.dataset.tab}`).classList.add('active');
+    if (btn.dataset.tab === 'sessions') loadSessions();
     if (btn.dataset.tab === 'tasks') loadTasks(true);
     if (btn.dataset.tab === 'ops') { loadOpsChannels(); loadOpsAlltime(); loadOpsAudit(); }
-    if (btn.dataset.tab === 'documents') { loadFileList(); if (docView === 'skills') loadSkills(); }
-    if (btn.dataset.tab === 'apis') renderAPIs();
-    if (btn.dataset.tab === 'logs') loadLogs();
+    if (btn.dataset.tab === 'quality') loadQuality();
+    if (btn.dataset.tab === 'audit') loadAudit();
   });
 });
 
@@ -2900,6 +2919,173 @@ loadTasks = async function() {
   await loadOps();
 };
 
+// ─── Sessions Panel ───
+async function loadSessions() {
+  const alertsEl = document.getElementById('sessionsAlerts');
+  const tableEl = document.getElementById('sessionsTable');
+  if (!tableEl) return;
+
+  try {
+    const data = await apiFetch('/ops/sessions');
+    const sessions = data.sessions || [];
+    const alerts = data.alerts || [];
+    const summary = data.summary || {};
+
+    // Update header cards from session data
+    const mainBadge = document.getElementById('mainAgentBadge');
+    const mainValue = document.getElementById('mainAgentValue');
+    const mainDetail = document.getElementById('mainAgentDetail');
+    if (mainValue) {
+      mainBadge.className = 'agent-stat-badge ' + (alerts.filter(a=>a.type==='error').length > 0 ? 'error' : 'active');
+      mainBadge.innerHTML = alerts.length > 0 ? `⚠️ ${alerts.length} alerts` : '✅ healthy';
+      mainValue.textContent = '$' + (summary.todayCost || 0).toFixed(2);
+      mainDetail.textContent = (summary.todayMessages || 0) + ' messages today';
+    }
+    const subVal = document.getElementById('subagentValue');
+    if (subVal) {
+      subVal.textContent = fmtTokens(sessions.reduce((s, r) => s + r.today.totalTokens, 0));
+      document.getElementById('subagentDetail').textContent = shortModel(summary.topModel);
+    }
+    const hookVal = document.getElementById('hookValue');
+    if (hookVal) {
+      hookVal.textContent = summary.active || 0;
+      document.getElementById('hookDetail').textContent = summary.total + ' total';
+    }
+
+    // Alerts
+    if (alertsEl) {
+      alertsEl.innerHTML = alerts.map(a =>
+        `<div class="sess-alert ${a.type}"><span>${a.type === 'error' ? '🔴' : a.type === 'waste' ? '🟡' : '⚪'}</span><strong>${escHtml(a.session)}</strong> ${escHtml(a.msg)}</div>`
+      ).join('');
+    }
+
+    // Table
+    if (sessions.length === 0) {
+      tableEl.innerHTML = '<div class="empty-state"><h3>No sessions</h3></div>';
+      return;
+    }
+
+    let html = `<table class="sessions-table">
+      <thead><tr>
+        <th>Session</th><th>Model</th><th>Think</th><th>Msgs</th><th>Tokens</th><th>Cost</th><th>Idle%</th><th>Updated</th>
+      </tr></thead><tbody>`;
+
+    for (const s of sessions) {
+      const timeAgo = s.updatedAt ? timeSince(s.updatedAt) : '—';
+      html += `<tr>
+        <td><span class="sess-status ${s.status}"></span><span class="sess-name">${escHtml(s.displayName)}</span></td>
+        <td><span class="sess-model" style="border-color:${getModelColor(s.model)};color:${getModelColor(s.model)}">${shortModel(s.model)}</span></td>
+        <td>${s.thinkingLevel}</td>
+        <td>${s.today.messages}<span style="color:var(--text2);font-size:.7rem"> (${s.today.effectiveMessages} eff)</span></td>
+        <td>${fmtTokens(s.today.totalTokens)}</td>
+        <td style="font-weight:600">$${s.today.cost.toFixed(2)}</td>
+        <td style="color:${s.today.noReplyRate > 50 ? '#fbbf24' : 'var(--text2)'}">${s.today.noReplyRate}%</td>
+        <td style="color:var(--text2);font-size:.72rem">${timeAgo}</td>
+      </tr>`;
+    }
+    html += '</tbody></table>';
+    tableEl.innerHTML = html;
+  } catch (e) {
+    tableEl.innerHTML = `<div class="empty-state"><p>${e.message}</p></div>`;
+  }
+}
+
+async function loadQuality() {
+  const el = document.getElementById('qualityContent');
+  if (!el) return;
+  try {
+    const data = await apiFetch('/ops/sessions');
+    const sessions = (data.sessions || []).filter(s => s.today.messages > 0);
+    // Sort by idle rate desc
+    sessions.sort((a, b) => b.today.noReplyRate - a.today.noReplyRate);
+
+    let html = '<div class="glass-card" style="padding:16px;margin-bottom:12px"><div class="card-title">Session Quality (Today)</div><div class="card-sub">Idle% = NO_REPLY + HEARTBEAT_OK / total messages</div></div>';
+    html += '<div class="ops-channel-list">';
+    for (const s of sessions) {
+      const barWidth = Math.min(s.today.noReplyRate, 100);
+      const color = s.today.noReplyRate > 60 ? '#f87171' : s.today.noReplyRate > 30 ? '#fbbf24' : '#34d399';
+      html += `<div class="ops-channel-card">
+        <div class="ops-ch-left" style="flex:1">
+          <div class="ops-ch-name">${escHtml(s.displayName)}</div>
+          <div style="height:6px;background:var(--border);border-radius:3px;margin-top:4px">
+            <div style="width:${barWidth}%;height:100%;background:${color};border-radius:3px"></div>
+          </div>
+          <div class="ops-ch-meta"><span>${s.today.messages} msgs</span><span>${s.today.effectiveMessages} effective</span><span>${s.today.noReply} silent</span><span>${s.today.heartbeat} heartbeat</span></div>
+        </div>
+        <div class="ops-ch-right"><div class="ops-ch-tokens" style="color:${color}">${s.today.noReplyRate}%</div><div class="ops-ch-cost">idle</div></div>
+      </div>`;
+    }
+    html += '</div>';
+    el.innerHTML = html;
+  } catch (e) { el.innerHTML = `<p>${e.message}</p>`; }
+}
+
+async function loadAudit() {
+  const el = document.getElementById('auditContent2');
+  if (!el) return;
+  try {
+    const data = await apiFetch('/ops/sessions');
+    const sessions = (data.sessions || []).filter(s => s.today.messages > 0);
+
+    const recommendations = [];
+    for (const s of sessions) {
+      // Expensive model with high idle rate
+      if (s.model?.includes('opus') && s.today.noReplyRate > 40 && s.today.messages > 3) {
+        recommendations.push({ severity: 'high', session: s.displayName, msg: `Using Opus but ${s.today.noReplyRate}% idle → switch to Sonnet (save ~$${(s.today.cost * 0.8).toFixed(0)}/day)`, model: s.model });
+      }
+      // Opus for simple channel
+      if (s.model?.includes('opus') && s.today.effectiveMessages < 5 && s.today.cost > 1) {
+        recommendations.push({ severity: 'medium', session: s.displayName, msg: `Opus overkill — only ${s.today.effectiveMessages} effective msgs, costing $${s.today.cost.toFixed(2)}`, model: s.model });
+      }
+      // No thinking level set
+      if (s.thinkingLevel === '—' && s.today.messages > 0) {
+        recommendations.push({ severity: 'low', session: s.displayName, msg: 'No thinking level set — consider setting to "low" to save tokens', model: s.model });
+      }
+    }
+
+    let html = '<div class="glass-card" style="padding:16px;margin-bottom:12px"><div class="card-title">Config Audit</div><div class="card-sub">' + recommendations.length + ' recommendations</div></div>';
+
+    if (recommendations.length === 0) {
+      html += '<div class="empty-state"><h3>✅ All Good</h3><p>No optimization opportunities detected.</p></div>';
+    } else {
+      html += '<div class="ops-channel-list">';
+      const sevColors = { high: '#f87171', medium: '#fbbf24', low: '#6b7280' };
+      for (const r of recommendations) {
+        html += `<div class="sess-alert" style="background:${sevColors[r.severity]}15;border:1px solid ${sevColors[r.severity]}40">
+          <span style="font-size:1.1rem">${r.severity === 'high' ? '🔴' : r.severity === 'medium' ? '🟡' : '⚪'}</span>
+          <div><strong>${escHtml(r.session)}</strong><br><span style="font-size:.8rem;color:var(--text2)">${escHtml(r.msg)}</span></div>
+        </div>`;
+      }
+      html += '</div>';
+    }
+
+    // Provider audit (from existing)
+    try {
+      const audit = await apiFetch('/ops/audit');
+      html += '<div class="glass-card" style="padding:16px;margin-top:12px"><div class="card-title">Provider Verification</div>';
+      const oi = audit.openai;
+      if (oi?.status === 'ok') {
+        html += `<div style="margin:8px 0"><strong>OpenAI</strong> <span class="pill" style="border-color:#34d399;color:#34d399">✓</span> 7d: ${oi.totals.requests} reqs</div>`;
+      }
+      const ac = audit.anthropic;
+      if (ac?.org) {
+        html += `<div><strong>Anthropic</strong> <span class="pill" style="border-color:#c084fc;color:#c084fc">org ✓</span> ${ac.org.name} · ${ac.activeKeys?.length} keys</div>`;
+      }
+      html += '</div>';
+    } catch {}
+
+    el.innerHTML = html;
+  } catch (e) { el.innerHTML = `<p>${e.message}</p>`; }
+}
+
+function timeSince(ts) {
+  const s = Math.floor((Date.now() - ts) / 1000);
+  if (s < 60) return s + 's ago';
+  if (s < 3600) return Math.floor(s / 60) + 'm ago';
+  if (s < 86400) return Math.floor(s / 3600) + 'h ago';
+  return Math.floor(s / 86400) + 'd ago';
+}
+
 // ─── Ops Channel Usage Panel ───
 const MODEL_COLORS = {
   'claude-opus-4-6': '#c084fc', 'claude-sonnet-4-6': '#818cf8',
@@ -3582,7 +3768,7 @@ document.addEventListener('keydown', e => {
 
 // ═══ INIT ═══
 checkConnection();
-loadTasks(true);
+loadSessions(); // Load sessions tab (default)
 loadAgentMonitor();
 startLivePolling(); // Auto-poll tasks every 3s for live updates
 setInterval(checkConnection, 30000);

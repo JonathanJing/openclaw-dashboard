@@ -1692,6 +1692,152 @@ async function handleOpsAudit(req, res, method) {
   return jsonReply(res, 200, result);
 }
 
+// --- Ops: Sessions Overview ---
+let _sessionsCache = null;
+let _sessionsCacheAt = 0;
+const SESSIONS_CACHE_TTL = 60_000;
+
+function handleOpsSessions(req, res, method) {
+  if (method !== 'GET') return errorReply(res, 405, 'Method not allowed');
+  const now = Date.now();
+  if (_sessionsCache && (now - _sessionsCacheAt) < SESSIONS_CACHE_TTL) {
+    return jsonReply(res, 200, _sessionsCache);
+  }
+
+  let sessions;
+  try { sessions = JSON.parse(fs.readFileSync(SESSIONS_JSON, 'utf8')); } catch (e) {
+    return errorReply(res, 500, 'Cannot read sessions: ' + e.message);
+  }
+
+  // Today PST
+  const nowDate = new Date();
+  const todayPstDate = nowDate.toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
+  const pstNow = new Date(nowDate.toLocaleString('en-US', { timeZone: 'America/Los_Angeles' }));
+  const utcNow = new Date(nowDate.toLocaleString('en-US', { timeZone: 'UTC' }));
+  const offsetMs = utcNow.getTime() - pstNow.getTime();
+  const todayStartUtc = new Date(new Date(todayPstDate + 'T00:00:00').getTime() + offsetMs);
+  const todayStartIso = todayStartUtc.toISOString();
+
+  const rows = [];
+  const alerts = [];
+
+  for (const [key, sess] of Object.entries(sessions)) {
+    const ch = sess.channel || 'other';
+    const displayName = sess.displayName || sess.groupChannel || key;
+    const sessionFile = sess.sessionFile;
+    if (!sessionFile) continue;
+
+    // Scan today's usage from jsonl
+    const today = { input: 0, output: 0, totalTokens: 0, cost: 0, messages: 0, noReply: 0, heartbeat: 0, models: {} };
+    let lastMsgTime = null;
+    let recentTopics = [];
+
+    try {
+      const stat = fs.statSync(sessionFile);
+      const readSize = Math.min(500_000, stat.size);
+      const buf = Buffer.alloc(readSize);
+      const fd = fs.openSync(sessionFile, 'r');
+      fs.readSync(fd, buf, 0, readSize, Math.max(0, stat.size - readSize));
+      fs.closeSync(fd);
+      const lines = buf.toString('utf8').split('\n').filter(Boolean);
+
+      for (const line of lines) {
+        if (!line.includes('"message"')) continue;
+        try {
+          const j = JSON.parse(line);
+          if (j.type !== 'message') continue;
+          if (j.timestamp < todayStartIso) continue;
+
+          const role = j.message?.role;
+          const text = j.message?.content;
+          const textStr = typeof text === 'string' ? text : (Array.isArray(text) ? text.filter(c => c.type === 'text').map(c => c.text).join(' ') : '');
+
+          if (role === 'assistant') {
+            const u = j.message?.usage;
+            if (u) {
+              today.input += u.input || 0;
+              today.output += u.output || 0;
+              today.totalTokens += u.totalTokens || 0;
+              let cost = u.cost?.total || 0;
+              const m = j.message.model || 'unknown';
+              if (cost === 0 && (u.totalTokens || 0) > 0) cost = estimateCost(m, u.totalTokens, u.input, u.output);
+              today.cost += cost;
+              today.models[m] = (today.models[m] || 0) + (u.totalTokens || 0);
+            }
+            today.messages++;
+            if (textStr.trim() === 'NO_REPLY') today.noReply++;
+            if (textStr.trim() === 'HEARTBEAT_OK') today.heartbeat++;
+            lastMsgTime = j.timestamp;
+          } else if (role === 'user' && textStr.length > 10 && textStr.length < 200) {
+            recentTopics.push(textStr.slice(0, 80));
+          }
+        } catch {}
+      }
+    } catch {}
+
+    // Skip totally inactive sessions (no messages ever and no recent update)
+    const daysSinceUpdate = (now - (sess.updatedAt || 0)) / 86400000;
+
+    const effectiveMessages = today.messages - today.noReply - today.heartbeat;
+    const noReplyRate = today.messages > 0 ? ((today.noReply + today.heartbeat) / today.messages * 100).toFixed(0) : 0;
+
+    const row = {
+      key,
+      displayName: displayName.replace(/^discord:\d+#/, '#'),
+      channel: ch,
+      model: sess.model || 'unknown',
+      thinkingLevel: sess.thinkingLevel || '—',
+      status: sess.abortedLastRun ? 'error' : (today.messages > 0 ? 'active' : (daysSinceUpdate < 1 ? 'idle' : 'stale')),
+      updatedAt: sess.updatedAt,
+      daysSinceUpdate: daysSinceUpdate.toFixed(1),
+      allTime: { tokens: sess.totalTokens || 0 },
+      today: {
+        ...today,
+        effectiveMessages,
+        noReplyRate: +noReplyRate,
+        topModels: Object.entries(today.models).filter(([k]) => k !== 'delivery-mirror').sort((a, b) => b[1] - a[1]).map(([m, t]) => ({ model: m, tokens: t })),
+      },
+      recentTopics: recentTopics.slice(-5),
+    };
+
+    rows.push(row);
+
+    // Generate alerts
+    if (sess.abortedLastRun) alerts.push({ type: 'error', session: row.displayName, msg: 'Last run aborted' });
+    if (sess.model?.includes('opus') && +noReplyRate > 60 && today.messages > 5) {
+      alerts.push({ type: 'waste', session: row.displayName, msg: `Opus with ${noReplyRate}% idle — consider Sonnet/Flash` });
+    }
+    if (daysSinceUpdate > 3 && sess.totalTokens > 0) {
+      alerts.push({ type: 'stale', session: row.displayName, msg: `No activity for ${daysSinceUpdate.toFixed(0)} days` });
+    }
+  }
+
+  // Sort: active first (by today cost desc), then idle, then stale
+  const statusOrder = { error: 0, active: 1, idle: 2, stale: 3 };
+  rows.sort((a, b) => (statusOrder[a.status] || 9) - (statusOrder[b.status] || 9) || b.today.cost - a.today.cost);
+
+  const result = {
+    sessions: rows,
+    alerts,
+    summary: {
+      total: rows.length,
+      active: rows.filter(r => r.status === 'active').length,
+      errors: rows.filter(r => r.status === 'error').length,
+      todayCost: rows.reduce((s, r) => s + r.today.cost, 0),
+      todayMessages: rows.reduce((s, r) => s + r.today.messages, 0),
+      topModel: Object.entries(rows.reduce((acc, r) => {
+        for (const [m, t] of Object.entries(r.today.models)) { acc[m] = (acc[m] || 0) + t; }
+        return acc;
+      }, {})).sort((a, b) => b[1] - a[1])[0]?.[0] || '—',
+    },
+    cachedAt: now,
+  };
+
+  _sessionsCache = result;
+  _sessionsCacheAt = now;
+  return jsonReply(res, 200, result);
+}
+
 // --- Main Server ---
 const server = http.createServer((req, res) => {
   const parsed = url.parse(req.url, true);
@@ -1815,6 +1961,7 @@ button:active{opacity:.8}
     if (root === 'ops' && segments[1] === 'alltime') return handleOpsAlltime(req, res, method);
     if (root === 'ops' && segments[1] === 'audit') return handleOpsAudit(req, res, method);
     if (root === 'ops' && segments[1] === 'secaudit') return handleOpsSecAudit(req, res, method);
+    if (root === 'ops' && segments[1] === 'sessions') return handleOpsSessions(req, res, method);
     if (root === 'backup') return handleBackup(req, res, method);
     if (root === 'memory') return handleMemory(req, res, method, parsed);
     return errorReply(res, 404, 'Not found');
