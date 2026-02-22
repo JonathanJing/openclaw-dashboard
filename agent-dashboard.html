@@ -3,7 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>Agent Dashboard — OpenClaw</title>
+<title>Jony's OpenClaw Dashboard</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🦞</text></svg>">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -793,8 +794,8 @@ header{display:flex;align-items:center;justify-content:space-between;padding:16p
   <!-- Header -->
   <header>
     <div>
-      <div class="logo">Jony's Dashboard 🦞</div>
-      <div class="logo-sub">雯雯 · 24/7 Online</div>
+      <div class="logo">🦞 Jony's OpenClaw Dashboard</div>
+      <div class="logo-sub">24/7 Online</div>
     </div>
     <div class="header-right">
       <span class="status-dot ok" id="statusDot"></span>
@@ -2607,9 +2608,14 @@ function renderAgentMonitor() {
     (sessData.sessions || []).forEach(s => {
       const t = s.today || {};
       totalCost += t.cost || 0;
-      totalTokens += t.tokens || 0;
+      totalTokens += t.totalTokens || 0;
       totalMsgs += t.messages || 0;
-      if (s.model) models[s.model] = (models[s.model] || 0) + (t.tokens || 0);
+      // Aggregate by actual model used in today's messages
+      if (t.models) {
+        for (const [m, tk] of Object.entries(t.models)) {
+          models[m] = (models[m] || 0) + tk;
+        }
+      }
     });
 
     // Card 1: Today Cost
@@ -2621,15 +2627,17 @@ function renderAgentMonitor() {
     mainValue.textContent = '$' + totalCost.toFixed(2);
     mainDetail.textContent = totalMsgs + ' messages';
 
-    // Card 2: Today Tokens
+    // Card 2: Today Tokens — show total + top model percentages
     const subVal = document.getElementById('subagentValue');
     const subBadge = document.getElementById('subagentBadge');
     const subDetail = document.getElementById('subagentDetail');
     subVal.textContent = fmtTokens(totalTokens);
     subBadge.className = 'agent-stat-badge active';
     subBadge.innerHTML = 'today';
-    const topModel = Object.entries(models).sort((a, b) => b[1] - a[1])[0];
-    subDetail.textContent = topModel ? shortModel(topModel[0]) + ' ' + ((topModel[1] / (totalTokens || 1)) * 100).toFixed(0) + '%' : '—';
+    // Show top 3 models with percentages
+    const sorted = Object.entries(models).filter(([k]) => k !== 'delivery-mirror' && k !== 'unknown').sort((a, b) => b[1] - a[1]);
+    const modelParts = sorted.slice(0, 3).map(([m, tk]) => shortModel(m) + ' ' + ((tk / (totalTokens || 1)) * 100).toFixed(0) + '%');
+    subDetail.textContent = modelParts.join(' · ') || '—';
   }).catch(() => {});
 
   // Card 3: Cron Jobs (from agent data)
