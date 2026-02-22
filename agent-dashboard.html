@@ -870,6 +870,11 @@ header{display:flex;align-items:center;justify-content:space-between;padding:16p
     </div>
   </div>
 
+  <!-- System Info Bar (fixed, always visible) -->
+  <div id="systemInfoBar" class="glass-card" style="padding:10px 16px;margin-bottom:12px;font-size:.75rem;display:none">
+    <div style="display:flex;flex-wrap:wrap;gap:6px 16px;align-items:center" id="systemInfoContent"></div>
+  </div>
+
   <!-- Active Sessions Detail Panel -->
   <div class="agent-sessions-panel" id="agentSessionsPanel" style="display:none">
     <div class="agent-sessions-header" onclick="this.classList.toggle('collapsed');toggleSessionsPanel()">
@@ -2609,9 +2614,33 @@ async function loadAgentMonitor() {
   }
 }
 
+function loadSystemInfo() {
+  apiFetch('/ops/system').then(sys => {
+    const el = document.getElementById('systemInfoBar');
+    const c = document.getElementById('systemInfoContent');
+    if (!el || !c) return;
+    const memPct = sys.memory?.usePct || '0';
+    const memColor = +memPct > 85 ? 'var(--red)' : +memPct > 60 ? 'var(--yellow)' : 'var(--green)';
+    const diskPct = parseInt(sys.disk?.usePct) || 0;
+    const diskColor = diskPct > 80 ? 'var(--red)' : diskPct > 60 ? 'var(--yellow)' : 'var(--green)';
+    c.innerHTML = `
+      <span>🖥️ <strong>${sys.macModel || sys.hostname}</strong></span>
+      <span>🍎 ${sys.macOS || '—'}</span>
+      <span>🧮 ${sys.cpus}核 · Load ${sys.loadAvg?.['1m']?.toFixed(1) || '—'}</span>
+      <span style="color:${memColor}">💾 RAM ${memPct}%</span>
+      <span style="color:${diskColor}">💿 Disk ${sys.disk?.usePct || '—'}</span>
+      <span>📦 Node ${sys.nodeVersion || '—'}</span>
+      <span>🦞 v${sys.clawVersion || '—'}</span>
+    `;
+    el.style.display = '';
+  }).catch(() => {});
+}
+
 function renderAgentMonitor() {
   if (!agentData) return;
   const d = agentData;
+
+  loadSystemInfo();
 
   // Fetch today's ops data for header cards — use /ops/sessions for accurate totals (includes all channels)
   apiFetch('/ops/sessions').then(sessData => {
