@@ -1863,7 +1863,8 @@ function handleOpsSystem(req, res, method) {
 
   // OpenClaw version
   let clawVersion = '';
-  try { clawVersion = execSync("openclaw --version 2>/dev/null || echo unknown", { timeout: 3000 }).toString().trim(); } catch {}
+  try { clawVersion = JSON.parse(fs.readFileSync('/opt/homebrew/lib/node_modules/openclaw/package.json', 'utf8')).version; } catch {}
+  if (!clawVersion) { try { clawVersion = execSync("/opt/homebrew/bin/openclaw --version 2>&1", { timeout: 3000 }).toString().trim(); } catch {} }
 
   // Process uptime
   const dashboardUptime = process.uptime();
