@@ -355,8 +355,25 @@ header{display:flex;align-items:center;justify-content:space-between;padding:16p
 .ops-model-legend-item{display:flex;align-items:center;gap:4px}
 .ops-model-dot{width:8px;height:8px;border-radius:50%}
 
+/* ─── Ops Management Buttons ─── */
+.ops-mgmt-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:0}
+.ops-mgmt-btn{display:flex;align-items:center;gap:10px;padding:14px 16px;border-radius:12px;border:1px solid var(--border);background:rgba(13,17,23,0.6);color:var(--text);font-family:var(--font);font-size:.9rem;font-weight:500;cursor:pointer;transition:all .25s;width:100%;text-align:left;position:relative;backdrop-filter:blur(12px)}
+.ops-mgmt-btn:hover{border-color:var(--accent);background:rgba(124,92,252,0.08);transform:translateY(-1px);box-shadow:0 4px 16px rgba(124,92,252,0.12)}
+.ops-mgmt-btn:active{transform:translateY(0)}
+.ops-mgmt-btn .btn-icon{font-size:1.2rem;flex-shrink:0}
+.ops-mgmt-btn .btn-label{flex:1}
+.ops-mgmt-btn .btn-badge{font-size:1rem;margin-left:auto;transition:all .2s}
+.ops-mgmt-btn.loading .btn-badge{animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.ops-cost-card{margin-top:0}
+.ops-cost-row{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);font-size:.85rem}
+.ops-cost-row:last-child{border-bottom:none}
+.ops-cost-label{color:var(--text2)}
+.ops-cost-value{color:var(--text);font-family:var(--mono);font-size:.8rem}
+
 /* ─── Responsive ─── */
 @media(max-width:768px){
+  .ops-mgmt-grid{grid-template-columns:1fr}
   .ops-grid{grid-template-columns:1fr}
   .vision-grid{grid-template-columns:1fr 1fr}
 
@@ -860,6 +877,43 @@ header{display:flex;align-items:center;justify-content:space-between;padding:16p
       <div class="card-title">🔍 Provider Audit (Official APIs)</div>
       <div class="card-sub" style="margin-bottom:12px">Cross-reference with provider billing data</div>
       <div id="auditContent"><div class="skeleton skeleton-card"></div></div>
+    </div>
+
+    <!-- ─── Operations Management ─── -->
+    <div class="glass-card" style="padding:16px;margin-top:16px">
+      <div class="card-title" style="margin-bottom:4px">⚙️ Operations Management</div>
+      <div class="card-sub" style="margin-bottom:16px">One-click controls for gateway, workspace &amp; audits</div>
+      <div class="ops-mgmt-grid">
+        <button class="ops-mgmt-btn" id="btnRestart" onclick="opsAction('restart')">
+          <span class="btn-icon">🔄</span>
+          <span class="btn-label">Restart Gateway</span>
+          <span class="btn-badge" id="badgeRestart"></span>
+        </button>
+        <button class="ops-mgmt-btn" id="btnBackup" onclick="opsAction('backup')">
+          <span class="btn-icon">💾</span>
+          <span class="btn-label">Backup Workspace</span>
+          <span class="btn-badge" id="badgeBackup"></span>
+        </button>
+        <button class="ops-mgmt-btn" id="btnSecAudit" onclick="opsAction('secaudit')">
+          <span class="btn-icon">🛡️</span>
+          <span class="btn-label">Security Audit</span>
+          <span class="btn-badge" id="badgeSecAudit"></span>
+        </button>
+        <button class="ops-mgmt-btn" id="btnCostReport" onclick="opsAction('cost')">
+          <span class="btn-icon">📊</span>
+          <span class="btn-label">Cost Report</span>
+          <span class="btn-badge" id="badgeCostReport"></span>
+        </button>
+      </div>
+      <div id="opsMgmtResult" style="margin-top:14px;display:none">
+        <div class="glass-card" style="padding:12px;background:rgba(0,0,0,0.3);border-color:var(--border)" id="opsMgmtResultInner"></div>
+      </div>
+    </div>
+
+    <!-- ─── Cost Report Card ─── -->
+    <div class="glass-card ops-cost-card" style="padding:16px;margin-top:16px;display:none" id="costReportCard">
+      <div class="card-title" style="margin-bottom:12px">📊 Cost Report</div>
+      <div id="costReportContent"><div class="skeleton skeleton-card"></div></div>
     </div>
   </div>
 
@@ -3007,6 +3061,71 @@ async function loadOpsAudit() {
     el.innerHTML = html;
   } catch (e) {
     el.innerHTML = `<div class="ops-ch-meta">Failed: ${e.message}</div>`;
+  }
+}
+
+// ─── Ops Management Actions ───
+async function opsAction(action) {
+  const btnMap = { restart: 'btnRestart', backup: 'btnBackup', secaudit: 'btnSecAudit', cost: 'btnCostReport' };
+  const badgeMap = { restart: 'badgeRestart', backup: 'badgeBackup', secaudit: 'badgeSecAudit', cost: 'badgeCostReport' };
+  const btn = document.getElementById(btnMap[action]);
+  const badge = document.getElementById(badgeMap[action]);
+  const resultBox = document.getElementById('opsMgmtResult');
+  const resultInner = document.getElementById('opsMgmtResultInner');
+  const costCard = document.getElementById('costReportCard');
+
+  if (badge) badge.textContent = '⏳';
+  if (btn) btn.classList.add('loading');
+  if (resultBox) resultBox.style.display = 'none';
+
+  try {
+    let html = '';
+
+    if (action === 'restart') {
+      const r = await fetch('http://127.0.0.1:18789/hooks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'restart', token: '451374645a4c6bcfc20641ab49ea3091803287d23ccebea2' })
+      });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      if (badge) badge.textContent = '✅';
+      html = '<span style="color:var(--green)">✅ Gateway restart signal sent.</span>';
+
+    } else if (action === 'backup') {
+      const data = await apiFetch('/backup', { method: 'POST' });
+      if (badge) badge.textContent = '✅';
+      html = `<span style="color:var(--green)">✅ Backup complete.</span><pre style="margin-top:8px;font-size:.75rem;color:var(--text2);white-space:pre-wrap;word-break:break-all">${escHtml(data.output || '')}</pre>`;
+
+    } else if (action === 'secaudit') {
+      const data = await apiFetch('/ops/secaudit');
+      if (badge) badge.textContent = '✅';
+      html = `<span style="color:var(--green)">✅ Security Audit</span>
+        <div class="ops-cost-row"><span class="ops-cost-label">Cron Jobs</span><span class="ops-cost-value">${data.cronJobs}</span></div>
+        <div class="ops-cost-row"><span class="ops-cost-label">Sessions</span><span class="ops-cost-value">${data.sessions}</span></div>
+        <div class="ops-cost-row"><span class="ops-cost-label">Timestamp</span><span class="ops-cost-value">${new Date(data.timestamp).toLocaleString()}</span></div>`;
+
+    } else if (action === 'cost') {
+      const data = await apiFetch('/memory?file=heartbeat-state.json');
+      if (costCard) costCard.style.display = 'block';
+      const costContent = document.getElementById('costReportContent');
+      let rows = '';
+      if (data.lastIntelligenceScan) rows += `<div class="ops-cost-row"><span class="ops-cost-label">Last Intelligence Scan</span><span class="ops-cost-value">${escHtml(String(data.lastIntelligenceScan))}</span></div>`;
+      const costFields = Object.entries(data).filter(([k]) => k.toLowerCase().includes('cost') || k.toLowerCase().includes('spend') || k.toLowerCase().includes('token') || k.toLowerCase().includes('budget'));
+      for (const [k, v] of costFields) rows += `<div class="ops-cost-row"><span class="ops-cost-label">${escHtml(k)}</span><span class="ops-cost-value">${escHtml(typeof v === 'object' ? JSON.stringify(v) : String(v))}</span></div>`;
+      if (!rows) rows = '<div class="ops-cost-row" style="color:var(--text2)">No cost fields found in heartbeat-state.json</div>';
+      if (costContent) costContent.innerHTML = rows;
+      if (badge) badge.textContent = '✅';
+      html = '<span style="color:var(--green)">✅ Cost report loaded below.</span>';
+    }
+
+    if (resultInner) resultInner.innerHTML = html;
+    if (resultBox) resultBox.style.display = 'block';
+  } catch (e) {
+    if (badge) badge.textContent = '❌';
+    if (resultInner) resultInner.innerHTML = `<span style="color:var(--red)">❌ ${escHtml(e.message)}</span>`;
+    if (resultBox) resultBox.style.display = 'block';
+  } finally {
+    if (btn) btn.classList.remove('loading');
   }
 }
 
