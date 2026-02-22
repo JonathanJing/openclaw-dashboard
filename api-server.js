@@ -1685,7 +1685,23 @@ function handleOpsSessions(req, res, method) {
     const ch = sess.channel || 'other';
     const displayName = sess.displayName || sess.groupChannel || key;
     const sessionFile = sess.sessionFile;
-    if (!sessionFile) continue;
+
+    // Include Discord sessions without sessionFile as inactive placeholders
+    if (!sessionFile) {
+      if (ch === 'discord') {
+        const dn = displayName.replace(/^discord:\d+#/, '#').replace(/^agent:main:discord:channel:/, '#ch-');
+        rows.push({
+          key, displayName: dn, channel: ch, model: sess.model || 'unknown',
+          thinkingLevel: sess.thinkingLevel || '—', status: 'idle',
+          updatedAt: sess.updatedAt, daysSinceUpdate: 99,
+          allTime: { tokens: sess.totalTokens || 0 },
+          today: { input:0, output:0, totalTokens:0, cost:0, messages:0, noReply:0, heartbeat:0,
+                   models:{}, effectiveMessages:0, noReplyRate:0, topModels:[] },
+          recentTopics: [],
+        });
+      }
+      continue;
+    }
 
     // Scan today's usage from jsonl
     const today = { input: 0, output: 0, totalTokens: 0, cost: 0, messages: 0, noReply: 0, heartbeat: 0, models: {} };
