@@ -870,9 +870,12 @@ header{display:flex;align-items:center;justify-content:space-between;padding:16p
         </div>
       </div>
       <div id="alltimeModels" class="ops-channel-list" style="margin-bottom:12px"></div>
-      <div class="card-title" style="font-size:.85rem;margin-bottom:8px">Daily (Last 14 Days)</div>
+      <div class="card-title" style="font-size:.85rem;margin-bottom:8px">Daily Tokens (Last 14 Days)</div>
       <canvas id="dailyChart" height="120" style="width:100%;border-radius:8px"></canvas>
       <div class="ops-model-legend chart-legend" style="margin-top:6px"></div>
+      <div class="card-title" style="font-size:.85rem;margin:12px 0 8px">Daily Cost by Model</div>
+      <canvas id="dailyCostChart" height="120" style="width:100%;border-radius:8px"></canvas>
+      <div class="ops-model-legend chart-cost-legend" style="margin-top:6px"></div>
     </div>
 
     <div class="glass-card" style="padding:16px;margin-top:16px" id="auditCard">
@@ -3009,10 +3012,14 @@ async function loadOpsAlltime() {
       </div>`;
     }).join('');
 
-    // Daily chart
+    // Daily charts
     const daily = data.recentDaily || [];
     if (canvas && daily.length > 0) {
       drawDailyChart(canvas, daily);
+    }
+    const costCanvas = document.getElementById('dailyCostChart');
+    if (costCanvas && daily.length > 0) {
+      drawDailyCostChart(costCanvas, daily);
     }
 
     // Audit status
@@ -3191,17 +3198,12 @@ function drawDailyChart(canvas, daily) {
       ctx.fill();
     });
 
-    // Cost label above bar
-    const dayCost = Object.entries(d.modelCosts || d.models || {}).reduce((s, [m, v]) => {
-      if (d.modelCosts) return s + v;
-      // fallback: estimate from tokens
-      return s + v * 0;
-    }, 0);
-    if (dayCost > 0) {
+    // Token count above bar
+    if (d.tokens > 0) {
       ctx.fillStyle = '#c9d1d9';
       ctx.font = 'bold 9px -apple-system, sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText('$' + dayCost.toFixed(0), x + barW / 2, yOffset - 4);
+      ctx.fillText(fmtTokens(d.tokens), x + barW / 2, yOffset - 3);
     }
 
     // Date label
@@ -3223,6 +3225,90 @@ function drawDailyChart(canvas, daily) {
 
   // Legend below chart
   const legendEl = canvas.parentElement?.querySelector('.chart-legend');
+  if (legendEl) {
+    legendEl.innerHTML = modelList.map(m =>
+      `<span class="ops-model-legend-item"><span class="ops-model-dot" style="background:${getModelColor(m)}"></span>${shortModel(m)}</span>`
+    ).join('');
+  }
+}
+
+function drawDailyCostChart(canvas, daily) {
+  const ctx = canvas.getContext('2d');
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  ctx.scale(dpr, dpr);
+  const W = rect.width, H = rect.height;
+  const pad = { top: 14, right: 10, bottom: 24, left: 50 };
+  const cW = W - pad.left - pad.right;
+  const cH = H - pad.top - pad.bottom;
+
+  // Collect models sorted by total cost
+  const allModels = new Set();
+  daily.forEach(d => Object.keys(d.modelCosts || {}).forEach(m => { if ((d.modelCosts[m] || 0) > 0) allModels.add(m); }));
+  const modelList = [...allModels].sort((a, b) => {
+    const ta = daily.reduce((s, d) => s + (d.modelCosts?.[a] || 0), 0);
+    const tb = daily.reduce((s, d) => s + (d.modelCosts?.[b] || 0), 0);
+    return tb - ta;
+  });
+
+  const maxCost = Math.max(...daily.map(d => d.cost || 0), 1);
+  const barW = Math.max(4, (cW / daily.length) - 2);
+
+  ctx.clearRect(0, 0, W, H);
+
+  // Grid
+  ctx.strokeStyle = '#1a1f2e';
+  ctx.lineWidth = 0.5;
+  for (let i = 0; i <= 4; i++) {
+    const y = pad.top + (cH * i / 4);
+    ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(W - pad.right, y); ctx.stroke();
+  }
+
+  // Stacked cost bars
+  daily.forEach((d, i) => {
+    const x = pad.left + (i * cW / daily.length) + 1;
+    let yOffset = pad.top + cH;
+
+    modelList.forEach(m => {
+      const c = d.modelCosts?.[m] || 0;
+      if (c <= 0) return;
+      const h = (c / maxCost) * cH;
+      yOffset -= h;
+      ctx.fillStyle = getModelColor(m);
+      ctx.beginPath();
+      ctx.roundRect(x, yOffset, barW, h, 1);
+      ctx.fill();
+    });
+
+    // Total cost label above bar
+    if ((d.cost || 0) > 0) {
+      ctx.fillStyle = '#c9d1d9';
+      ctx.font = 'bold 9px -apple-system, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('$' + (d.cost).toFixed(0), x + barW / 2, yOffset - 3);
+    }
+
+    // Date label
+    ctx.fillStyle = '#8b949e';
+    ctx.font = '9px -apple-system, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(d.date.slice(5), x + barW / 2, pad.top + cH + 14);
+  });
+
+  // Y-axis (dollar)
+  ctx.fillStyle = '#8b949e';
+  ctx.font = '9px -apple-system, sans-serif';
+  ctx.textAlign = 'right';
+  for (let i = 0; i <= 4; i++) {
+    const val = maxCost * (4 - i) / 4;
+    const y = pad.top + (cH * i / 4) + 3;
+    ctx.fillText('$' + val.toFixed(0), pad.left - 6, y);
+  }
+
+  // Legend
+  const legendEl = canvas.parentElement?.querySelector('.chart-cost-legend');
   if (legendEl) {
     legendEl.innerHTML = modelList.map(m =>
       `<span class="ops-model-legend-item"><span class="ops-model-dot" style="background:${getModelColor(m)}"></span>${shortModel(m)}</span>`
