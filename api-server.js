@@ -1681,17 +1681,38 @@ function handleOpsSessions(req, res, method) {
   const rows = [];
   const alerts = [];
 
+  // Discord channel ID → friendly name map
+  const CHANNEL_NAMES = {
+    '1473460113539989733': '#general', '1473462488766087208': '#ops-report',
+    '1474124432107770047': '#podcast_video_article', '1473460547335880776': '#jobs-intel',
+    '1473461128268087297': '#networking-log', '1473765554551525437': '#x-ai-socal-radar',
+    '1473800504164225238': '#工作搭子碎碎念', '1473462423951380590': '#ai-learning',
+    '1473462385535619344': '#socal-ai-events', '1473462335434658000': '#openclaw-watch',
+    '1473559707653509120': '#tech-news', '1473462449213804555': '#event-planning',
+    '1473462528326500382': '#饮酒', '1473462553592991754': '#灰茄',
+    '1473462582063927488': '#品茶', '1473827312180138208': '#养花',
+    '1474118918283989245': '#灵修', '1473810409952641138': '#dev_build',
+    '1473810257452077113': '#meta-vision-ingest',
+  };
+  function resolveChannelName(key, displayName) {
+    // Extract channel ID from session key
+    const m = key.match(/channel:(\d+)$/);
+    if (m && CHANNEL_NAMES[m[1]]) return CHANNEL_NAMES[m[1]];
+    if (displayName.startsWith('#')) return displayName;
+    return displayName.replace(/^discord:g-\d+/, '#unknown').replace(/^agent:main:discord:channel:/, '#ch-');
+  }
+
   for (const [key, sess] of Object.entries(sessions)) {
     const ch = sess.channel || 'other';
-    const displayName = sess.displayName || sess.groupChannel || key;
+    const rawName = sess.displayName || sess.groupChannel || key;
+    const displayName = ch === 'discord' ? resolveChannelName(key, rawName) : rawName;
     const sessionFile = sess.sessionFile;
 
     // Include Discord sessions without sessionFile as inactive placeholders
     if (!sessionFile) {
       if (ch === 'discord') {
-        const dn = displayName.replace(/^discord:\d+#/, '#').replace(/^agent:main:discord:channel:/, '#ch-');
         rows.push({
-          key, displayName: dn, channel: ch, model: sess.model || 'unknown',
+          key, displayName, channel: ch, model: sess.model || 'unknown',
           thinkingLevel: sess.thinkingLevel || '—', status: 'idle',
           updatedAt: sess.updatedAt, daysSinceUpdate: 99,
           allTime: { tokens: sess.totalTokens || 0 },
@@ -1758,7 +1779,7 @@ function handleOpsSessions(req, res, method) {
 
     const row = {
       key,
-      displayName: displayName.replace(/^discord:\d+#/, '#'),
+      displayName,
       channel: ch,
       model: sess.model || 'unknown',
       thinkingLevel: sess.thinkingLevel || '—',
