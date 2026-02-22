@@ -1215,10 +1215,11 @@ async function notionCount(dbId, startIso, endIso) {
 
 // --- Ops: Channel Usage (today, PST) ---
 const MODEL_COSTS = {
-  // per 1M tokens (input/output avg blended)
+  // per 1M tokens (blended input/output average)
   'claude-opus-4-6': 0.075, 'claude-sonnet-4-6': 0.015,
   'gpt-5.2-codex': 0.0375, 'gpt-5.2': 0.01,
-  'gemini-3-pro-preview': 0.00625, 'gemini-3-flash-preview': 0.0015,
+  // Google pricing: Pro $1.25/1M in + $10/1M out ≈ blended ~$2.50/1M; Flash $0.15/1M in + $0.60/1M out ≈ ~$0.30/1M
+  'gemini-3-pro-preview': 0.0025, 'gemini-3-flash-preview': 0.0003,
 };
 
 function estimateCost(model, tokens) {
@@ -1447,10 +1448,11 @@ function handleOpsAlltime(req, res, method) {
             const d = new Date(j.timestamp);
             const pst = new Date(d.toLocaleString('en-US', { timeZone: 'America/Los_Angeles' }));
             const day = pst.toISOString().slice(0, 10);
-            if (!daily[day]) daily[day] = { tokens: 0, cost: 0, models: {} };
+            if (!daily[day]) daily[day] = { tokens: 0, cost: 0, models: {}, modelCosts: {} };
             daily[day].tokens += tokens;
             daily[day].cost += cost;
             daily[day].models[m] = (daily[day].models[m] || 0) + tokens;
+            daily[day].modelCosts[m] = (daily[day].modelCosts[m] || 0) + cost;
           }
         } catch {}
       }
@@ -1482,10 +1484,11 @@ function handleOpsAlltime(req, res, method) {
               const d = new Date(j.ts);
               const pst = new Date(d.toLocaleString('en-US', { timeZone: 'America/Los_Angeles' }));
               const day = pst.toISOString().slice(0, 10);
-              if (!daily[day]) daily[day] = { tokens: 0, cost: 0, models: {} };
+              if (!daily[day]) daily[day] = { tokens: 0, cost: 0, models: {}, modelCosts: {} };
               daily[day].tokens += tokens;
               daily[day].cost += cost;
               daily[day].models[m] = (daily[day].models[m] || 0) + tokens;
+            daily[day].modelCosts[m] = (daily[day].modelCosts[m] || 0) + cost;
             }
           } catch {}
         }

@@ -2889,6 +2889,7 @@ loadTasks = async function() {
 const MODEL_COLORS = {
   'claude-opus-4-6': '#c084fc', 'claude-sonnet-4-6': '#818cf8',
   'gpt-5.2-codex': '#34d399', 'gpt-5.2': '#6ee7b7',
+  'gemini-3-pro': '#fbbf24', 'gemini-3-flash': '#fcd34d',
   'gemini-3-pro-preview': '#fbbf24', 'gemini-3-flash-preview': '#fcd34d',
 };
 
@@ -2898,7 +2899,12 @@ function getModelColor(model) {
 }
 
 function shortModel(m) {
-  return (m || 'unknown').replace(/-preview$/, '').replace('claude-', '').replace('gemini-3-', 'g3-').replace('gpt-5.2-', 'gpt-');
+  return (m || 'unknown')
+    .replace(/-preview$/, '')
+    .replace('claude-', '')
+    .replace('gemini-3-pro', 'Gemini-3-Pro')
+    .replace('gemini-3-flash', 'Gemini-3-Flash')
+    .replace('gpt-5.2-', 'gpt-');
 }
 
 function fmtTokens(n) {
@@ -3184,6 +3190,19 @@ function drawDailyChart(canvas, daily) {
       ctx.roundRect(x, yOffset, barW, h, 1);
       ctx.fill();
     });
+
+    // Cost label above bar
+    const dayCost = Object.entries(d.modelCosts || d.models || {}).reduce((s, [m, v]) => {
+      if (d.modelCosts) return s + v;
+      // fallback: estimate from tokens
+      return s + v * 0;
+    }, 0);
+    if (dayCost > 0) {
+      ctx.fillStyle = '#c9d1d9';
+      ctx.font = 'bold 9px -apple-system, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('$' + dayCost.toFixed(0), x + barW / 2, yOffset - 4);
+    }
 
     // Date label
     ctx.fillStyle = '#8b949e';
