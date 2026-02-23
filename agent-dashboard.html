@@ -892,6 +892,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:16p
   <div class="tab-bar">
     <button class="tab-btn active" data-tab="sessions">Sessions</button>
     <button class="tab-btn" data-tab="ops">Cost</button>
+    <button class="tab-btn" data-tab="operations">Operations</button>
     <button class="tab-btn" data-tab="tasks">Cron<span class="badge-count" id="taskCount">0</span></button>
     <button class="tab-btn" data-tab="quality">Quality</button>
     <button class="tab-btn" data-tab="audit">Audit</button>
@@ -949,41 +950,42 @@ header{display:flex;align-items:center;justify-content:space-between;padding:16p
       <div id="auditContent"></div>
     </div>
 
-    <!-- ─── Operations Management ─── -->
-    <div class="glass-card" style="padding:16px;margin-top:16px">
+  </div>
+
+  <!-- ═══ Operations Panel ═══ -->
+  <div class="tab-panel" id="panel-operations">
+    <div class="glass-card" style="padding:16px">
       <div class="card-title" style="margin-bottom:4px">⚙️ Operations Management</div>
-      <div class="card-sub" style="margin-bottom:16px">One-click controls for gateway, workspace &amp; audits</div>
+      <div class="card-sub" style="margin-bottom:16px">Backup/restore, restart and safe OpenClaw update workflow</div>
       <div class="ops-mgmt-grid">
-        <button class="ops-mgmt-btn" id="btnRestart" onclick="opsAction('restart')">
-          <span class="btn-icon">🔄</span>
-          <span class="btn-label">Restart Gateway</span>
-          <span class="btn-badge" id="badgeRestart"></span>
-        </button>
         <button class="ops-mgmt-btn" id="btnBackup" onclick="opsAction('backup')">
           <span class="btn-icon">💾</span>
-          <span class="btn-label">Backup Workspace</span>
+          <span class="btn-label">Backup + Push Repo</span>
           <span class="btn-badge" id="badgeBackup"></span>
         </button>
-        <button class="ops-mgmt-btn" id="btnSecAudit" onclick="opsAction('secaudit')">
-          <span class="btn-icon">🛡️</span>
-          <span class="btn-label">Security Audit</span>
-          <span class="btn-badge" id="badgeSecAudit"></span>
+        <button class="ops-mgmt-btn" id="btnRestore" onclick="opsAction('restore')">
+          <span class="btn-icon">📂</span>
+          <span class="btn-label">Load from Backup</span>
+          <span class="btn-badge" id="badgeRestore"></span>
         </button>
-        <button class="ops-mgmt-btn" id="btnCostReport" onclick="opsAction('cost')">
-          <span class="btn-icon">📊</span>
-          <span class="btn-label">Cost Report</span>
-          <span class="btn-badge" id="badgeCostReport"></span>
+        <button class="ops-mgmt-btn" id="btnUpdateOpenClaw" onclick="opsAction('updateOpenClaw')">
+          <span class="btn-icon">⬆️</span>
+          <span class="btn-label">Update OpenClaw</span>
+          <span class="btn-badge" id="badgeUpdateOpenClaw"></span>
+        </button>
+        <button class="ops-mgmt-btn" id="btnRestart" onclick="opsAction('restart')">
+          <span class="btn-icon">🔄</span>
+          <span class="btn-label">Restart OpenClaw</span>
+          <span class="btn-badge" id="badgeRestart"></span>
         </button>
       </div>
       <div id="opsMgmtResult" style="margin-top:14px;display:none">
         <div class="glass-card" style="padding:12px;background:rgba(0,0,0,0.3);border-color:var(--border)" id="opsMgmtResultInner"></div>
       </div>
     </div>
-
-    <!-- ─── Cost Report Card ─── -->
-    <div class="glass-card ops-cost-card" style="padding:16px;margin-top:16px;display:none" id="costReportCard">
-      <div class="card-title" style="margin-bottom:12px">📊 Cost Report</div>
-      <div id="costReportContent"><div class="skeleton skeleton-card"></div></div>
+    <div class="glass-card" style="padding:16px;margin-top:16px">
+      <div class="card-title" style="margin-bottom:4px">🐶 Watchdog</div>
+      <div class="card-sub" id="watchdogStatusText">No watchdog alert feed connected yet.</div>
     </div>
   </div>
 
@@ -1006,21 +1008,6 @@ header{display:flex;align-items:center;justify-content:space-between;padding:16p
   <!-- ═══ Cron Panel ═══ -->
   <div class="tab-panel" id="panel-tasks">
     <div class="ops-grid">
-      <div class="glass-card" style="padding:16px">
-        <div class="card-header">
-          <div>
-            <div class="card-title">Cron Timeline (Today)</div>
-            <div class="card-sub">Next runs + last status</div>
-          </div>
-          <div class="pill-row" id="cronStats"></div>
-        </div>
-        <div id="cronTimeline" class="timeline-list">
-          <div class="skeleton skeleton-card"></div>
-          <div class="skeleton skeleton-card"></div>
-          <div class="skeleton skeleton-card"></div>
-        </div>
-      </div>
-
       <div class="glass-card" style="padding:16px">
         <div class="card-header">
           <div>
@@ -1266,11 +1253,18 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     if (btn.dataset.tab === 'sessions') loadSessions();
     if (btn.dataset.tab === 'tasks') { loadCronEnhanced(); loadTasks(true); loadCronCosts(); }
     if (btn.dataset.tab === 'ops') { loadOpsChannels(); loadOpsAlltime(); loadOpsAudit(); }
+    if (btn.dataset.tab === 'operations') loadOperationsStatus();
     if (btn.dataset.tab === 'quality') loadQuality();
     if (btn.dataset.tab === 'audit') loadAudit();
     if (btn.dataset.tab === 'config') loadConfig();
   });
 });
+
+function loadOperationsStatus() {
+  const el = document.getElementById('watchdogStatusText');
+  if (!el) return;
+  el.textContent = 'Watchdog endpoint pending. Actions below are ready for one-click recovery.';
+}
 
 function refreshCurrentTab() {
   const active = document.querySelector('.tab-btn.active');
@@ -2777,13 +2771,15 @@ async function loadCronRuns() {
       const status = last.status === 'ok' ? '✅' : last.status === 'error' ? '❌' : '⏳';
       const time = last.endedAt ? new Date(last.endedAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'America/Los_Angeles' }) : (last.startedAt ? new Date(last.startedAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'America/Los_Angeles' }) : '—');
       const dur = (last.endedAt && last.startedAt) ? ((last.endedAt - last.startedAt) / 1000).toFixed(1) + 's' : '';
-      const tokens = last.tokens ? fmtTokens(last.tokens) : '';
+      const model = last.model ? shortModel(last.model) : '';
+      const tokens = Number.isFinite(last.tokens) ? (fmtTokens(last.tokens) + ' tok') : '';
+      const cost = Number.isFinite(last.costUsd) ? fmtUsd(last.costUsd, 3) : '';
+      const detail = [model, tokens, cost, dur].filter(Boolean).join(' · ');
 
       return `<div class="agent-session-row">
         <span style="font-size:.9rem">${status}</span>
         <span class="agent-session-key" style="flex:1;font-family:inherit;font-size:.78rem">${escHtml(name)}</span>
-        <span class="agent-session-tokens">${tokens}</span>
-        <span class="agent-session-tokens">${dur}</span>
+        <span class="agent-session-tokens">${escHtml(detail)}</span>
         <span class="agent-session-age">${time}</span>
       </div>`;
     }).join('');
@@ -2946,59 +2942,16 @@ function hideParallelPanel() {
 
 // ─── Ops Dashboard (Cron + Vision) ───
 async function loadOps() {
-  const cronEl = document.getElementById('cronTimeline');
   const visionEl = document.getElementById('visionGrid');
-  const statsEl = document.getElementById('cronStats');
   const visionStatus = document.getElementById('visionStatus');
-  if (!cronEl || !visionEl) return;
+  if (!visionEl) return;
 
   try {
-    const [cron, vision] = await Promise.all([
-      apiFetch('/cron/today'),
-      apiFetch('/vision/stats')
-    ]);
-    renderCronTimeline(cron, cronEl, statsEl);
+    const vision = await apiFetch('/vision/stats');
     renderVisionStats(vision, visionEl, visionStatus);
-    const count = cron?.stats?.total ?? (cron?.todayJobs?.length || 0);
-    const badge = document.getElementById('taskCount');
-    if (badge) badge.textContent = count;
   } catch (e) {
-    cronEl.innerHTML = `<div class="empty-state"><h3>Unable to Load Cron Timeline</h3><p>${e.message}</p></div>`;
-    if (visionEl) visionEl.innerHTML = `<div class="empty-state"><h3>Unable to Load Vision Stats</h3><p>${e.message}</p></div>`;
+    visionEl.innerHTML = `<div class="empty-state"><h3>Unable to Load Vision Stats</h3><p>${e.message}</p></div>`;
   }
-}
-
-function renderCronTimeline(data, cronEl, statsEl) {
-  const jobs = data?.todayJobs || [];
-  const stats = data?.stats || { total: jobs.length, success: 0, failed: 0, running: 0 };
-  if (statsEl) {
-    statsEl.innerHTML = `
-      <span class="pill">Total ${stats.total || 0}</span>
-      <span class="pill ok">OK ${stats.success || 0}</span>
-      <span class="pill fail">Fail ${stats.failed || 0}</span>
-      <span class="pill run">Running ${stats.running || 0}</span>`;
-  }
-  if (jobs.length === 0) {
-    cronEl.innerHTML = `<div class="empty-state"><h3>No cron runs today</h3><p>Next runs will appear here when scheduled.</p></div>`;
-    return;
-  }
-  cronEl.innerHTML = jobs.map(j => {
-    const next = j.nextRun ? fmtTime(j.nextRun) : '—';
-    const last = j.last || {};
-    const status = (last.status || 'unknown').toLowerCase();
-    const dotClass = status === 'ok' ? 'ok' : (status === 'running' ? 'run' : (status === 'error' || status === 'failed' ? 'fail' : 'run'));
-    const dur = last.durationMs ? `${Math.round(last.durationMs/1000)}s` : '—';
-    const lastTime = last.startedAt ? fmtTime(last.startedAt) : '—';
-    return `<div class="timeline-item ops">
-      <div class="timeline-left">
-        <div class="timeline-title" title="${escHtml(j.name || j.id)}">${escHtml(j.name || j.id)}</div>
-        <div class="timeline-meta">Next: ${next} · Last: ${lastTime} · ${dur}</div>
-      </div>
-      <div class="timeline-right">
-        <div class="timeline-status"><span class="timeline-dot ${dotClass}"></span>${status}</div>
-      </div>
-    </div>`;
-  }).join('');
 }
 
 function renderVisionStats(data, visionEl, statusEl) {
@@ -3016,12 +2969,6 @@ function renderVisionStats(data, visionEl, statusEl) {
       <div class="vision-sub">Today</div>
     </div>`;
   }).join('');
-}
-
-function fmtTime(ms) {
-  try {
-    return new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  } catch { return '—'; }
 }
 
 // Override tasks loader to cron loader
@@ -3373,6 +3320,17 @@ async function loadConfig() {
 async function loadCronEnhanced() {
   const panel = document.getElementById('panel-tasks');
   if (!panel) return;
+  const opsGrid = panel.querySelector('.ops-grid');
+  if (!opsGrid) return;
+
+  let jobsContainer = document.getElementById('cronJobsContainer');
+  if (!jobsContainer) {
+    jobsContainer = document.createElement('div');
+    jobsContainer.id = 'cronJobsContainer';
+    jobsContainer.style.marginBottom = '12px';
+    panel.insertBefore(jobsContainer, opsGrid);
+  }
+
   try {
     const data = await apiFetch('/ops/cron');
     const jobs = data.jobs || [];
@@ -3407,12 +3365,10 @@ async function loadCronEnhanced() {
         </div>
       </div>`;
     }
-
-    // Keep existing ops-grid content below (cron timeline + vision)
-    const existingOps = panel.querySelector('.ops-grid');
-    const existingVision = panel.querySelector('.ops-grid:last-child');
-    panel.innerHTML = html + (existingOps ? existingOps.outerHTML : '') + (existingVision && existingVision !== existingOps ? existingVision.outerHTML : '');
-  } catch (e) { /* fallback to existing */ }
+    jobsContainer.innerHTML = html;
+  } catch (e) {
+    jobsContainer.innerHTML = `<div class="glass-card" style="padding:14px;margin-bottom:12px"><p>${escHtml(e.message)}</p></div>`;
+  }
 }
 
 // ─── Ops Channel Usage Panel ───
@@ -3434,6 +3390,7 @@ function shortModel(m) {
     .replace('claude-', '')
     .replace('gemini-3-pro', 'Gemini-3-Pro')
     .replace('gemini-3-flash', 'Gemini-3-Flash')
+    .replace('gpt-5.3-', 'gpt-')
     .replace('gpt-5.2-', 'gpt-');
 }
 
@@ -3441,6 +3398,10 @@ function fmtTokens(n) {
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
   if (n >= 1_000) return (n / 1_000).toFixed(0) + 'k';
   return String(n);
+}
+
+function fmtUsd(n, digits = 2) {
+  return '$' + (Number(n || 0)).toFixed(digits);
 }
 
 async function loadCronCosts() {
@@ -3453,21 +3414,72 @@ async function loadCronCosts() {
   try {
     const data = await apiFetch('/ops/cron-costs');
     const s = data.summary || {};
+    const today = s.today || {};
+    summaryEl.textContent = `累计 ${s.totalRuns || 0} 次执行 · 总固定成本 ${fmtUsd(s.totalCronCost, 2)}（${fmtTokens(s.totalCronTokens || 0)} tokens） · 日均固定成本 ${fmtUsd(s.avgDailyCronCost, 2)} · 基线固定 ${fmtUsd(s.avgFixedBaselineCost, 2)} / 任务量波动 ${fmtUsd(s.avgWorkloadVariableCost, 2)} / 交互波动 ${fmtUsd(s.avgInteractiveVariableCost, 2)} · 今日固定 ${fmtUsd(today.cronCost, 2)}（${fmtTokens(today.cronTokens || 0)}） · 今日浮动 ${fmtUsd(today.interactiveCost, 2)} · ${s.days || 0} 天`;
 
-    summaryEl.textContent = `累计 ${s.totalRuns} 次执行 · 总花费 $${s.totalCronCost} · 日均固定成本 $${s.avgDailyCronCost} · ${s.days} 天`;
+    // Per-job cost table (each run + each day)
+    const jobs = data.jobs || [];
+    const review = data.review || {};
+    const rc = review.cron || {};
+    const ri = review.interactive || {};
+    const cov = review.coverage || {};
+    let html = `<div class="glass-card" style="padding:10px;margin-bottom:10px">
+      <div style="font-size:.8rem;font-weight:600;margin-bottom:6px">🔎 数据质量 Review</div>
+      <div style="font-size:.74rem;color:var(--text2);display:flex;gap:14px;flex-wrap:wrap">
+        <span>Cron finished: <b>${rc.finishedRuns || 0}</b></span>
+        <span>无 usage: <b style="color:${(rc.runsWithoutUsage || 0) > 0 ? '#fbbf24' : 'var(--green)'}">${rc.runsWithoutUsage || 0}</b></span>
+        <span>零 tokens: <b style="color:${(rc.runsWithZeroTokens || 0) > 0 ? '#fbbf24' : 'var(--green)'}">${rc.runsWithZeroTokens || 0}</b></span>
+        <span>交互覆盖天数: <b>${cov.daysWithInteractive || 0}/${cov.daysWithCron || 0}</b>（${cov.interactiveCoveragePct || 0}%）</span>
+        <span>交互 usage消息: <b>${ri.messagesWithUsage || 0}</b></span>
+      </div>
+      ${(review.notes || []).length > 0 ? `<div style="margin-top:6px;font-size:.72rem;color:#fbbf24">${(review.notes || []).map(n => `• ${escHtml(n)}`).join('<br>')}</div>` : ''}
+    </div>`;
 
-    // Per-job cost table
-    let html = '<table class="sessions-table"><thead><tr><th>Cron 任务</th><th>次数</th><th>$/次</th><th>总花费</th><th>模型</th></tr></thead><tbody>';
-    for (const j of data.jobs || []) {
+    html += '<table class="sessions-table"><thead><tr><th>Cron 任务</th><th>总次数</th><th>平均时长/次</th><th>Tokens/次</th><th>$/次</th><th>今日（tokens / $）</th><th>日均 $</th><th>总花费</th></tr></thead><tbody>';
+    for (const j of jobs) {
       html += `<tr>
-        <td style="font-weight:600;font-size:.78rem">${escHtml(j.name)}</td>
+        <td style="font-weight:600;font-size:.78rem">
+          ${escHtml(j.name)}
+          <div style="margin-top:4px"><span class="sess-model" style="border-color:${getModelColor(j.model)};color:${getModelColor(j.model)}">${shortModel(j.model)}</span></div>
+        </td>
         <td>${j.runs}</td>
-        <td style="color:${j.costPerRun > 0.2 ? '#fbbf24' : 'var(--green)'}">$${j.costPerRun.toFixed(3)}</td>
-        <td style="font-weight:600">$${j.totalCost.toFixed(2)}</td>
-        <td><span class="sess-model" style="border-color:${getModelColor(j.model)};color:${getModelColor(j.model)}">${shortModel(j.model)}</span></td>
+        <td>${j.avgDurationSec ? `${j.avgDurationSec.toFixed(1)}s` : '—'}</td>
+        <td>${fmtTokens(j.tokensPerRun || 0)}</td>
+        <td style="color:${j.costPerRun > 0.2 ? '#fbbf24' : 'var(--green)'}">${fmtUsd(j.costPerRun, 3)}</td>
+        <td>${fmtTokens(j.today?.tokens || 0)} / ${fmtUsd(j.today?.cost, 3)}</td>
+        <td>${fmtUsd(j.avgDailyCost, 3)}</td>
+        <td style="font-weight:600">${fmtUsd(j.totalCost, 2)}</td>
       </tr>`;
     }
     html += '</tbody></table>';
+
+    // Daily breakdown per cron (last 7 days)
+    if (jobs.length > 0) {
+      html += '<div style="margin-top:12px;display:grid;gap:8px">';
+      for (const j of jobs) {
+        const daily = (j.daily || []).slice(-7).reverse();
+        html += `<details class="glass-card" style="padding:10px">
+          <summary style="cursor:pointer;font-size:.78rem;font-weight:600">${escHtml(j.name)} · 最近 ${daily.length} 天每日成本</summary>
+          <div style="margin-top:8px;overflow:auto">
+            <table class="sessions-table" style="font-size:.74rem">
+              <thead><tr><th>日期</th><th>次数</th><th>Tokens</th><th>Tokens/次</th><th>$/次</th><th>当日总$</th></tr></thead>
+              <tbody>
+                ${daily.map(d => `<tr>
+                  <td>${d.date}</td>
+                  <td>${d.runs}</td>
+                  <td>${fmtTokens(d.tokens || 0)}</td>
+                  <td>${fmtTokens(d.tokensPerRun || 0)}</td>
+                  <td>${fmtUsd(d.costPerRun, 3)}</td>
+                  <td style="font-weight:600">${fmtUsd(d.cost, 3)}</td>
+                </tr>`).join('')}
+              </tbody>
+            </table>
+          </div>
+        </details>`;
+      }
+      html += '</div>';
+    }
+
     contentEl.innerHTML = html;
 
     // Trend chart: stacked bar (cron fixed + interactive variable)
@@ -3497,17 +3509,22 @@ async function loadCronCosts() {
 
       trend.forEach((d, i) => {
         const x = startX + i * ((W - startX) / trend.length) + 2;
-        const cronH = (d.cronCost / maxCost) * chartH;
+        const fixedH = ((d.fixedBaselineCost || 0) / maxCost) * chartH;
+        const cronVarH = ((d.workloadVariableCost || 0) / maxCost) * chartH;
         const interH = (d.interactiveCost / maxCost) * chartH;
         const baseY = 10 + chartH;
 
-        // Interactive (variable) — bottom
+        // Interactive variable — bottom
         ctx.fillStyle = 'rgba(124,92,252,0.6)';
-        ctx.fillRect(x, baseY - cronH - interH, barW, interH);
+        ctx.fillRect(x, baseY - interH, barW, interH);
 
-        // Cron (fixed) — top of stack
+        // Cron volume variable — middle
+        ctx.fillStyle = 'rgba(251,191,36,0.75)';
+        ctx.fillRect(x, baseY - interH - cronVarH, barW, cronVarH);
+
+        // Cron fixed baseline — top
         ctx.fillStyle = 'rgba(45,212,160,0.8)';
-        ctx.fillRect(x, baseY - cronH, barW, cronH);
+        ctx.fillRect(x, baseY - interH - cronVarH - fixedH, barW, fixedH);
 
         // Date label
         ctx.fillStyle = '#8b949e'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center';
@@ -3515,10 +3532,13 @@ async function loadCronCosts() {
 
         // Total label
         ctx.fillStyle = '#e6edf3'; ctx.font = 'bold 9px sans-serif';
-        ctx.fillText('$' + d.totalCost.toFixed(0), x + barW / 2, baseY - cronH - interH - 3);
+        ctx.fillText('$' + d.totalCost.toFixed(2), x + barW / 2, baseY - interH - cronVarH - fixedH - 3);
       });
 
-      legendEl.innerHTML = '<span style="color:#2dd4a0">■ Cron 固定成本</span><span style="color:#7c5cfc">■ 交互浮动成本</span>';
+      const avgFixed = trend.reduce((sum, d) => sum + (d.fixedCostSharePct || 0), 0) / trend.length;
+      legendEl.innerHTML = `<span style="color:#2dd4a0">■ 固定基线（Cron）</span><span style="color:#fbbf24">■ 任务量波动（Cron）</span><span style="color:#7c5cfc">■ 交互浮动成本</span><span style="color:#8b949e">固定占比均值 ${avgFixed.toFixed(0)}%</span>`;
+    } else if (legendEl) {
+      legendEl.textContent = '趋势数据不足（至少需要 2 天）';
     }
   } catch (e) {
     contentEl.innerHTML = `<p>${e.message}</p>`;
@@ -3695,13 +3715,12 @@ async function loadOpsAudit() {
 
 // ─── Ops Management Actions ───
 async function opsAction(action) {
-  const btnMap = { restart: 'btnRestart', backup: 'btnBackup', secaudit: 'btnSecAudit', cost: 'btnCostReport' };
-  const badgeMap = { restart: 'badgeRestart', backup: 'badgeBackup', secaudit: 'badgeSecAudit', cost: 'badgeCostReport' };
+  const btnMap = { backup: 'btnBackup', restore: 'btnRestore', updateOpenClaw: 'btnUpdateOpenClaw', restart: 'btnRestart' };
+  const badgeMap = { backup: 'badgeBackup', restore: 'badgeRestore', updateOpenClaw: 'badgeUpdateOpenClaw', restart: 'badgeRestart' };
   const btn = document.getElementById(btnMap[action]);
   const badge = document.getElementById(badgeMap[action]);
   const resultBox = document.getElementById('opsMgmtResult');
   const resultInner = document.getElementById('opsMgmtResultInner');
-  const costCard = document.getElementById('costReportCard');
 
   if (badge) badge.textContent = '⏳';
   if (btn) btn.classList.add('loading');
@@ -3718,33 +3737,48 @@ async function opsAction(action) {
       });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       if (badge) badge.textContent = '✅';
-      html = '<span style="color:var(--green)">✅ Gateway restart signal sent.</span>';
+      html = '<span style="color:var(--green)">✅ Restart signal sent to OpenClaw gateway.</span>';
 
     } else if (action === 'backup') {
       const data = await apiFetch('/backup', { method: 'POST' });
+      if (!data.ok) throw new Error(data.error || data.push?.error || 'backup failed');
       if (badge) badge.textContent = '✅';
-      html = `<span style="color:var(--green)">✅ Backup complete.</span><pre style="margin-top:8px;font-size:.75rem;color:var(--text2);white-space:pre-wrap;word-break:break-all">${escHtml(data.output || '')}</pre>`;
+      html = `<span style="color:var(--green)">✅ Backup + push completed.</span>
+        <div class="ops-cost-row"><span class="ops-cost-label">Remote</span><span class="ops-cost-value">${escHtml(data.push?.remote || 'n/a')}</span></div>
+        <div class="ops-cost-row"><span class="ops-cost-label">Branch</span><span class="ops-cost-value">${escHtml(data.push?.branch || 'n/a')}</span></div>
+        <pre style="margin-top:8px;font-size:.75rem;color:var(--text2);white-space:pre-wrap;word-break:break-all">${escHtml(data.output || '')}</pre>`;
 
-    } else if (action === 'secaudit') {
-      const data = await apiFetch('/ops/secaudit');
-      if (badge) badge.textContent = '✅';
-      html = `<span style="color:var(--green)">✅ Security Audit</span>
-        <div class="ops-cost-row"><span class="ops-cost-label">Cron Jobs</span><span class="ops-cost-value">${data.cronJobs}</span></div>
-        <div class="ops-cost-row"><span class="ops-cost-label">Sessions</span><span class="ops-cost-value">${data.sessions}</span></div>
-        <div class="ops-cost-row"><span class="ops-cost-label">Timestamp</span><span class="ops-cost-value">${new Date(data.timestamp).toLocaleString()}</span></div>`;
-
-    } else if (action === 'cost') {
-      const data = await apiFetch('/memory?file=heartbeat-state.json');
-      if (costCard) costCard.style.display = 'block';
-      const costContent = document.getElementById('costReportContent');
-      let rows = '';
-      if (data.lastIntelligenceScan) rows += `<div class="ops-cost-row"><span class="ops-cost-label">Last Intelligence Scan</span><span class="ops-cost-value">${escHtml(String(data.lastIntelligenceScan))}</span></div>`;
-      const costFields = Object.entries(data).filter(([k]) => k.toLowerCase().includes('cost') || k.toLowerCase().includes('spend') || k.toLowerCase().includes('token') || k.toLowerCase().includes('budget'));
-      for (const [k, v] of costFields) rows += `<div class="ops-cost-row"><span class="ops-cost-label">${escHtml(k)}</span><span class="ops-cost-value">${escHtml(typeof v === 'object' ? JSON.stringify(v) : String(v))}</span></div>`;
-      if (!rows) rows = '<div class="ops-cost-row" style="color:var(--text2)">No cost fields found in heartbeat-state.json</div>';
-      if (costContent) costContent.innerHTML = rows;
-      if (badge) badge.textContent = '✅';
-      html = '<span style="color:var(--green)">✅ Cost report loaded below.</span>';
+    } else if (action === 'restore') {
+      const ok = confirm('Load latest auto-backup now? This will overwrite current workspace changes.');
+      if (!ok) {
+        if (badge) badge.textContent = '';
+        html = '<span style="color:var(--text2)">Canceled.</span>';
+      } else {
+        const data = await apiFetch('/backup/load', { method: 'POST' });
+        if (badge) badge.textContent = '✅';
+        html = `<span style="color:var(--green)">✅ Backup loaded.</span>
+          <div class="ops-cost-row"><span class="ops-cost-label">Commit</span><span class="ops-cost-value">${escHtml((data.restoredCommit || '').slice(0, 12) || 'n/a')}</span></div>
+          <pre style="margin-top:8px;font-size:.75rem;color:var(--text2);white-space:pre-wrap;word-break:break-all">${escHtml(data.output || '')}</pre>`;
+      }
+    } else if (action === 'updateOpenClaw') {
+      const ok = confirm('Run OpenClaw update now? This will write memory, backup, push, then update.');
+      if (!ok) {
+        if (badge) badge.textContent = '';
+        html = '<span style="color:var(--text2)">Canceled.</span>';
+      } else {
+        const data = await apiFetch('/ops/update-openclaw', { method: 'POST' });
+        if (!data.ok) throw new Error('Update flow failed. See details below.');
+        if (badge) badge.textContent = '✅';
+        const stepRows = (data.steps || []).map(s =>
+          `<div class="ops-cost-row"><span class="ops-cost-label">${escHtml(s.step || 'step')}</span><span class="ops-cost-value">${s.ok ? '✅ ok' : '❌ failed'}</span></div>`
+        ).join('');
+        const updateStep = (data.steps || []).find(s => s.step === 'update_openclaw') || {};
+        html = `<span style="color:var(--green)">✅ OpenClaw updated successfully.</span>
+          ${stepRows}
+          <div class="ops-cost-row"><span class="ops-cost-label">Before</span><span class="ops-cost-value">${escHtml(updateStep.beforeVersion || 'n/a')}</span></div>
+          <div class="ops-cost-row"><span class="ops-cost-label">After</span><span class="ops-cost-value">${escHtml(updateStep.afterVersion || 'n/a')}</span></div>
+          <pre style="margin-top:8px;font-size:.75rem;color:var(--text2);white-space:pre-wrap;word-break:break-all">${escHtml(updateStep.output || '')}</pre>`;
+      }
     }
 
     if (resultInner) resultInner.innerHTML = html;

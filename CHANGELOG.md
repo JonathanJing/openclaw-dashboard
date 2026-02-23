@@ -1,5 +1,41 @@
 # Changelog
 
+## [2.1.0] - 2026-02-22
+
+### 🎯 Dashboard UX and Information Architecture
+- Added per-channel default model settings for sessions
+- Added model selector dropdowns for both Sessions and Cron jobs
+- Introduced task-model fit dashboard and redesigned Cron Runs view
+- Added always-visible system info bar above active sessions
+- Renamed product branding to `Jony's OpenClaw Dashboard`
+- Added mobile display of `匹配` column and improved model/token visibility on smaller screens
+
+### 💸 Cost Analytics Enhancements
+- Added cron cost analysis with fixed vs variable cost trend view
+- Updated card and breakdown calculations to use provider `cost.total`
+- Included `cacheRead` and `cacheWrite` tokens in cost estimation
+- Corrected header card totals by sourcing daily aggregates from `/ops/sessions`
+- Improved model breakdown and token count consistency across panels
+
+### ⏰ Cron and Operations Improvements
+- Fixed Cron Runs panel field mapping (`name`, `last.startedAt`, `last.endedAt`)
+- Improved cron/subagent naming with more user-friendly labels
+- Removed duplicate cron entries and improved sorting/audit consistency
+
+### 📱 Mobile and PWA
+- Added `apple-touch-icon` PNG asset (180x180) for iOS home screen
+- Added PWA icon + manifest support for Add to Home Screen flow
+- Added iPhone 17 Pro targeted layout and spacing optimizations
+- Added Chinese Discord channel naming support in UI lists
+
+### 🔒 Security and Reliability Fixes
+- Improved OpenClaw version detection (`2>&1` handling + `package.json` fallback)
+- Ensured Discord channel names resolve fully in dashboard views
+- Added API key masking improvements for `/ops/config` responses
+
+### 🧹 Maintenance
+- Removed `README-JONY.md` from repository
+
 ## [2.0.0] - 2026-02-22
 
 ### 🏗️ Architecture Overhaul

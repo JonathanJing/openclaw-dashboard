@@ -34,6 +34,8 @@ const CRON_STORE_PATH = path.join(process.env.HOME || '', '.openclaw', 'cron', '
 const CRON_RUNS_DIR = path.join(process.env.HOME || '', '.openclaw', 'cron', 'runs');
 const GATEWAY_HOOKS_URL = 'http://127.0.0.1:18789/hooks';
 const SESSIONS_JSON = path.join(process.env.HOME || '', '.openclaw', 'agents', 'main', 'sessions', 'sessions.json');
+const BACKUP_REMOTE = process.env.OPENCLAW_BACKUP_REMOTE || 'origin';
+const BACKUP_BRANCH = process.env.OPENCLAW_BACKUP_BRANCH || '';
 // Load keys from keys.env if not in env
 function loadKeysEnv() {
   try {
@@ -1116,6 +1118,14 @@ function handleCronToday(req, res, method) {
     const lastDuration = lastRun?.durationMs || job.state?.lastDurationMs || null;
     const lastStatus = (lastRun?.status || job.state?.lastStatus || null);
     const lastEnded = lastStarted && lastDuration ? lastStarted + lastDuration : null;
+    const runUsage = lastRun?.usage || null;
+    const inputTokens = runUsage
+      ? (runUsage.input_tokens || runUsage.input || 0) + (runUsage.cache_read_tokens || runUsage.cacheRead || 0) + (runUsage.cache_write_tokens || runUsage.cacheWrite || 0)
+      : 0;
+    const outputTokens = runUsage ? (runUsage.output_tokens || runUsage.output || 0) : 0;
+    const totalTokens = runUsage ? (runUsage.total_tokens || runUsage.totalTokens || (inputTokens + outputTokens)) : null;
+    const runModel = lastRun?.model || job?.payload?.model || null;
+    const costUsd = runUsage ? estimateCost(runModel, totalTokens || 0, inputTokens, outputTokens, runUsage.cost) : null;
 
     const nextRun = job.state?.nextRunAtMs || lastRun?.nextRunAtMs || computeNextRun(job.schedule, lastStarted);
 
@@ -1133,6 +1143,11 @@ function handleCronToday(req, res, method) {
         startedAt: lastStarted,
         endedAt: lastEnded,
         durationMs: lastDuration,
+        model: runModel,
+        tokens: totalTokens,
+        inputTokens,
+        outputTokens,
+        costUsd,
       }
     });
   });
@@ -1217,8 +1232,10 @@ async function notionCount(dbId, startIso, endIso) {
 // Per 1M tokens: [input_cost, output_cost]
 const MODEL_COSTS_IO = {
   'claude-opus-4-6': [15, 75], 'claude-sonnet-4-6': [3, 15],
+  'gpt-5.3-codex': [2.5, 10], 'gpt-5.3': [2.5, 10],
   'gpt-5.2-codex': [2.5, 10], 'gpt-5.2': [2.5, 10],
-  'gemini-3-pro-preview': [2, 12], 'gemini-3-flash-preview': [0.5, 3],
+  'gemini-3.1-pro': [2, 12], 'gemini-3-pro-preview': [2, 12],
+  'gemini-3.0-flash': [0.5, 3], 'gemini-3-flash-preview': [0.5, 3],
 };
 
 // estimateCost: prefer provider-reported cost.total, then input/output/cache split, then fallback
@@ -1517,31 +1534,197 @@ let _auditCache = null;
 let _auditCacheAt = 0;
 const AUDIT_CACHE_TTL = 300_000;
 
-// ─── POST /backup ───
-async function handleBackup(req, res, method) {
-  if (method !== 'POST') return errorReply(res, 405, 'Method not allowed');
-  const { spawn } = require('child_process');
+function runCmd(command, args, opts = {}) {
+  const { execFileSync } = require('child_process');
   try {
-    const output = await new Promise((resolve, reject) => {
-      const proc = spawn('git', ['-C', WORKSPACE, 'add', '-A'], { shell: false });
-      let out = '';
-      proc.stdout.on('data', d => out += d);
-      proc.stderr.on('data', d => out += d);
-      proc.on('close', code => {
-        if (code !== 0) { resolve('git add exit ' + code + '\n' + out); return; }
-        const commit = spawn('git', ['-C', WORKSPACE, 'commit', '-m', 'auto-backup', '--allow-empty'], { shell: false });
-        let out2 = out;
-        commit.stdout.on('data', d => out2 += d);
-        commit.stderr.on('data', d => out2 += d);
-        commit.on('close', () => resolve(out2));
-        commit.on('error', reject);
-      });
-      proc.on('error', reject);
+    const output = execFileSync(command, args, {
+      encoding: 'utf8',
+      timeout: opts.timeout || 15000,
+      cwd: opts.cwd,
+      env: opts.env || process.env,
+      stdio: ['ignore', 'pipe', 'pipe'],
     });
-    return jsonReply(res, 200, { ok: true, output });
+    return { ok: true, output: output || '' };
   } catch (e) {
-    return jsonReply(res, 500, { ok: false, error: e.message });
+    const stdout = (e && e.stdout) ? String(e.stdout) : '';
+    const stderr = (e && e.stderr) ? String(e.stderr) : '';
+    return { ok: false, error: e.message, output: `${stdout}${stderr}`.trim() };
   }
+}
+
+function appendOpsMemory(event, detail = {}) {
+  try {
+    fs.mkdirSync(MEMORY_DIR, { recursive: true });
+    const filePath = path.join(MEMORY_DIR, 'ops-events.jsonl');
+    const row = JSON.stringify({ ts: new Date().toISOString(), event, ...detail });
+    fs.appendFileSync(filePath, row + '\n', 'utf8');
+    return { ok: true, filePath };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+}
+
+function detectOpenClawTargetFromCron() {
+  try {
+    const cron = JSON.parse(fs.readFileSync(CRON_STORE_PATH, 'utf8'));
+    const jobs = Array.isArray(cron?.jobs) ? cron.jobs : [];
+    for (const job of jobs) {
+      const payload = job?.payload || {};
+      if (typeof payload.openclawVersion === 'string' && payload.openclawVersion.trim()) {
+        return { source: `cron:${job.name || job.id}`, target: payload.openclawVersion.trim() };
+      }
+      if (typeof payload.message !== 'string') continue;
+      const msg = payload.message;
+      const versionMatch = msg.match(/openclaw@([A-Za-z0-9._-]+)/i);
+      if (versionMatch && versionMatch[1]) {
+        return { source: `cron:${job.name || job.id}`, target: versionMatch[1] };
+      }
+      if (/brew\s+upgrade\s+openclaw/i.test(msg)) {
+        return { source: `cron:${job.name || job.id}`, target: 'brew' };
+      }
+    }
+  } catch {}
+  return { source: 'default', target: 'latest' };
+}
+
+function runBackupAndPush() {
+  const logs = [];
+  const addRes = runCmd('git', ['-C', WORKSPACE, 'add', '-A'], { timeout: 20000 });
+  logs.push(`$ git add -A\n${addRes.output || '(no output)'}`);
+  if (!addRes.ok) return { ok: false, output: logs.join('\n\n'), push: { ok: false } };
+
+  const commitRes = runCmd('git', ['-C', WORKSPACE, 'commit', '-m', 'auto-backup', '--allow-empty'], { timeout: 20000 });
+  logs.push(`$ git commit -m auto-backup --allow-empty\n${commitRes.output || '(no output)'}`);
+  if (!commitRes.ok) return { ok: false, output: logs.join('\n\n'), push: { ok: false } };
+
+  const branchRes = runCmd('git', ['-C', WORKSPACE, 'rev-parse', '--abbrev-ref', 'HEAD'], { timeout: 8000 });
+  const branch = (BACKUP_BRANCH || branchRes.output || 'main').trim();
+  const remote = BACKUP_REMOTE;
+
+  const remoteRes = runCmd('git', ['-C', WORKSPACE, 'remote', 'get-url', remote], { timeout: 8000 });
+  if (!remoteRes.ok) {
+    logs.push(`$ git remote get-url ${remote}\n${remoteRes.output || remoteRes.error}`);
+    return {
+      ok: false,
+      output: logs.join('\n\n'),
+      push: { ok: false, remote, branch, error: `remote "${remote}" not found` },
+    };
+  }
+
+  const pushRes = runCmd('git', ['-C', WORKSPACE, 'push', remote, `HEAD:${branch}`], { timeout: 45000 });
+  logs.push(`$ git push ${remote} HEAD:${branch}\n${pushRes.output || '(no output)'}`);
+  return {
+    ok: pushRes.ok,
+    output: logs.join('\n\n'),
+    push: { ok: pushRes.ok, remote, branch, error: pushRes.ok ? '' : (pushRes.error || pushRes.output || 'push failed') },
+  };
+}
+
+function handleOpsUpdateOpenClaw(req, res, method) {
+  if (method !== 'POST') return errorReply(res, 405, 'Method not allowed');
+  const report = {
+    ok: true,
+    timestamp: new Date().toISOString(),
+    steps: [],
+  };
+
+  // 1) Write memory event before update
+  const memStart = appendOpsMemory('openclaw-update-started', { source: 'dashboard-operations' });
+  report.steps.push({
+    step: 'write_memory',
+    ok: memStart.ok,
+    detail: memStart.ok ? memStart.filePath : memStart.error,
+  });
+  if (!memStart.ok) report.ok = false;
+
+  // 2) Backup + 3) push to backup repo
+  const backupRes = runBackupAndPush();
+  report.steps.push({
+    step: 'backup_and_push',
+    ok: backupRes.ok,
+    detail: backupRes.push,
+    output: backupRes.output,
+  });
+  if (!backupRes.ok) {
+    report.ok = false;
+    appendOpsMemory('openclaw-update-blocked', { reason: 'backup_or_push_failed', detail: backupRes.push });
+    return jsonReply(res, 500, report);
+  }
+
+  // 4) Update OpenClaw (prefer cron-specified target if present)
+  const before = runCmd('/bin/sh', ['-lc', '/opt/homebrew/bin/openclaw --version 2>&1 || openclaw --version 2>&1'], { timeout: 10000 });
+  const target = detectOpenClawTargetFromCron();
+  let updateRes;
+  if (target.target === 'brew') {
+    updateRes = runCmd('/bin/sh', ['-lc', 'brew upgrade openclaw'], { timeout: 180000 });
+  } else {
+    const pkg = `openclaw@${target.target || 'latest'}`;
+    updateRes = runCmd('/bin/sh', ['-lc', `npm install -g ${pkg}`], { timeout: 180000 });
+    if (!updateRes.ok && (!target.target || target.target === 'latest')) {
+      // Fallback for Homebrew-managed installs
+      updateRes = runCmd('/bin/sh', ['-lc', 'brew upgrade openclaw'], { timeout: 180000 });
+    }
+  }
+  const after = runCmd('/bin/sh', ['-lc', '/opt/homebrew/bin/openclaw --version 2>&1 || openclaw --version 2>&1'], { timeout: 10000 });
+
+  report.steps.push({
+    step: 'update_openclaw',
+    ok: updateRes.ok,
+    target,
+    beforeVersion: (before.output || '').trim(),
+    afterVersion: (after.output || '').trim(),
+    output: updateRes.output || updateRes.error || '',
+  });
+  if (!updateRes.ok) report.ok = false;
+
+  appendOpsMemory('openclaw-update-finished', {
+    ok: report.ok,
+    target,
+    beforeVersion: (before.output || '').trim(),
+    afterVersion: (after.output || '').trim(),
+  });
+
+  return jsonReply(res, report.ok ? 200 : 500, report);
+}
+
+// ─── POST /backup and POST /backup/load ───
+async function handleBackup(req, res, method, segments) {
+  if (method !== 'POST') return errorReply(res, 405, 'Method not allowed');
+  const { execFileSync } = require('child_process');
+  if (segments[1] === 'load') {
+    try {
+      const log = execFileSync('git', ['-C', WORKSPACE, 'log', '--pretty=format:%H\t%s', '-n', '80'], {
+        encoding: 'utf8',
+        timeout: 5000,
+      });
+      const latestAuto = (log || '')
+        .split('\n')
+        .map(line => line.trim())
+        .find(line => line.includes('\tauto-backup'));
+      if (!latestAuto) return errorReply(res, 404, 'No auto-backup commit found');
+
+      const [commitHash] = latestAuto.split('\t');
+      const resetOutput = execFileSync('git', ['-C', WORKSPACE, 'reset', '--hard', commitHash], {
+        encoding: 'utf8',
+        timeout: 10000,
+      });
+      return jsonReply(res, 200, {
+        ok: true,
+        restoredCommit: commitHash,
+        output: resetOutput || `HEAD is now at ${commitHash.slice(0, 12)}`,
+      });
+    } catch (e) {
+      return jsonReply(res, 500, { ok: false, error: e.message });
+    }
+  }
+
+  const result = runBackupAndPush();
+  return jsonReply(res, result.ok ? 200 : 500, {
+    ok: result.ok,
+    output: result.output,
+    push: result.push,
+    timestamp: new Date().toISOString(),
+  });
 }
 
 // ─── GET /memory?file=<filename> ───
@@ -1992,65 +2175,126 @@ function handleOpsCronCosts(req, res, method) {
 
   let jobs;
   try { jobs = JSON.parse(fs.readFileSync(CRON_STORE_PATH, 'utf8')).jobs || []; } catch { jobs = []; }
-  const jobMap = {};
-  jobs.forEach(j => jobMap[j.id] = j.name || j.id.slice(0, 8));
 
-  const files = fs.readdirSync(CRON_RUNS_DIR).filter(f => f.endsWith('.jsonl'));
-  const byJob = {};
-  const byDay = {};
+  const dayKeyPst = (ts) => {
+    const t = Number(ts);
+    if (!Number.isFinite(t)) return null;
+    return new Date(t).toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
+  };
+  const todayPst = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
 
-  for (const f of files) {
+  const jobMeta = {};
+  jobs.forEach((j) => {
+    jobMeta[j.id] = {
+      name: j.name || j.id.slice(0, 8),
+      model: j?.payload?.model || null,
+    };
+  });
+
+  const byJobId = {}; // jobId -> aggregate
+  const byDay = {};   // day -> cron totals
+  const cronReview = {
+    filesScanned: 0,
+    finishedRuns: 0,
+    runsWithUsage: 0,
+    runsWithoutUsage: 0,
+    runsWithZeroTokens: 0,
+  };
+
+  const cronFiles = fs.existsSync(CRON_RUNS_DIR)
+    ? fs.readdirSync(CRON_RUNS_DIR).filter(f => f.endsWith('.jsonl'))
+    : [];
+
+  for (const f of cronFiles) {
+    cronReview.filesScanned++;
     const jobId = f.replace('.jsonl', '');
-    const name = jobMap[jobId] || jobId.slice(0, 8);
+    const meta = jobMeta[jobId] || { name: jobId.slice(0, 8), model: null };
     let lines;
-    try { lines = fs.readFileSync(path.join(CRON_RUNS_DIR, f), 'utf8').trim().split('\n'); } catch { continue; }
+    try {
+      const raw = fs.readFileSync(path.join(CRON_RUNS_DIR, f), 'utf8').trim();
+      lines = raw ? raw.split('\n') : [];
+    } catch { continue; }
 
     for (const l of lines) {
       try {
         const j = JSON.parse(l);
         if (j.action !== 'finished') continue;
+        cronReview.finishedRuns++;
         const u = j.usage || {};
+        if (!j.usage) {
+          cronReview.runsWithoutUsage++;
+          continue;
+        }
         const inp = u.input_tokens || u.input || 0;
         const out = u.output_tokens || u.output || 0;
-        const cost = estimateCost(j.model, (u.total_tokens || u.totalTokens || 0), inp, out, u.cost);
-        const ts = j.startedAt || j.ts || Date.now();
-        const day = new Date(ts).toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
+        const totalTokens = u.total_tokens || u.totalTokens || (inp + out);
+        if (totalTokens <= 0) {
+          cronReview.runsWithZeroTokens++;
+          continue;
+        }
+        cronReview.runsWithUsage++;
+        const runCost = estimateCost(j.model || meta.model, totalTokens, inp, out, u.cost);
+        const ts = j.startedAt || j.ts || j.runAtMs || Date.now();
+        const day = dayKeyPst(ts);
+        if (!day) continue;
 
-        if (!byJob[name]) byJob[name] = { runs: 0, totalCost: 0, model: j.model || 'unknown', avgDurationMs: 0, totalDurationMs: 0 };
-        byJob[name].runs++;
-        byJob[name].totalCost += cost;
-        byJob[name].totalDurationMs += j.durationMs || 0;
+        if (!byJobId[jobId]) {
+          byJobId[jobId] = {
+            id: jobId,
+            name: meta.name,
+            model: j.model || meta.model || 'unknown',
+            runs: 0,
+            totalCost: 0,
+            totalTokens: 0,
+            totalInputTokens: 0,
+            totalOutputTokens: 0,
+            totalDurationMs: 0,
+            byDay: {},
+          };
+        }
+        const row = byJobId[jobId];
+        row.runs++;
+        row.totalCost += runCost;
+        row.totalTokens += totalTokens;
+        row.totalInputTokens += inp;
+        row.totalOutputTokens += out;
+        row.totalDurationMs += (j.durationMs || 0);
+        if (j.model && row.model === 'unknown') row.model = j.model;
 
-        if (!byDay[day]) byDay[day] = { cronCost: 0, cronRuns: 0 };
-        byDay[day].cronCost += cost;
+        if (!row.byDay[day]) row.byDay[day] = { date: day, runs: 0, cost: 0, tokens: 0, inputTokens: 0, outputTokens: 0 };
+        row.byDay[day].runs++;
+        row.byDay[day].cost += runCost;
+        row.byDay[day].tokens += totalTokens;
+        row.byDay[day].inputTokens += inp;
+        row.byDay[day].outputTokens += out;
+
+        if (!byDay[day]) byDay[day] = { cronCost: 0, cronRuns: 0, cronTokens: 0, cronInputTokens: 0, cronOutputTokens: 0 };
+        byDay[day].cronCost += runCost;
         byDay[day].cronRuns++;
+        byDay[day].cronTokens += totalTokens;
+        byDay[day].cronInputTokens += inp;
+        byDay[day].cronOutputTokens += out;
       } catch {}
     }
   }
 
-  // Compute per-job averages
-  const jobStats = Object.entries(byJob).map(([name, d]) => ({
-    name, runs: d.runs, totalCost: +d.totalCost.toFixed(4),
-    costPerRun: +(d.totalCost / d.runs).toFixed(4),
-    model: d.model,
-    avgDurationSec: +(d.totalDurationMs / d.runs / 1000).toFixed(1),
-  })).sort((a, b) => b.totalCost - a.totalCost);
-
-  // Merge with alltime daily data for fixed vs variable trend
-  // Get total daily cost from alltime cache or compute
-  const dailyTrend = [];
-  const sortedDays = Object.keys(byDay).sort();
-
-  // Try to get total daily costs from session JSONL (reuse alltime logic)
-  let totalDailyMap = {};
+  // Interactive daily cost/tokens map (for fixed vs variable trend)
+  const interactiveByDay = {};
+  const interactiveReview = {
+    sessionFilesScanned: 0,
+    sessionFilesWithReadErrors: 0,
+    messagesWithUsage: 0,
+    messagesWithNonZeroTokens: 0,
+    messagesWithZeroTokens: 0,
+  };
   try {
-    // Quick scan: read alltime endpoint data
     const sessions = JSON.parse(fs.readFileSync(SESSIONS_JSON, 'utf8'));
-    for (const [key, sess] of Object.entries(sessions)) {
-      if (!sess.sessionFile) continue;
+    for (const sess of Object.values(sessions)) {
+      if (!sess || !sess.sessionFile) continue;
       try {
+        interactiveReview.sessionFilesScanned++;
         const stat = fs.statSync(sess.sessionFile);
-        const readSize = Math.min(1_000_000, stat.size);
+        const readSize = Math.min(5_000_000, stat.size);
         const buf = Buffer.alloc(readSize);
         const fd = fs.openSync(sess.sessionFile, 'r');
         fs.readSync(fd, buf, 0, readSize, Math.max(0, stat.size - readSize));
@@ -2060,41 +2304,160 @@ function handleOpsCronCosts(req, res, method) {
           if (!line.includes('"usage"')) continue;
           try {
             const j = JSON.parse(line);
-            if (j.type !== 'message' || !j.message?.usage) continue;
+            if (j.type !== 'message' || !j.message?.usage || !j.timestamp) continue;
             const u = j.message.usage;
+            interactiveReview.messagesWithUsage++;
+            const inp = (u.input || 0) + (u.cacheRead || 0) + (u.cacheWrite || 0);
+            const out = u.output || 0;
+            const totalTokens = u.totalTokens || (inp + out);
+            if (totalTokens <= 0) {
+              interactiveReview.messagesWithZeroTokens++;
+              continue;
+            }
+            interactiveReview.messagesWithNonZeroTokens++;
             const day = new Date(j.timestamp).toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
-            const cost = estimateCost(j.message.model, u.totalTokens || 0,
-              (u.input || 0) + (u.cacheRead || 0) + (u.cacheWrite || 0), u.output || 0, u.cost);
-            totalDailyMap[day] = (totalDailyMap[day] || 0) + cost;
+            const cost = estimateCost(j.message.model, totalTokens, inp, out, u.cost);
+            if (!interactiveByDay[day]) {
+              interactiveByDay[day] = { interactiveCost: 0, interactiveTokens: 0, interactiveInputTokens: 0, interactiveOutputTokens: 0 };
+            }
+            interactiveByDay[day].interactiveCost += cost;
+            interactiveByDay[day].interactiveTokens += totalTokens;
+            interactiveByDay[day].interactiveInputTokens += inp;
+            interactiveByDay[day].interactiveOutputTokens += out;
           } catch {}
         }
-      } catch {}
+      } catch {
+        interactiveReview.sessionFilesWithReadErrors++;
+      }
     }
   } catch {}
 
-  for (const day of sortedDays) {
-    const cron = byDay[day].cronCost;
-    const total = totalDailyMap[day] || cron;
-    dailyTrend.push({
-      date: day,
-      cronCost: +cron.toFixed(2),
-      cronRuns: byDay[day].cronRuns,
-      totalCost: +total.toFixed(2),
-      interactiveCost: +((total - cron) > 0 ? (total - cron) : 0).toFixed(2),
-    });
-  }
+  const allDays = Array.from(new Set([...Object.keys(byDay), ...Object.keys(interactiveByDay)])).sort();
+  const recentDays = allDays.slice(-30);
+  const median = (arr) => {
+    if (!arr || arr.length === 0) return 0;
+    const sorted = [...arr].sort((a, b) => a - b);
+    const mid = Math.floor(sorted.length / 2);
+    return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+  };
 
+  const dailyTrend = recentDays.map((day, idx) => {
+    const cron = byDay[day] || { cronCost: 0, cronRuns: 0, cronTokens: 0, cronInputTokens: 0, cronOutputTokens: 0 };
+    const inter = interactiveByDay[day] || { interactiveCost: 0, interactiveTokens: 0, interactiveInputTokens: 0, interactiveOutputTokens: 0 };
+    const lookbackDays = recentDays.slice(Math.max(0, idx - 7), idx);
+    const lookbackCronCosts = lookbackDays.map(d => (byDay[d]?.cronCost || 0)).filter(v => v > 0);
+    const baselineCandidate = lookbackCronCosts.length > 0 ? median(lookbackCronCosts) : cron.cronCost;
+    const fixedBaselineCost = Math.min(cron.cronCost, baselineCandidate);
+    const workloadVariableCost = Math.max(0, cron.cronCost - fixedBaselineCost);
+    const totalCost = cron.cronCost + inter.interactiveCost;
+    const totalVariableCost = workloadVariableCost + inter.interactiveCost;
+    return {
+      date: day,
+      cronRuns: cron.cronRuns,
+      cronCost: +cron.cronCost.toFixed(4),
+      fixedBaselineCost: +fixedBaselineCost.toFixed(4),
+      workloadVariableCost: +workloadVariableCost.toFixed(4),
+      cronTokens: Math.round(cron.cronTokens),
+      cronInputTokens: Math.round(cron.cronInputTokens),
+      cronOutputTokens: Math.round(cron.cronOutputTokens),
+      interactiveCost: +inter.interactiveCost.toFixed(4),
+      interactiveTokens: Math.round(inter.interactiveTokens),
+      interactiveInputTokens: Math.round(inter.interactiveInputTokens),
+      interactiveOutputTokens: Math.round(inter.interactiveOutputTokens),
+      totalCost: +totalCost.toFixed(4),
+      totalVariableCost: +totalVariableCost.toFixed(4),
+      fixedCostSharePct: totalCost > 0 ? +((cron.cronCost / totalCost) * 100).toFixed(1) : 0,
+    };
+  });
+
+  const jobStats = Object.values(byJobId).map((j) => {
+    const days = Object.keys(j.byDay).sort();
+    const today = j.byDay[todayPst] || { runs: 0, cost: 0, tokens: 0, inputTokens: 0, outputTokens: 0 };
+    const daily = days.map((d) => ({
+      date: d,
+      runs: j.byDay[d].runs,
+      cost: +j.byDay[d].cost.toFixed(4),
+      tokens: Math.round(j.byDay[d].tokens),
+      inputTokens: Math.round(j.byDay[d].inputTokens),
+      outputTokens: Math.round(j.byDay[d].outputTokens),
+      costPerRun: j.byDay[d].runs > 0 ? +(j.byDay[d].cost / j.byDay[d].runs).toFixed(4) : 0,
+      tokensPerRun: j.byDay[d].runs > 0 ? Math.round(j.byDay[d].tokens / j.byDay[d].runs) : 0,
+    }));
+
+    return {
+      id: j.id,
+      name: j.name,
+      model: j.model,
+      runs: j.runs,
+      totalTokens: Math.round(j.totalTokens),
+      totalInputTokens: Math.round(j.totalInputTokens),
+      totalOutputTokens: Math.round(j.totalOutputTokens),
+      totalCost: +j.totalCost.toFixed(4),
+      costPerRun: j.runs > 0 ? +(j.totalCost / j.runs).toFixed(4) : 0,
+      tokensPerRun: j.runs > 0 ? Math.round(j.totalTokens / j.runs) : 0,
+      avgDurationSec: j.runs > 0 ? +(j.totalDurationMs / j.runs / 1000).toFixed(1) : 0,
+      activeDays: days.length,
+      avgDailyCost: days.length > 0 ? +(j.totalCost / days.length).toFixed(4) : 0,
+      avgDailyTokens: days.length > 0 ? Math.round(j.totalTokens / days.length) : 0,
+      today: {
+        runs: today.runs,
+        cost: +today.cost.toFixed(4),
+        tokens: Math.round(today.tokens),
+        inputTokens: Math.round(today.inputTokens),
+        outputTokens: Math.round(today.outputTokens),
+      },
+      daily,
+    };
+  }).sort((a, b) => b.totalCost - a.totalCost);
+
+  const totalRuns = jobStats.reduce((s, j) => s + j.runs, 0);
   const totalCronCost = jobStats.reduce((s, j) => s + j.totalCost, 0);
-  const avgDailyCron = sortedDays.length > 0 ? totalCronCost / sortedDays.length : 0;
+  const totalCronTokens = jobStats.reduce((s, j) => s + j.totalTokens, 0);
+  const daysWithCron = Object.keys(byDay).length;
+  const daysWithInteractive = Object.keys(interactiveByDay).length;
+  const todayCron = byDay[todayPst] || { cronCost: 0, cronRuns: 0, cronTokens: 0 };
+  const todayInteractive = interactiveByDay[todayPst] || { interactiveCost: 0, interactiveTokens: 0 };
+  const avgFixedBaselineCost = dailyTrend.length > 0 ? dailyTrend.reduce((s, d) => s + (d.fixedBaselineCost || 0), 0) / dailyTrend.length : 0;
+  const avgWorkloadVariableCost = dailyTrend.length > 0 ? dailyTrend.reduce((s, d) => s + (d.workloadVariableCost || 0), 0) / dailyTrend.length : 0;
+  const avgInteractiveVariableCost = dailyTrend.length > 0 ? dailyTrend.reduce((s, d) => s + (d.interactiveCost || 0), 0) / dailyTrend.length : 0;
+  const notes = [];
+  if (cronReview.runsWithoutUsage > 0) notes.push('Some cron finished runs have no usage payload (likely failed before model call).');
+  if (cronReview.runsWithZeroTokens > 0) notes.push('Some cron runs report usage with zero tokens and were excluded from cost totals.');
+  if (interactiveReview.messagesWithZeroTokens > 0) notes.push('Some interactive assistant messages have zero tokens (delivery-mirror/error responses).');
+  if (daysWithInteractive < Math.max(1, daysWithCron / 2)) notes.push('Interactive coverage is sparse for recent days; variable trend may be underestimated.');
 
   return jsonReply(res, 200, {
     jobs: jobStats,
     dailyTrend,
     summary: {
-      totalCronCost: +totalCronCost.toFixed(2),
-      avgDailyCronCost: +avgDailyCron.toFixed(2),
-      totalRuns: jobStats.reduce((s, j) => s + j.runs, 0),
-      days: sortedDays.length,
+      totalRuns,
+      totalCronCost: +totalCronCost.toFixed(4),
+      totalCronTokens: Math.round(totalCronTokens),
+      days: daysWithCron,
+      avgDailyCronCost: daysWithCron > 0 ? +(totalCronCost / daysWithCron).toFixed(4) : 0,
+      avgDailyCronTokens: daysWithCron > 0 ? Math.round(totalCronTokens / daysWithCron) : 0,
+      avgFixedBaselineCost: +avgFixedBaselineCost.toFixed(4),
+      avgWorkloadVariableCost: +avgWorkloadVariableCost.toFixed(4),
+      avgInteractiveVariableCost: +avgInteractiveVariableCost.toFixed(4),
+      today: {
+        date: todayPst,
+        cronRuns: todayCron.cronRuns || 0,
+        cronCost: +(todayCron.cronCost || 0).toFixed(4),
+        cronTokens: Math.round(todayCron.cronTokens || 0),
+        interactiveCost: +(todayInteractive.interactiveCost || 0).toFixed(4),
+        interactiveTokens: Math.round(todayInteractive.interactiveTokens || 0),
+        totalCost: +((todayCron.cronCost || 0) + (todayInteractive.interactiveCost || 0)).toFixed(4),
+      },
+    },
+    review: {
+      cron: cronReview,
+      interactive: interactiveReview,
+      coverage: {
+        daysWithCron,
+        daysWithInteractive,
+        interactiveCoveragePct: daysWithCron > 0 ? +((daysWithInteractive / daysWithCron) * 100).toFixed(1) : 0,
+      },
+      notes,
     },
   });
 }
@@ -2511,9 +2874,10 @@ button:active{opacity:.8}
     if (root === 'ops' && segments[1] === 'cron') return handleOpsCron(req, res, method);
     if (root === 'ops' && segments[1] === 'cron-costs') return handleOpsCronCosts(req, res, method);
     if (root === 'ops' && segments[1] === 'system') return handleOpsSystem(req, res, method);
+    if (root === 'ops' && segments[1] === 'update-openclaw') return handleOpsUpdateOpenClaw(req, res, method);
     if (root === 'ops' && segments[1] === 'session-model') return handleOpsSessionModel(req, res, method);
     if (root === 'ops' && segments[1] === 'cron-model') return handleOpsCronModel(req, res, method);
-    if (root === 'backup') return handleBackup(req, res, method);
+    if (root === 'backup') return handleBackup(req, res, method, segments);
     if (root === 'memory') return handleMemory(req, res, method, parsed);
     return errorReply(res, 404, 'Not found');
   } catch (e) {
