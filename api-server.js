@@ -11,11 +11,12 @@ const url = require('url');
 const PORT = parseInt(process.env.DASHBOARD_PORT || '18791', 10);
 const AUTH_TOKEN = process.env.OPENCLAW_AUTH_TOKEN || '';
 const WORKSPACE = process.env.OPENCLAW_WORKSPACE || '/Users/jonyopenclaw/.openclaw/workspace';
+const HOME_DIR = process.env.HOME || '';
 const TASKS_FILE = path.join(__dirname, 'tasks.json');
 const SKILLS_DIR = path.join(WORKSPACE, 'skills');
 const MEMORY_DIR = path.join(WORKSPACE, 'memory');
-const SESSIONS_FILE = process.env.OPENCLAW_SESSIONS_FILE || path.join(process.env.HOME || '', '.openclaw', 'agents', 'main', 'sessions', 'sessions.json');
-const SUBAGENT_RUNS_FILE = process.env.OPENCLAW_SUBAGENT_RUNS || path.join(process.env.HOME || '', '.openclaw', 'subagents', 'runs.json');
+const SESSIONS_FILE = process.env.OPENCLAW_SESSIONS_FILE || path.join(HOME_DIR, '.openclaw', 'agents', 'main', 'sessions', 'sessions.json');
+const SUBAGENT_RUNS_FILE = process.env.OPENCLAW_SUBAGENT_RUNS || path.join(HOME_DIR, '.openclaw', 'subagents', 'runs.json');
 const MAX_BODY = 1 * 1024 * 1024; // 1 MB
 const MAX_UPLOAD = 20 * 1024 * 1024; // 20 MB for file uploads
 const ATTACHMENTS_DIR = path.join(__dirname, 'attachments');
@@ -30,10 +31,13 @@ const VISION_DB = {
 };
 
 // --- Cron Config ---
-const CRON_STORE_PATH = path.join(process.env.HOME || '', '.openclaw', 'cron', 'jobs.json');
-const CRON_RUNS_DIR = path.join(process.env.HOME || '', '.openclaw', 'cron', 'runs');
+const CRON_STORE_PATH = path.join(HOME_DIR, '.openclaw', 'cron', 'jobs.json');
+const CRON_RUNS_DIR = path.join(HOME_DIR, '.openclaw', 'cron', 'runs');
 const GATEWAY_HOOKS_URL = 'http://127.0.0.1:18789/hooks';
-const SESSIONS_JSON = path.join(process.env.HOME || '', '.openclaw', 'agents', 'main', 'sessions', 'sessions.json');
+const SESSIONS_JSON = path.join(HOME_DIR, '.openclaw', 'agents', 'main', 'sessions', 'sessions.json');
+const WATCHDOG_DIR = process.env.OPENCLAW_WATCHDOG_DIR || path.join(HOME_DIR, '.openclaw', 'watchdogs', 'gateway-discord');
+const WATCHDOG_STATE_FILE = path.join(WATCHDOG_DIR, 'state.json');
+const WATCHDOG_EVENTS_FILE = path.join(WATCHDOG_DIR, 'events.jsonl');
 const BACKUP_REMOTE = process.env.OPENCLAW_BACKUP_REMOTE || 'origin';
 const BACKUP_BRANCH = process.env.OPENCLAW_BACKUP_BRANCH || '';
 // Load keys from keys.env if not in env
@@ -2101,6 +2105,126 @@ function handleOpsSystem(req, res, method) {
   });
 }
 
+function readJsonl(filePath) {
+  try {
+    const raw = fs.readFileSync(filePath, 'utf8');
+    const lines = raw.split('\n').filter(Boolean);
+    return lines.map(line => {
+      try { return JSON.parse(line); } catch { return null; }
+    }).filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+function eventToRuntimeStatus(ev) {
+  const event = String(ev?.event || '').toLowerCase();
+  const reason = String(ev?.reason || '').toLowerCase();
+  const sev = String(ev?.severity || '').toLowerCase();
+  if (event === 'recovered' || reason === 'recovered') return 'healthy';
+  if (sev === 'critical' || event === 'alert' || event === 'suppressed' || reason.includes('runtime_stopped')) return 'down';
+  return null;
+}
+
+function buildWatchdogTimeline(eventsAsc, startMs, endMs, stepMs, initialStatus) {
+  const points = [];
+  let idx = 0;
+  let status = initialStatus;
+  for (let t = startMs; t <= endMs; t += stepMs) {
+    while (idx < eventsAsc.length) {
+      const ts = Date.parse(eventsAsc[idx]?.time || '');
+      if (!Number.isFinite(ts) || ts > t) break;
+      const mapped = eventToRuntimeStatus(eventsAsc[idx]);
+      if (mapped) status = mapped;
+      idx++;
+    }
+    points.push({ ts: new Date(t).toISOString(), status });
+  }
+  return points;
+}
+
+function handleOpsWatchdog(req, res, method, parsed) {
+  if (method !== 'GET') return errorReply(res, 405, 'Method not allowed');
+  const reqLimit = parseInt(parsed?.query?.limit || '12', 10);
+  const limit = Number.isFinite(reqLimit) ? Math.min(Math.max(reqLimit, 1), 50) : 12;
+  const reqWindow = parseInt(parsed?.query?.windowMinutes || '15', 10);
+  const windowMinutes = Number.isFinite(reqWindow) ? Math.min(Math.max(reqWindow, 5), 15) : 15;
+  const criticalOnly = String(parsed?.query?.criticalOnly || '0') === '1';
+
+  let state = null;
+  let stateMtime = 0;
+  try {
+    const content = fs.readFileSync(WATCHDOG_STATE_FILE, 'utf8');
+    state = JSON.parse(content);
+    stateMtime = fs.statSync(WATCHDOG_STATE_FILE).mtimeMs;
+  } catch {}
+
+  const allEvents = readJsonl(WATCHDOG_EVENTS_FILE);
+  let eventsMtime = 0;
+  try { eventsMtime = fs.statSync(WATCHDOG_EVENTS_FILE).mtimeMs; } catch {}
+
+  const pgrep = runCmd('/bin/sh', ['-lc', "pgrep -f 'openclaw-gateway|node.*openclaw.*gateway' | head -1"], { timeout: 2500 });
+  const runtimeRunning = pgrep.ok && !!String(pgrep.output || '').trim();
+  const runtimePid = String(pgrep.output || '').trim() || null;
+
+  const watchdogStatus = String(state?.status || 'unknown');
+  const effectiveStatus = !runtimeRunning
+    ? 'down'
+    : (watchdogStatus === 'healthy' ? 'healthy' : 'degraded');
+
+  const now = Date.now();
+  const startMs = now - windowMinutes * 60 * 1000;
+  const eventsWithTs = allEvents
+    .map(ev => ({ ...ev, _ts: Date.parse(ev?.time || '') }))
+    .filter(ev => Number.isFinite(ev._ts))
+    .sort((a, b) => a._ts - b._ts);
+
+  const inWindow = eventsWithTs.filter(ev => ev._ts >= startMs);
+  const eventsForList = (criticalOnly ? inWindow.filter(ev => String(ev.severity || '').toLowerCase() === 'critical') : inWindow)
+    .slice(-limit)
+    .reverse()
+    .map(({ _ts, ...ev }) => ev);
+
+  // Build timeline from ALL events (not filtered), so runtime state is accurate.
+  let initialStatus = effectiveStatus === 'down' ? 'down' : 'healthy';
+  for (let i = eventsWithTs.length - 1; i >= 0; i--) {
+    if (eventsWithTs[i]._ts < startMs) {
+      const mapped = eventToRuntimeStatus(eventsWithTs[i]);
+      if (mapped) initialStatus = mapped;
+      break;
+    }
+  }
+  const stepSeconds = 30;
+  const timelinePoints = buildWatchdogTimeline(eventsWithTs, startMs, now, stepSeconds * 1000, initialStatus);
+  const downCount = timelinePoints.filter(p => p.status === 'down').length;
+  const healthyCount = timelinePoints.filter(p => p.status === 'healthy').length;
+
+  return jsonReply(res, 200, {
+    watchdog: state,
+    effectiveStatus,
+    runtime: {
+      running: runtimeRunning,
+      pid: runtimePid,
+      checkedAt: new Date().toISOString(),
+    },
+    recentEvents: eventsForList,
+    timeline: {
+      windowMinutes,
+      stepSeconds,
+      points: timelinePoints,
+      downCount,
+      healthyCount,
+      filteredListCriticalOnly: criticalOnly,
+    },
+    files: {
+      stateFile: WATCHDOG_STATE_FILE,
+      eventsFile: WATCHDOG_EVENTS_FILE,
+      stateMtime,
+      eventsMtime,
+    },
+  });
+}
+
 function handleOpsConfig(req, res, method) {
   if (method !== 'GET') return errorReply(res, 405, 'Method not allowed');
 
@@ -2874,6 +2998,7 @@ button:active{opacity:.8}
     if (root === 'ops' && segments[1] === 'cron') return handleOpsCron(req, res, method);
     if (root === 'ops' && segments[1] === 'cron-costs') return handleOpsCronCosts(req, res, method);
     if (root === 'ops' && segments[1] === 'system') return handleOpsSystem(req, res, method);
+    if (root === 'ops' && segments[1] === 'watchdog') return handleOpsWatchdog(req, res, method, parsed);
     if (root === 'ops' && segments[1] === 'update-openclaw') return handleOpsUpdateOpenClaw(req, res, method);
     if (root === 'ops' && segments[1] === 'session-model') return handleOpsSessionModel(req, res, method);
     if (root === 'ops' && segments[1] === 'cron-model') return handleOpsCronModel(req, res, method);

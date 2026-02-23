@@ -404,6 +404,10 @@ header{display:flex;align-items:center;justify-content:space-between;padding:16p
 .sessions-table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
 .sessions-table{width:100%;border-collapse:collapse;font-size:.78rem}
 .sessions-table th{padding:8px 6px;text-align:left;color:var(--text2);font-weight:500;white-space:nowrap;position:sticky;top:0;background:var(--bg);border-bottom:1px solid var(--border)}
+.sess-sort-btn{display:inline-flex;align-items:center;gap:4px;border:none;background:transparent;color:inherit;font:inherit;cursor:pointer;padding:0}
+.sess-sort-btn:hover{color:var(--text)}
+.sess-sort-btn.active{color:var(--accent2)}
+.sess-sort-indicator{font-family:var(--mono);font-size:.65rem;opacity:.85;min-width:12px;text-align:center}
 .sessions-table td{padding:7px 6px;border-bottom:1px solid var(--border);white-space:nowrap;vertical-align:middle}
 .sessions-table tr:hover{background:rgba(124,92,252,.06)}
 .sess-name{font-weight:600;max-width:160px;overflow:hidden;text-overflow:ellipsis}
@@ -876,6 +880,13 @@ header{display:flex;align-items:center;justify-content:space-between;padding:16p
     <div style="display:flex;flex-wrap:wrap;gap:6px 16px;align-items:center" id="systemInfoContent"></div>
   </div>
 
+  <div id="watchdogGlobalAlert" class="glass-card" style="padding:10px 14px;margin-bottom:12px;border-color:var(--red);display:none">
+    <div style="display:flex;justify-content:space-between;gap:10px;align-items:center">
+      <div style="font-size:.8rem;color:#ffb4b4" id="watchdogGlobalText">OpenClaw watchdog alert</div>
+      <button class="btn-secondary" style="padding:6px 10px;font-size:.72rem" onclick="focusOperationsTab()">Open Operations</button>
+    </div>
+  </div>
+
   <!-- Today's Cron Runs -->
   <div class="agent-sessions-panel" id="cronRunsPanel">
     <div class="agent-sessions-header" onclick="this.classList.toggle('collapsed');this.nextElementSibling.style.maxHeight=this.classList.contains('collapsed')?'0':'400px'">
@@ -985,7 +996,21 @@ header{display:flex;align-items:center;justify-content:space-between;padding:16p
     </div>
     <div class="glass-card" style="padding:16px;margin-top:16px">
       <div class="card-title" style="margin-bottom:4px">🐶 Watchdog</div>
-      <div class="card-sub" id="watchdogStatusText">No watchdog alert feed connected yet.</div>
+      <div class="card-sub" id="watchdogStatusText">Loading watchdog status…</div>
+      <div class="ops-ch-meta" id="watchdogStatusMeta" style="margin-top:8px"></div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px">
+        <select id="watchdogWindowSelect" class="form-input" style="max-width:180px;padding:6px 10px;font-size:.75rem" onchange="setWatchdogWindow(this.value)">
+          <option value="5">Last 5 min</option>
+          <option value="10">Last 10 min</option>
+          <option value="15" selected>Last 15 min</option>
+        </select>
+        <label style="display:flex;align-items:center;gap:6px;font-size:.75rem;color:var(--text2);cursor:pointer">
+          <input type="checkbox" id="watchdogCriticalOnly" onchange="setWatchdogCriticalOnly(this.checked)">
+          Only critical events
+        </label>
+      </div>
+      <div id="watchdogTimeline" style="margin-top:10px"></div>
+      <div id="watchdogEventsList" class="ops-channel-list" style="margin-top:10px"></div>
     </div>
   </div>
 
@@ -1260,10 +1285,116 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
   });
 });
 
-function loadOperationsStatus() {
-  const el = document.getElementById('watchdogStatusText');
+let _watchdogCache = null;
+let _watchdogWindowMins = 15;
+let _watchdogCriticalOnly = false;
+
+function focusOperationsTab() {
+  const btn = document.querySelector('.tab-btn[data-tab="operations"]');
+  if (btn) btn.click();
+}
+
+function setWatchdogWindow(v) {
+  const n = Number(v);
+  if (Number.isFinite(n)) _watchdogWindowMins = Math.min(Math.max(n, 5), 15);
+  pollWatchdogStatus();
+}
+
+function setWatchdogCriticalOnly(checked) {
+  _watchdogCriticalOnly = !!checked;
+  pollWatchdogStatus();
+}
+
+async function pollWatchdogStatus() {
+  try {
+    const data = await apiFetch(`/ops/watchdog?limit=12&windowMinutes=${_watchdogWindowMins}&criticalOnly=${_watchdogCriticalOnly ? '1' : '0'}`);
+    _watchdogCache = data;
+    renderWatchdogStatus(data);
+  } catch (e) {
+    renderWatchdogStatus({
+      effectiveStatus: 'unknown',
+      runtime: { running: false, checkedAt: new Date().toISOString() },
+      watchdog: null,
+      recentEvents: [],
+      timeline: { points: [], windowMinutes: _watchdogWindowMins, stepSeconds: 30 },
+      error: e.message,
+    });
+  }
+}
+
+function renderWatchdogTimeline(timeline) {
+  const el = document.getElementById('watchdogTimeline');
   if (!el) return;
-  el.textContent = 'Watchdog endpoint pending. Actions below are ready for one-click recovery.';
+  const points = Array.isArray(timeline?.points) ? timeline.points : [];
+  const windowMinutes = timeline?.windowMinutes || _watchdogWindowMins;
+  if (!points.length) {
+    el.innerHTML = '<div class="ops-ch-meta">No timeline data.</div>';
+    return;
+  }
+  const bars = points.map(p => {
+    const color = p.status === 'down' ? 'var(--red)' : (p.status === 'healthy' ? 'var(--green)' : 'var(--yellow)');
+    const ts = new Date(p.ts || Date.now()).toLocaleTimeString();
+    return `<div title="${ts} · ${p.status}" style="height:14px;flex:1;background:${color};opacity:.9;border-radius:2px"></div>`;
+  }).join('');
+  el.innerHTML = `
+    <div class="ops-ch-meta" style="margin-bottom:6px">Status timeline (${windowMinutes} min): green=healthy · red=down</div>
+    <div style="display:flex;gap:2px;align-items:center">${bars}</div>
+  `;
+}
+
+function renderWatchdogStatus(data) {
+  const statusEl = document.getElementById('watchdogStatusText');
+  const metaEl = document.getElementById('watchdogStatusMeta');
+  const eventsEl = document.getElementById('watchdogEventsList');
+  const globalAlert = document.getElementById('watchdogGlobalAlert');
+  const globalText = document.getElementById('watchdogGlobalText');
+  if (!statusEl || !metaEl || !eventsEl || !globalAlert || !globalText) return;
+
+  const effective = data?.effectiveStatus || 'unknown';
+  const runtimeRunning = !!data?.runtime?.running;
+  const wd = data?.watchdog || {};
+  const failures = wd?.consecutive_failures ?? '—';
+  const reason = wd?.last_reason || 'unknown';
+  const updatedAt = wd?.updated_at || data?.runtime?.checkedAt || '';
+  const recent = Array.isArray(data?.recentEvents) ? data.recentEvents : [];
+  const timeline = data?.timeline || { points: [] };
+
+  if (effective === 'down') {
+    statusEl.innerHTML = '<span style="color:var(--red)">OpenClaw is DOWN</span> — watchdog detected runtime outage.';
+    globalAlert.style.display = 'block';
+    globalText.textContent = `OpenClaw down: ${reason} · failures=${failures}`;
+  } else if (effective === 'healthy') {
+    statusEl.innerHTML = '<span style="color:var(--green)">OpenClaw is healthy</span> — watchdog is monitoring.';
+    globalAlert.style.display = 'none';
+  } else {
+    statusEl.innerHTML = '<span style="color:var(--yellow)">Watchdog degraded / unknown</span> — check events below.';
+    globalAlert.style.display = 'block';
+    globalText.textContent = `Watchdog warning: ${reason} · failures=${failures}`;
+  }
+
+  metaEl.textContent = `runtime=${runtimeRunning ? 'running' : 'stopped'} · watchdog=${wd.status || 'unknown'} · failures=${failures} · last_reason=${reason} · updated=${updatedAt ? new Date(updatedAt).toLocaleString() : '—'} · filter=${_watchdogCriticalOnly ? 'critical only' : 'all'}`;
+  renderWatchdogTimeline(timeline);
+
+  if (!recent.length) {
+    eventsEl.innerHTML = `<div class="ops-ch-meta">No watchdog events for selected filter in last ${_watchdogWindowMins} minutes.</div>`;
+    return;
+  }
+  eventsEl.innerHTML = recent.map(ev => {
+    const sev = ev.severity || 'info';
+    const color = sev === 'critical' ? 'var(--red)' : (sev === 'warning' ? 'var(--yellow)' : 'var(--green)');
+    return `<div class="ops-channel-card" style="padding:8px 10px">
+      <div class="ops-ch-left">
+        <div class="ops-ch-name" style="font-size:.8rem;color:${color}">${escHtml(ev.event || 'event')} · ${escHtml(ev.reason || 'n/a')}</div>
+        <div class="ops-ch-meta">${escHtml(ev.details || '')}</div>
+      </div>
+      <div class="ops-ch-right"><div class="ops-ch-cost">${new Date(ev.time || Date.now()).toLocaleTimeString()}</div></div>
+    </div>`;
+  }).join('');
+}
+
+function loadOperationsStatus() {
+  if (_watchdogCache) renderWatchdogStatus(_watchdogCache);
+  pollWatchdogStatus();
 }
 
 function refreshCurrentTab() {
@@ -3021,6 +3152,35 @@ async function changeModel(type, id, model, el) {
   }
 }
 
+const SESSION_SORT_DEFAULT_DIR = {
+  model: 'asc',
+  messages: 'desc',
+  tokens: 'desc',
+  cost: 'desc',
+  costPerMsg: 'desc',
+  fit: 'desc',
+};
+
+const sessionSortState = {
+  key: null,
+  dir: 'desc',
+};
+
+function toggleSessionSort(key) {
+  if (sessionSortState.key === key) {
+    sessionSortState.dir = sessionSortState.dir === 'asc' ? 'desc' : 'asc';
+  } else {
+    sessionSortState.key = key;
+    sessionSortState.dir = SESSION_SORT_DEFAULT_DIR[key] || 'desc';
+  }
+  loadSessions();
+}
+
+function sessionSortIndicator(key) {
+  if (sessionSortState.key !== key) return '&harr;';
+  return sessionSortState.dir === 'asc' ? '&uarr;' : '&darr;';
+}
+
 async function loadSessions() {
   const alertsEl = document.getElementById('sessionsAlerts');
   const tableEl = document.getElementById('sessionsTable');
@@ -3111,12 +3271,58 @@ async function loadSessions() {
       return { emoji: '⚪', text: '—', tip: '' };
     }
 
+    const fitSortRank = s => {
+      const text = fitLabel(s).text;
+      if (text === '过高') return 4;
+      if (text === '偏高') return 3;
+      if (text === '匹配') return 2;
+      if (text === '偏低') return 1;
+      return 0;
+    };
+
+    const getSortValue = (s, key) => {
+      const eff = s.today.effectiveMessages || 0;
+      if (key === 'model') return shortModel(s.model || '').toLowerCase();
+      if (key === 'messages') return s.today.messages || 0;
+      if (key === 'tokens') return s.today.totalTokens || 0;
+      if (key === 'cost') return s.today.cost || 0;
+      if (key === 'costPerMsg') return eff > 0 ? (s.today.cost || 0) / eff : null;
+      if (key === 'fit') return fitSortRank(s);
+      return null;
+    };
+
+    const sortedSessions = [...sessions];
+    if (sessionSortState.key) {
+      const dir = sessionSortState.dir === 'asc' ? 1 : -1;
+      sortedSessions.sort((a, b) => {
+        const av = getSortValue(a, sessionSortState.key);
+        const bv = getSortValue(b, sessionSortState.key);
+        if (av == null && bv == null) return a.displayName.localeCompare(b.displayName, 'zh-Hans');
+        if (av == null) return 1;
+        if (bv == null) return -1;
+        if (typeof av === 'string' || typeof bv === 'string') {
+          const cmp = String(av).localeCompare(String(bv), 'zh-Hans');
+          if (cmp !== 0) return cmp * dir;
+          return a.displayName.localeCompare(b.displayName, 'zh-Hans');
+        }
+        if (av === bv) return a.displayName.localeCompare(b.displayName, 'zh-Hans');
+        return (av - bv) * dir;
+      });
+    }
+
     let html = `<table class="sessions-table">
       <thead><tr>
-        <th>频道</th><th>任务</th><th>模型</th><th>消息</th><th>Tokens</th><th>花费</th><th>$/条</th><th>匹配</th>
+        <th>频道</th>
+        <th>任务</th>
+        <th><button type="button" class="sess-sort-btn ${sessionSortState.key === 'model' ? 'active' : ''}" onclick="toggleSessionSort('model')">模型 <span class="sess-sort-indicator">${sessionSortIndicator('model')}</span></button></th>
+        <th><button type="button" class="sess-sort-btn ${sessionSortState.key === 'messages' ? 'active' : ''}" onclick="toggleSessionSort('messages')">消息 <span class="sess-sort-indicator">${sessionSortIndicator('messages')}</span></button></th>
+        <th><button type="button" class="sess-sort-btn ${sessionSortState.key === 'tokens' ? 'active' : ''}" onclick="toggleSessionSort('tokens')">Tokens <span class="sess-sort-indicator">${sessionSortIndicator('tokens')}</span></button></th>
+        <th><button type="button" class="sess-sort-btn ${sessionSortState.key === 'cost' ? 'active' : ''}" onclick="toggleSessionSort('cost')">花费 <span class="sess-sort-indicator">${sessionSortIndicator('cost')}</span></button></th>
+        <th><button type="button" class="sess-sort-btn ${sessionSortState.key === 'costPerMsg' ? 'active' : ''}" onclick="toggleSessionSort('costPerMsg')">$/条 <span class="sess-sort-indicator">${sessionSortIndicator('costPerMsg')}</span></button></th>
+        <th><button type="button" class="sess-sort-btn ${sessionSortState.key === 'fit' ? 'active' : ''}" onclick="toggleSessionSort('fit')">匹配 <span class="sess-sort-indicator">${sessionSortIndicator('fit')}</span></button></th>
       </tr></thead><tbody>`;
 
-    for (const s of sessions) {
+    for (const s of sortedSessions) {
       const meta = channelMeta[s.displayName] || {};
       const cn = meta.cn || '';
       const taskTag = meta.task || '';
@@ -3789,6 +3995,7 @@ async function opsAction(action) {
     if (resultBox) resultBox.style.display = 'block';
   } finally {
     if (btn) btn.classList.remove('loading');
+    pollWatchdogStatus();
   }
 }
 
@@ -4215,9 +4422,11 @@ document.addEventListener('keydown', e => {
 checkConnection();
 loadSessions(); // Load sessions tab (default)
 loadAgentMonitor();
+pollWatchdogStatus();
 startLivePolling(); // Auto-poll tasks every 3s for live updates
 setInterval(checkConnection, 30000);
 setInterval(loadAgentMonitor, 60000); // was 15s, reduced to 60s // Refresh agent monitor every 15s
+setInterval(pollWatchdogStatus, 10000);
 
 // Kanban mobile resize handler
 window.addEventListener('resize', () => {
