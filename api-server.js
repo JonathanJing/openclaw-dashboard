@@ -1675,6 +1675,29 @@ function handleOpsSessions(req, res, method) {
   try { sessions = JSON.parse(fs.readFileSync(SESSIONS_JSON, 'utf8')); } catch (e) {
     return errorReply(res, 500, 'Cannot read sessions: ' + e.message);
   }
+  const sessionModelDefaults = loadSessionModelDefaults();
+
+  // Best-effort: enforce saved channel defaults onto current sessions so runtime keeps consistent.
+  let patchedSessions = 0;
+  for (const [key, sess] of Object.entries(sessions || {})) {
+    if (!sess || typeof sess !== 'object') continue;
+    const m = key.match(/channel:(\d+)$/);
+    if (!m) continue;
+    const defaultModel = sessionModelDefaults[m[1]];
+    if (!defaultModel) continue;
+    if (sess.model !== defaultModel) {
+      sess.model = defaultModel;
+      sess.updatedAt = now;
+      patchedSessions++;
+    }
+  }
+  if (patchedSessions > 0) {
+    try {
+      const tmp = SESSIONS_JSON + '.tmp';
+      fs.writeFileSync(tmp, JSON.stringify(sessions, null, 2), 'utf8');
+      fs.renameSync(tmp, SESSIONS_JSON);
+    } catch {}
+  }
 
   const todayStartIso = getTodayPstStartIso();
 
@@ -1712,8 +1735,9 @@ function handleOpsSessions(req, res, method) {
     if (!sessionFile) {
       if (ch === 'discord') {
         const chIdM = key.match(/channel:(\d+)$/);
+        const defaultModel = chIdM ? sessionModelDefaults[chIdM[1]] : null;
         rows.push({
-          key, channelId: chIdM ? chIdM[1] : null, displayName, channel: ch, model: sess.model || 'unknown',
+          key, channelId: chIdM ? chIdM[1] : null, displayName, channel: ch, model: sess.model || defaultModel || 'unknown',
           thinkingLevel: sess.thinkingLevel || '—', status: 'idle',
           updatedAt: sess.updatedAt, daysSinceUpdate: 99,
           allTime: { tokens: sess.totalTokens || 0 },
@@ -1781,13 +1805,14 @@ function handleOpsSessions(req, res, method) {
     // Extract channel ID for model override
     const chIdMatch = key.match(/channel:(\d+)$/);
     const channelId = chIdMatch ? chIdMatch[1] : null;
+    const defaultModel = channelId ? sessionModelDefaults[channelId] : null;
 
     const row = {
       key,
       channelId,
       displayName,
       channel: ch,
-      model: sess.model || 'unknown',
+      model: sess.model || defaultModel || 'unknown',
       thinkingLevel: sess.thinkingLevel || '—',
       status: sess.abortedLastRun ? 'error' : (today.messages > 0 ? 'active' : (daysSinceUpdate < 1 ? 'idle' : 'stale')),
       updatedAt: sess.updatedAt,
@@ -2167,8 +2192,7 @@ function handleOpsCron(req, res, method) {
   });
 }
 
-// ─── POST /ops/session-model ─── Set per-channel model override via openclaw.json
-const OPENCLAW_CONFIG = path.join(process.env.HOME || '', '.openclaw', 'openclaw.json');
+// ─── POST /ops/session-model ─── Set per-channel model on active sessions
 const AVAILABLE_MODELS = {
   'opus':    'anthropic/claude-opus-4-6',
   'sonnet':  'anthropic/claude-sonnet-4-6',
@@ -2176,6 +2200,51 @@ const AVAILABLE_MODELS = {
   'pro':     'google/gemini-3.1-pro',
   'codex':   'openai/gpt-5.3-codex',
 };
+const SESSION_MODEL_DEFAULTS_PATH = path.join(__dirname, 'ops-session-model-defaults.json');
+
+function loadSessionModelDefaults() {
+  try {
+    const raw = fs.readFileSync(SESSION_MODEL_DEFAULTS_PATH, 'utf8');
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed;
+  } catch {}
+  return {};
+}
+
+function saveSessionModelDefaults(defaults) {
+  const tmp = SESSION_MODEL_DEFAULTS_PATH + '.tmp';
+  fs.writeFileSync(tmp, JSON.stringify(defaults, null, 2), 'utf8');
+  fs.renameSync(tmp, SESSION_MODEL_DEFAULTS_PATH);
+}
+
+// Send audit notification to #ops-report via gateway webhook
+function sendAuditNotification(message) {
+  // Gateway HTTP webhook route (/hooks/agent) is no longer writable on current
+  // OpenClaw builds; send via CLI message API instead.
+  try {
+    const { spawn } = require('child_process');
+    const child = spawn('openclaw', [
+      'message', 'send',
+      '--channel', 'discord',
+      '--target', 'channel:1473462488766087208', // #ops-report
+      '--message', message,
+      '--json',
+    ], { stdio: ['ignore', 'pipe', 'pipe'] });
+
+    let stderr = '';
+    child.stderr.on('data', (c) => { stderr += String(c); });
+    child.on('error', (e) => {
+      console.warn(`[audit] send failed: ${e.message}`);
+    });
+    child.on('close', (code) => {
+      if (code !== 0) {
+        console.warn(`[audit] send failed: exit=${code} ${stderr.substring(0, 200)}`);
+      }
+    });
+  } catch (e) {
+    console.warn(`[audit] send setup failed: ${e.message}`);
+  }
+}
 
 function handleOpsSessionModel(req, res, method) {
   if (method !== 'POST') return errorReply(res, 405, 'POST only');
@@ -2186,40 +2255,56 @@ function handleOpsSessionModel(req, res, method) {
 
     const fullModel = AVAILABLE_MODELS[model] || model;
 
-    // Read current config
-    let config;
-    try { config = JSON.parse(fs.readFileSync(OPENCLAW_CONFIG, 'utf8')); }
-    catch (e) { return errorReply(res, 500, 'Cannot read openclaw.json: ' + e.message); }
+    // Persist per-channel defaults in dashboard-owned file (not openclaw.json).
+    let defaults;
+    try { defaults = loadSessionModelDefaults(); }
+    catch (e) { return errorReply(res, 500, 'Cannot read session defaults: ' + e.message); }
 
-    // Update channels.modelByChannel
-    if (!config.channels) config.channels = {};
-    if (!config.channels.modelByChannel) config.channels.modelByChannel = {};
+    if (model === 'default') delete defaults[String(channelId)];
+    else defaults[String(channelId)] = fullModel;
 
-    if (model === 'default') {
-      delete config.channels.modelByChannel[channelId];
-    } else {
-      config.channels.modelByChannel[channelId] = fullModel;
+    try { saveSessionModelDefaults(defaults); }
+    catch (e) { return errorReply(res, 500, 'Cannot write session defaults: ' + e.message); }
+
+    // Also update currently existing channel sessions immediately.
+    // Channel-bound main sessions use keys like: agent:main:discord:channel:<id>
+    let sessions;
+    try { sessions = JSON.parse(fs.readFileSync(SESSIONS_FILE, 'utf8')); }
+    catch (e) { return errorReply(res, 500, 'Cannot read sessions.json: ' + e.message); }
+
+    const now = Date.now();
+    let updated = 0;
+    for (const [key, sess] of Object.entries(sessions || {})) {
+      const m = key.match(/channel:(\d+)$/);
+      if (!m || m[1] !== String(channelId)) continue;
+      if (!sess || typeof sess !== 'object') continue;
+      if (model === 'default') delete sess.model;
+      else sess.model = fullModel;
+      sess.updatedAt = now;
+      updated++;
     }
 
-    // Write back
-    try { fs.writeFileSync(OPENCLAW_CONFIG, JSON.stringify(config, null, 2), 'utf8'); }
-    catch (e) { return errorReply(res, 500, 'Cannot write openclaw.json: ' + e.message); }
-
-    // Signal gateway to reload config (SIGUSR1)
     try {
-      const { execSync } = require('child_process');
-      const pid = execSync('pgrep -f "openclaw.*gateway"', { encoding: 'utf8' }).trim().split('\n')[0];
-      if (pid) process.kill(+pid, 'SIGUSR1');
-    } catch {}
+      const tmp = SESSIONS_FILE + '.tmp';
+      fs.writeFileSync(tmp, JSON.stringify(sessions, null, 2), 'utf8');
+      fs.renameSync(tmp, SESSIONS_FILE);
+    } catch (e) {
+      return errorReply(res, 500, 'Cannot write sessions.json: ' + e.message);
+    }
 
     // Clear sessions cache so next fetch picks up new model
     _sessionsCache = null;
+
+    // Audit notification
+    const displayModel = model === 'default' ? '默认' : fullModel.split('/').pop();
+    sendAuditNotification(`🔄 **模型切换** | 频道 <#${channelId}> → \`${displayModel}\`（via Dashboard）`);
 
     return jsonReply(res, 200, {
       ok: true,
       channelId,
       model: model === 'default' ? '(default)' : fullModel,
-      note: 'Gateway config updated. SIGUSR1 sent.',
+      updatedSessions: updated,
+      note: 'Channel default saved and current sessions updated (openclaw.json unchanged).',
     });
   }).catch(e => errorReply(res, 400, e.message));
 }
@@ -2258,6 +2343,10 @@ function handleOpsCronModel(req, res, method) {
       const pid = execSync('pgrep -f "openclaw.*gateway"', { encoding: 'utf8' }).trim().split('\n')[0];
       if (pid) process.kill(+pid, 'SIGUSR1');
     } catch {}
+
+    // Audit notification
+    const displayModel = model === 'default' ? '默认' : fullModel.split('/').pop();
+    sendAuditNotification(`🔄 **模型切换** | Cron \`${job.name}\` → \`${displayModel}\`（via Dashboard）`);
 
     return jsonReply(res, 200, {
       ok: true,
