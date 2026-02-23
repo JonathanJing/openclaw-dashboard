@@ -1129,7 +1129,7 @@ function handleCronToday(req, res, method) {
     const outputTokens = runUsage ? (runUsage.output_tokens || runUsage.output || 0) : 0;
     const totalTokens = runUsage ? (runUsage.total_tokens || runUsage.totalTokens || (inputTokens + outputTokens)) : null;
     const runModel = lastRun?.model || job?.payload?.model || null;
-    const costUsd = runUsage ? estimateCost(runModel, totalTokens || 0, inputTokens, outputTokens, runUsage.cost) : null;
+    const costUsd = runUsage ? estimateCost(runModel, totalTokens || 0, inputTokens, outputTokens, runUsage.cost, runUsage) : null;
 
     const nextRun = job.state?.nextRunAtMs || lastRun?.nextRunAtMs || computeNextRun(job.schedule, lastStarted);
 
@@ -1234,22 +1234,36 @@ async function notionCount(dbId, startIso, endIso) {
 
 // --- Ops: Channel Usage (today, PST) ---
 // Per 1M tokens: [input_cost, output_cost]
+// Anthropic cache multipliers: cache_read = input × 0.1, cache_write_5m = input × 1.25
 const MODEL_COSTS_IO = {
-  'claude-opus-4-6': [15, 75], 'claude-sonnet-4-6': [3, 15],
+  'claude-opus-4-6': [15, 75],
+  'claude-sonnet-4-6': [3, 15],
+  'claude-haiku-4-5': [0.80, 4.00],
   'gpt-5.3-codex': [2.5, 10], 'gpt-5.3': [2.5, 10],
   'gpt-5.2-codex': [2.5, 10], 'gpt-5.2': [2.5, 10],
   'gemini-3.1-pro': [2, 12], 'gemini-3-pro-preview': [2, 12],
   'gemini-3.0-flash': [0.5, 3], 'gemini-3-flash-preview': [0.5, 3],
 };
 
-// estimateCost: prefer provider-reported cost.total, then input/output/cache split, then fallback
-function estimateCost(model, totalTokens, inputTokens, outputTokens, costObj) {
+// estimateCost: prefer provider-reported cost.total, then cache-aware split, then fallback
+// usageObj shape: { input, output, cacheRead, cacheWrite, totalTokens, cost: { total, ... } }
+function estimateCost(model, totalTokens, inputTokens, outputTokens, costObj, usageObj) {
   // If provider gives us a cost object with total, use it directly
   if (costObj && typeof costObj.total === 'number') return costObj.total;
 
   const key = Object.keys(MODEL_COSTS_IO).find(k => (model || '').includes(k));
   if (!key) return 0;
   const [inCost, outCost] = MODEL_COSTS_IO[key];
+
+  // Cache-aware calculation when breakdown is available
+  if (usageObj && (usageObj.cacheRead || usageObj.cacheWrite)) {
+    const uncached = (usageObj.input || 0) / 1_000_000 * inCost;
+    const cacheRead = (usageObj.cacheRead || 0) / 1_000_000 * (inCost * 0.1);
+    const cacheWrite = (usageObj.cacheWrite || 0) / 1_000_000 * (inCost * 1.25);
+    const output = (usageObj.output || 0) / 1_000_000 * outCost;
+    return uncached + cacheRead + cacheWrite + output;
+  }
+
   if (inputTokens || outputTokens) {
     return ((inputTokens || 0) / 1_000_000) * inCost + ((outputTokens || 0) / 1_000_000) * outCost;
   }
@@ -1297,7 +1311,7 @@ function scanSessionUsageToday(sessionFile, todayStartIso) {
         result.output += out;
         result.totalTokens += u.totalTokens || 0;
         const m = j.message.model || 'unknown';
-        result.cost += estimateCost(m, u.totalTokens || 0, inp, out, u.cost);
+        result.cost += estimateCost(m, u.totalTokens || 0, inp, out, u.cost, u);
         result.models[m] = (result.models[m] || 0) + (u.totalTokens || 0);
         result.messages++;
       } catch {}
@@ -1422,7 +1436,7 @@ function handleOpsAlltime(req, res, method) {
           const tokens = u.totalTokens || 0;
           const input = (u.input || 0) + (u.cacheRead || 0) + (u.cacheWrite || 0);
           const output = u.output || 0;
-          const cost = estimateCost(m, tokens, input, output, u.cost);
+          const cost = estimateCost(m, tokens, input, output, u.cost, u);
 
           totalTokens += tokens;
           totalInput += input;
@@ -1466,7 +1480,7 @@ function handleOpsAlltime(req, res, method) {
             const m = j.model || 'cron';
             const tokens = j.usage.total_tokens || j.usage.totalTokens || 0;
             if (tokens === 0) continue;
-            let cost = estimateCost(m, tokens, j.usage.input || 0, j.usage.output || 0, j.usage.cost);
+            let cost = estimateCost(m, tokens, j.usage.input || 0, j.usage.output || 0, j.usage.cost, j.usage);
             totalTokens += tokens;
             totalCost += cost;
             totalMessages++;
@@ -1968,7 +1982,7 @@ function handleOpsSessions(req, res, method) {
               today.output += u.output || 0;
               today.totalTokens += u.totalTokens || 0;
               const m = j.message.model || 'unknown';
-              const cost = estimateCost(m, u.totalTokens || 0, (u.input || 0) + (u.cacheRead || 0) + (u.cacheWrite || 0), u.output || 0, u.cost);
+              const cost = estimateCost(m, u.totalTokens || 0, (u.input || 0) + (u.cacheRead || 0) + (u.cacheWrite || 0), u.output || 0, u.cost, u);
               today.cost += cost;
               today.models[m] = (today.models[m] || 0) + (u.totalTokens || 0);
             }
@@ -2357,7 +2371,7 @@ function handleOpsCronCosts(req, res, method) {
           continue;
         }
         cronReview.runsWithUsage++;
-        const runCost = estimateCost(j.model || meta.model, totalTokens, inp, out, u.cost);
+        const runCost = estimateCost(j.model || meta.model, totalTokens, inp, out, u.cost, u);
         const ts = j.startedAt || j.ts || j.runAtMs || Date.now();
         const day = dayKeyPst(ts);
         if (!day) continue;
@@ -2440,7 +2454,7 @@ function handleOpsCronCosts(req, res, method) {
             }
             interactiveReview.messagesWithNonZeroTokens++;
             const day = new Date(j.timestamp).toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
-            const cost = estimateCost(j.message.model, totalTokens, inp, out, u.cost);
+            const cost = estimateCost(j.message.model, totalTokens, inp, out, u.cost, u);
             if (!interactiveByDay[day]) {
               interactiveByDay[day] = { interactiveCost: 0, interactiveTokens: 0, interactiveInputTokens: 0, interactiveOutputTokens: 0 };
             }
