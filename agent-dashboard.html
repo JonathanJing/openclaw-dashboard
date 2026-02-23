@@ -1353,26 +1353,36 @@ function renderWatchdogStatus(data) {
   const effective = data?.effectiveStatus || 'unknown';
   const runtimeRunning = !!data?.runtime?.running;
   const wd = data?.watchdog || {};
+  const cfg = data?.configGuard || {};
   const failures = wd?.consecutive_failures ?? '—';
   const reason = wd?.last_reason || 'unknown';
   const updatedAt = wd?.updated_at || data?.runtime?.checkedAt || '';
+  const configGuardStatus = cfg?.status || 'unknown';
+  const configDriftDetected = !!cfg?.driftDetected;
+  const suspectedConfigDrift = !!cfg?.suspectedConfigDrift;
   const recent = Array.isArray(data?.recentEvents) ? data.recentEvents : [];
   const timeline = data?.timeline || { points: [] };
 
   if (effective === 'down') {
-    statusEl.innerHTML = '<span style="color:var(--red)">OpenClaw is DOWN</span> — watchdog detected runtime outage.';
+    const driftMsg = suspectedConfigDrift
+      ? ' Probable root cause: config drift (`openclaw.json` vs `.good`).'
+      : '';
+    statusEl.innerHTML = `<span style="color:var(--red)">OpenClaw is DOWN</span> — watchdog detected runtime outage.${driftMsg}`;
     globalAlert.style.display = 'block';
-    globalText.textContent = `OpenClaw down: ${reason} · failures=${failures}`;
+    globalText.textContent = `OpenClaw down: ${reason} · failures=${failures}${suspectedConfigDrift ? ' · config_drift=YES' : ''}`;
   } else if (effective === 'healthy') {
     statusEl.innerHTML = '<span style="color:var(--green)">OpenClaw is healthy</span> — watchdog is monitoring.';
     globalAlert.style.display = 'none';
   } else {
-    statusEl.innerHTML = '<span style="color:var(--yellow)">Watchdog degraded / unknown</span> — check events below.';
+    const driftMsg = configDriftDetected
+      ? ' Config drift is present; investigate before it escalates.'
+      : '';
+    statusEl.innerHTML = `<span style="color:var(--yellow)">Watchdog degraded / unknown</span> — check events below.${driftMsg}`;
     globalAlert.style.display = 'block';
-    globalText.textContent = `Watchdog warning: ${reason} · failures=${failures}`;
+    globalText.textContent = `Watchdog warning: ${reason} · failures=${failures}${configDriftDetected ? ' · config_drift=YES' : ''}`;
   }
 
-  metaEl.textContent = `runtime=${runtimeRunning ? 'running' : 'stopped'} · watchdog=${wd.status || 'unknown'} · failures=${failures} · last_reason=${reason} · updated=${updatedAt ? new Date(updatedAt).toLocaleString() : '—'} · filter=${_watchdogCriticalOnly ? 'critical only' : 'all'}`;
+  metaEl.textContent = `runtime=${runtimeRunning ? 'running' : 'stopped'} · watchdog=${wd.status || 'unknown'} · failures=${failures} · last_reason=${reason} · config_guard=${configGuardStatus} · config_drift=${configDriftDetected ? 'yes' : 'no'} · updated=${updatedAt ? new Date(updatedAt).toLocaleString() : '—'} · filter=${_watchdogCriticalOnly ? 'critical only' : 'all'}`;
   renderWatchdogTimeline(timeline);
 
   if (!recent.length) {
@@ -1382,10 +1392,11 @@ function renderWatchdogStatus(data) {
   eventsEl.innerHTML = recent.map(ev => {
     const sev = ev.severity || 'info';
     const color = sev === 'critical' ? 'var(--red)' : (sev === 'warning' ? 'var(--yellow)' : 'var(--green)');
+    const detailsHtml = escHtml(ev.details || '').replace(/\n/g, '<br>');
     return `<div class="ops-channel-card" style="padding:8px 10px">
       <div class="ops-ch-left">
         <div class="ops-ch-name" style="font-size:.8rem;color:${color}">${escHtml(ev.event || 'event')} · ${escHtml(ev.reason || 'n/a')}</div>
-        <div class="ops-ch-meta">${escHtml(ev.details || '')}</div>
+        <div class="ops-ch-meta">${detailsHtml}</div>
       </div>
       <div class="ops-ch-right"><div class="ops-ch-cost">${new Date(ev.time || Date.now()).toLocaleTimeString()}</div></div>
     </div>`;

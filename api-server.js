@@ -38,6 +38,8 @@ const SESSIONS_JSON = path.join(HOME_DIR, '.openclaw', 'agents', 'main', 'sessio
 const WATCHDOG_DIR = process.env.OPENCLAW_WATCHDOG_DIR || path.join(HOME_DIR, '.openclaw', 'watchdogs', 'gateway-discord');
 const WATCHDOG_STATE_FILE = path.join(WATCHDOG_DIR, 'state.json');
 const WATCHDOG_EVENTS_FILE = path.join(WATCHDOG_DIR, 'events.jsonl');
+const OPENCLAW_CONFIG_FILE = process.env.OPENCLAW_CONFIG_FILE || path.join(HOME_DIR, '.openclaw', 'openclaw.json');
+const OPENCLAW_CONFIG_BASELINE_FILE = process.env.OPENCLAW_CONFIG_BASELINE_FILE || path.join(HOME_DIR, '.openclaw', 'openclaw.json.good');
 const BACKUP_REMOTE = process.env.OPENCLAW_BACKUP_REMOTE || 'origin';
 const BACKUP_BRANCH = process.env.OPENCLAW_BACKUP_BRANCH || '';
 // Load keys from keys.env if not in env
@@ -2140,6 +2142,53 @@ function eventToRuntimeStatus(ev) {
   return null;
 }
 
+function fileSha256(filePath) {
+  try {
+    const buf = fs.readFileSync(filePath);
+    return crypto.createHash('sha256').update(buf).digest('hex');
+  } catch {
+    return null;
+  }
+}
+
+function inspectConfigGuard() {
+  const configExists = fs.existsSync(OPENCLAW_CONFIG_FILE);
+  const baselineExists = fs.existsSync(OPENCLAW_CONFIG_BASELINE_FILE);
+  const result = {
+    configFile: OPENCLAW_CONFIG_FILE,
+    baselineFile: OPENCLAW_CONFIG_BASELINE_FILE,
+    configExists,
+    baselineExists,
+    status: 'unknown',
+    driftDetected: false,
+    currentHash: null,
+    baselineHash: null,
+  };
+
+  if (!configExists) {
+    result.status = 'config_missing';
+    return result;
+  }
+  if (!baselineExists) {
+    result.status = 'baseline_missing';
+    return result;
+  }
+
+  const currentHash = fileSha256(OPENCLAW_CONFIG_FILE);
+  const baselineHash = fileSha256(OPENCLAW_CONFIG_BASELINE_FILE);
+  result.currentHash = currentHash;
+  result.baselineHash = baselineHash;
+
+  if (!currentHash || !baselineHash) {
+    result.status = 'hash_error';
+    return result;
+  }
+
+  result.driftDetected = currentHash !== baselineHash;
+  result.status = result.driftDetected ? 'drifted' : 'ok';
+  return result;
+}
+
 function buildWatchdogTimeline(eventsAsc, startMs, endMs, stepMs, initialStatus) {
   const points = [];
   let idx = 0;
@@ -2180,8 +2229,12 @@ function handleOpsWatchdog(req, res, method, parsed) {
   const pgrep = runCmd('/bin/sh', ['-lc', "pgrep -f 'openclaw-gateway|node.*openclaw.*gateway' | head -1"], { timeout: 2500 });
   const runtimeRunning = pgrep.ok && !!String(pgrep.output || '').trim();
   const runtimePid = String(pgrep.output || '').trim() || null;
+  const configGuard = inspectConfigGuard();
 
   const watchdogStatus = String(state?.status || 'unknown');
+  const lastReason = String(state?.last_reason || 'unknown');
+  const reasonSuggestsConfig = /config_invalid|config_rewritten/.test(lastReason);
+  const suspectedConfigDrift = reasonSuggestsConfig && configGuard.status === 'drifted';
   const effectiveStatus = !runtimeRunning
     ? 'down'
     : (watchdogStatus === 'healthy' ? 'healthy' : 'degraded');
@@ -2220,6 +2273,10 @@ function handleOpsWatchdog(req, res, method, parsed) {
       running: runtimeRunning,
       pid: runtimePid,
       checkedAt: new Date().toISOString(),
+    },
+    configGuard: {
+      ...configGuard,
+      suspectedConfigDrift,
     },
     recentEvents: eventsForList,
     timeline: {
