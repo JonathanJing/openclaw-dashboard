@@ -2138,7 +2138,9 @@ function eventToRuntimeStatus(ev) {
   const reason = String(ev?.reason || '').toLowerCase();
   const sev = String(ev?.severity || '').toLowerCase();
   if (event === 'recovered' || reason === 'recovered') return 'healthy';
-  if (sev === 'critical' || event === 'alert' || event === 'suppressed' || reason.includes('runtime_stopped')) return 'down';
+  if (sev === 'critical' || reason.includes('runtime_stopped')) return 'down';
+  if (reason.includes('rpc_probe_failed') || sev === 'degraded' || sev === 'warn' || sev === 'warning') return 'degraded';
+  if (event === 'alert' || event === 'suppressed') return 'degraded';
   return null;
 }
 
@@ -2211,7 +2213,7 @@ function handleOpsWatchdog(req, res, method, parsed) {
   const reqLimit = parseInt(parsed?.query?.limit || '12', 10);
   const limit = Number.isFinite(reqLimit) ? Math.min(Math.max(reqLimit, 1), 50) : 12;
   const reqWindow = parseInt(parsed?.query?.windowMinutes || '15', 10);
-  const windowMinutes = Number.isFinite(reqWindow) ? Math.min(Math.max(reqWindow, 5), 15) : 15;
+  const windowMinutes = Number.isFinite(reqWindow) ? Math.min(Math.max(reqWindow, 5), 1440) : 15;
   const criticalOnly = String(parsed?.query?.criticalOnly || '0') === '1';
 
   let state = null;
@@ -2253,7 +2255,15 @@ function handleOpsWatchdog(req, res, method, parsed) {
     .map(({ _ts, ...ev }) => ev);
 
   // Build timeline from ALL events (not filtered), so runtime state is accurate.
-  let initialStatus = effectiveStatus === 'down' ? 'down' : 'healthy';
+  // Start from unknown instead of optimistic healthy to avoid false-green segments.
+  let initialStatus = 'unknown';
+  const stateAlertMs = Number.isFinite(Number(state?.last_alert_at)) ? Number(state.last_alert_at) * 1000 : NaN;
+  const stateRecoveredMs = Number.isFinite(Number(state?.last_recovered_at)) ? Number(state.last_recovered_at) * 1000 : NaN;
+  if (Number.isFinite(stateAlertMs) && stateAlertMs <= startMs && (!Number.isFinite(stateRecoveredMs) || stateAlertMs > stateRecoveredMs)) {
+    initialStatus = 'down';
+  } else if (Number.isFinite(stateRecoveredMs) && stateRecoveredMs <= startMs && (!Number.isFinite(stateAlertMs) || stateRecoveredMs >= stateAlertMs)) {
+    initialStatus = 'healthy';
+  }
   for (let i = eventsWithTs.length - 1; i >= 0; i--) {
     if (eventsWithTs[i]._ts < startMs) {
       const mapped = eventToRuntimeStatus(eventsWithTs[i]);
@@ -2261,10 +2271,20 @@ function handleOpsWatchdog(req, res, method, parsed) {
       break;
     }
   }
-  const stepSeconds = 30;
+  if (initialStatus === 'unknown') {
+    if (effectiveStatus === 'down') initialStatus = 'down';
+    else if (effectiveStatus === 'healthy') initialStatus = 'healthy';
+  }
+  // Keep timeline density reasonable for long windows.
+  let stepSeconds = 30;
+  if (windowMinutes > 60 && windowMinutes <= 180) stepSeconds = 120;
+  else if (windowMinutes > 180 && windowMinutes <= 360) stepSeconds = 300;
+  else if (windowMinutes > 360 && windowMinutes <= 720) stepSeconds = 600;
+  else if (windowMinutes > 720) stepSeconds = 900;
   const timelinePoints = buildWatchdogTimeline(eventsWithTs, startMs, now, stepSeconds * 1000, initialStatus);
   const downCount = timelinePoints.filter(p => p.status === 'down').length;
   const healthyCount = timelinePoints.filter(p => p.status === 'healthy').length;
+  const degradedCount = timelinePoints.filter(p => p.status === 'degraded').length;
 
   return jsonReply(res, 200, {
     watchdog: state,
@@ -2285,6 +2305,7 @@ function handleOpsWatchdog(req, res, method, parsed) {
       points: timelinePoints,
       downCount,
       healthyCount,
+      degradedCount,
       filteredListCriticalOnly: criticalOnly,
     },
     files: {
