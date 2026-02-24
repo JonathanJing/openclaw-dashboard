@@ -49,9 +49,11 @@ header{display:flex;align-items:center;justify-content:space-between;padding:16p
 @keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(45,212,160,0.4)}50%{box-shadow:0 0 0 6px rgba(45,212,160,0)}}
 @keyframes pulse-red{0%,100%{box-shadow:0 0 0 0 rgba(248,81,73,0.4)}50%{box-shadow:0 0 0 6px rgba(248,81,73,0)}}
 .header-right{display:flex;align-items:center;gap:12px;font-size:.85rem;color:var(--text2)}
-.back-link,.refresh-btn{color:var(--accent);text-decoration:none;font-size:.85rem;border:1px solid var(--border);padding:6px 14px;border-radius:999px;transition:all .2s;background:transparent;cursor:pointer;font-family:var(--font)}
-.back-link:hover,.refresh-btn:hover{background:var(--glow);border-color:var(--accent)}
+.back-link,.refresh-btn,.lang-btn{color:var(--accent);text-decoration:none;font-size:.85rem;border:1px solid var(--border);padding:6px 14px;border-radius:999px;transition:all .2s;background:transparent;cursor:pointer;font-family:var(--font)}
+.back-link:hover,.refresh-btn:hover,.lang-btn:hover{background:var(--glow);border-color:var(--accent)}
 .refresh-btn svg{vertical-align:middle}
+.lang-btn{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;color:var(--text2)}
+.lang-btn.active{color:var(--accent);border-color:var(--accent)}
 
 /* ─── Tab Bar ─── */
 .tab-bar{display:flex;gap:4px;background:var(--glass);backdrop-filter:blur(16px);border:1px solid var(--border);border-radius:14px;padding:4px;margin-bottom:24px;width:fit-content}
@@ -819,6 +821,10 @@ header{display:flex;align-items:center;justify-content:space-between;padding:16p
       <button class="live-indicator active" id="liveIndicator" onclick="toggleLivePolling()" title="Toggle live updates">
         <span class="live-dot"></span> LIVE
       </button>
+      <button class="lang-btn" id="langToggleBtn" onclick="toggleLanguage()" title="Switch language">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+        <span id="langToggleLabel">EN</span>
+      </button>
       <button class="refresh-btn" onclick="refreshCurrentTab()" title="Refresh">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
       </button>
@@ -882,8 +888,8 @@ header{display:flex;align-items:center;justify-content:space-between;padding:16p
 
   <div id="watchdogGlobalAlert" class="glass-card" style="padding:10px 14px;margin-bottom:12px;border-color:var(--red);display:none">
     <div style="display:flex;justify-content:space-between;gap:10px;align-items:center">
-      <div style="font-size:.8rem;color:#ffb4b4" id="watchdogGlobalText">OpenClaw 看门狗告警</div>
-      <button class="btn-secondary" style="padding:6px 10px;font-size:.72rem" onclick="focusOperationsTab()">打开 Operations</button>
+      <div style="font-size:.8rem;color:#ffb4b4" id="watchdogGlobalText">OpenClaw Watchdog alert</div>
+      <button class="btn-secondary" id="openOpsBtn" style="padding:6px 10px;font-size:.72rem" onclick="focusOperationsTab()">Open Operations</button>
     </div>
   </div>
 
@@ -892,7 +898,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:16p
     <div class="agent-sessions-header" onclick="this.classList.toggle('collapsed');this.nextElementSibling.style.maxHeight=this.classList.contains('collapsed')?'0':'400px'">
       <div class="agent-sessions-title">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
-        今日 Cron 执行记录
+        <span id="cronRunsTitleText">Today's Cron Runs</span>
       </div>
       <span class="agent-sessions-count" id="cronRunsCount">0</span>
     </div>
@@ -996,17 +1002,23 @@ header{display:flex;align-items:center;justify-content:space-between;padding:16p
     </div>
     <div class="glass-card" style="padding:16px;margin-top:16px">
       <div class="card-title" style="margin-bottom:4px">🐶 Watchdog</div>
-      <div class="card-sub" id="watchdogStatusText">正在加载看门狗状态…</div>
+      <div class="card-sub" id="watchdogStatusText">Loading watchdog status...</div>
       <div class="ops-ch-meta" id="watchdogStatusMeta" style="margin-top:8px"></div>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px">
         <select id="watchdogWindowSelect" class="form-input" style="max-width:180px;padding:6px 10px;font-size:.75rem" onchange="setWatchdogWindow(this.value)">
-          <option value="5">最近 5 分钟</option>
-          <option value="10">最近 10 分钟</option>
-          <option value="15" selected>最近 15 分钟</option>
+          <option value="5">Last 5 min</option>
+          <option value="10">Last 10 min</option>
+          <option value="15" selected>Last 15 min</option>
+          <option value="30">Last 30 min</option>
+          <option value="60">Last 1 hour</option>
+          <option value="180">Last 3 hours</option>
+          <option value="360">Last 6 hours</option>
+          <option value="720">Last 12 hours</option>
+          <option value="1440">Last 24 hours</option>
         </select>
-        <label style="display:flex;align-items:center;gap:6px;font-size:.75rem;color:var(--text2);cursor:pointer">
+        <label id="watchdogCriticalOnlyLabel" style="display:flex;align-items:center;gap:6px;font-size:.75rem;color:var(--text2);cursor:pointer">
           <input type="checkbox" id="watchdogCriticalOnly" onchange="setWatchdogCriticalOnly(this.checked)">
-          仅看 Critical 事件
+          Critical only
         </label>
       </div>
       <div id="watchdogTimeline" style="margin-top:10px"></div>
@@ -1051,15 +1063,15 @@ header{display:flex;align-items:center;justify-content:space-between;padding:16p
 
     <!-- Cron Cost Analysis -->
     <div class="glass-card" style="padding:16px;margin-top:16px">
-      <div class="card-title">💰 Cron 成本分析</div>
+      <div class="card-title" id="cronCostTitle">💰 Cron Cost Analysis</div>
       <div class="card-sub" id="cronCostSummary">Loading...</div>
       <div id="cronCostContent" style="margin-top:12px"></div>
     </div>
 
     <!-- Fixed vs Variable Trend -->
     <div class="glass-card" style="padding:16px;margin-top:12px">
-      <div class="card-title">📈 固定成本 vs 浮动成本趋势</div>
-      <div class="card-sub">Cron（固定）= 每日自动任务 · 交互（浮动）= 人工触发的对话</div>
+      <div class="card-title" id="cronTrendTitle">📈 Fixed vs Variable Cost Trend</div>
+      <div class="card-sub" id="cronTrendSub">Cron (fixed) = scheduled jobs · Interactive (variable) = manually triggered chats</div>
       <canvas id="cronTrendChart" height="160" style="width:100%;margin-top:8px"></canvas>
       <div id="cronTrendLegend" style="margin-top:6px;font-size:.72rem;display:flex;gap:16px"></div>
     </div>
@@ -1240,6 +1252,87 @@ const TOKEN = getToken();
 const API = (location.port === '18789' || location.port === '18790')
   ? `${location.protocol}//${location.hostname}:18790`
   : '';
+const LANG_KEY = 'openclaw.dashboard.lang';
+let currentLang = localStorage.getItem(LANG_KEY) || 'en';
+if (currentLang !== 'en' && currentLang !== 'zh') currentLang = 'en';
+
+function isZh() { return currentLang === 'zh'; }
+function tt(en, zh) { return isZh() ? zh : en; }
+function currentLocale() { return isZh() ? 'zh-CN' : 'en-US'; }
+
+function wdWindowOptionLabel(mins) {
+  const m = Number(mins);
+  if (!Number.isFinite(m) || m <= 0) return tt('Recent period', '最近一段时间');
+  if (m < 60) return tt(`Last ${m} min`, `最近 ${m} 分钟`);
+  if (m % 60 === 0) return tt(`Last ${m / 60} hour${m === 60 ? '' : 's'}`, `最近 ${m / 60} 小时`);
+  return tt(`Last ${m} min`, `最近 ${m} 分钟`);
+}
+
+function applyLanguageUI() {
+  const html = document.documentElement;
+  if (html) html.lang = isZh() ? 'zh' : 'en';
+
+  const btn = document.getElementById('langToggleBtn');
+  const label = document.getElementById('langToggleLabel');
+  if (btn) {
+    btn.classList.add('active');
+    btn.title = tt('Switch language', '切换语言');
+  }
+  if (label) label.textContent = isZh() ? '中文' : 'EN';
+
+  const openOpsBtn = document.getElementById('openOpsBtn');
+  if (openOpsBtn) openOpsBtn.textContent = tt('Open Operations', '打开 Operations');
+
+  const cronRunsTitle = document.getElementById('cronRunsTitleText');
+  if (cronRunsTitle) cronRunsTitle.textContent = tt("Today's Cron Runs", '今日 Cron 执行记录');
+
+  const wdStatus = document.getElementById('watchdogStatusText');
+  if (wdStatus && !wdStatus.dataset.liveRendered) wdStatus.textContent = tt('Loading watchdog status...', '正在加载看门狗状态...');
+
+  const criticalLabel = document.getElementById('watchdogCriticalOnlyLabel');
+  if (criticalLabel && criticalLabel.lastChild?.nodeType === Node.TEXT_NODE) {
+    criticalLabel.lastChild.textContent = tt(' Critical only', ' 仅看 Critical 事件');
+  }
+
+  const cronCostTitle = document.getElementById('cronCostTitle');
+  if (cronCostTitle) cronCostTitle.textContent = tt('💰 Cron Cost Analysis', '💰 Cron 成本分析');
+  const cronTrendTitle = document.getElementById('cronTrendTitle');
+  if (cronTrendTitle) cronTrendTitle.textContent = tt('📈 Fixed vs Variable Cost Trend', '📈 固定成本 vs 浮动成本趋势');
+  const cronTrendSub = document.getElementById('cronTrendSub');
+  if (cronTrendSub) cronTrendSub.textContent = tt(
+    'Cron (fixed) = scheduled jobs · Interactive (variable) = manually triggered chats',
+    'Cron（固定）= 每日自动任务 · 交互（浮动）= 人工触发的对话'
+  );
+
+  const wdSelect = document.getElementById('watchdogWindowSelect');
+  if (wdSelect) {
+    Array.from(wdSelect.options).forEach((opt) => {
+      opt.textContent = wdWindowOptionLabel(opt.value);
+    });
+  }
+
+  if (Array.isArray(CONNECTED_APIS)) {
+    CONNECTED_APIS.forEach((api) => {
+      const desc = API_DESC_BY_ID[api.id];
+      if (desc) api.description = tt(desc.en, desc.zh);
+    });
+  }
+  if (Array.isArray(MODEL_OPTIONS) && MODEL_OPTIONS[0]) {
+    MODEL_OPTIONS[0].label = tt('Default', '默认');
+  }
+}
+
+function toggleLanguage() {
+  currentLang = isZh() ? 'en' : 'zh';
+  localStorage.setItem(LANG_KEY, currentLang);
+  applyLanguageUI();
+  if (_watchdogCache) renderWatchdogStatus(_watchdogCache);
+  renderTasks();
+  loadSessions();
+  loadCronEnhanced();
+  loadCronCosts();
+  renderAPIs();
+}
 
 async function apiFetch(path, opts = {}) {
   const sep = path.includes('?') ? '&' : '?';
@@ -1296,7 +1389,7 @@ function focusOperationsTab() {
 
 function setWatchdogWindow(v) {
   const n = Number(v);
-  if (Number.isFinite(n)) _watchdogWindowMins = Math.min(Math.max(n, 5), 15);
+  if (Number.isFinite(n)) _watchdogWindowMins = Math.min(Math.max(n, 5), 1440);
   pollWatchdogStatus();
 }
 
@@ -1328,13 +1421,13 @@ function wdParseMs(v) {
 }
 
 function wdFmtClock(tsMs) {
-  if (!Number.isFinite(tsMs)) return '未知时间';
-  return new Date(tsMs).toLocaleTimeString('zh-CN', { timeZone: 'America/Los_Angeles', hour12: false });
+  if (!Number.isFinite(tsMs)) return tt('Unknown time', '未知时间');
+  return new Date(tsMs).toLocaleTimeString(currentLocale(), { timeZone: 'America/Los_Angeles', hour12: false });
 }
 
 function wdFmtDateTime(tsMs) {
-  if (!Number.isFinite(tsMs)) return '未知时间';
-  return new Date(tsMs).toLocaleString('zh-CN', {
+  if (!Number.isFinite(tsMs)) return tt('Unknown time', '未知时间');
+  return new Date(tsMs).toLocaleString(currentLocale(), {
     timeZone: 'America/Los_Angeles',
     year: 'numeric',
     month: '2-digit',
@@ -1344,6 +1437,14 @@ function wdFmtDateTime(tsMs) {
     second: '2-digit',
     hour12: false,
   });
+}
+
+function wdWindowLabel(mins) {
+  const m = Number(mins);
+  if (!Number.isFinite(m) || m <= 0) return tt('recent period', '最近一段时间');
+  if (m < 60) return tt(`last ${m} min`, `最近 ${m} 分钟`);
+  if (m % 60 === 0) return tt(`last ${m / 60} hour${m === 60 ? '' : 's'}`, `最近 ${m / 60} 小时`);
+  return tt(`last ${m} min`, `最近 ${m} 分钟`);
 }
 
 function wdFmtDuration(seconds) {
@@ -1363,37 +1464,37 @@ function wdFmtDuration(seconds) {
 }
 
 function wdFmtAgo(tsMs) {
-  if (!Number.isFinite(tsMs)) return '未知';
+  if (!Number.isFinite(tsMs)) return tt('unknown', '未知');
   const diffSec = Math.floor((Date.now() - tsMs) / 1000);
-  if (diffSec < 0) return '刚刚';
-  return `${wdFmtDuration(diffSec)}前`;
+  if (diffSec < 0) return tt('just now', '刚刚');
+  return tt(`${wdFmtDuration(diffSec)} ago`, `${wdFmtDuration(diffSec)}前`);
 }
 
 function wdStatusZh(status) {
   const s = String(status || '').toLowerCase();
-  if (s === 'healthy') return '健康';
-  if (s === 'down') return '断连';
-  if (s === 'degraded') return '降级';
-  if (s === 'critical') return '严重';
-  if (s === 'warning' || s === 'warn') return '告警';
-  return '未知';
+  if (s === 'healthy') return tt('healthy', '健康');
+  if (s === 'down') return tt('down', '断连');
+  if (s === 'degraded') return tt('degraded', '降级');
+  if (s === 'critical') return tt('critical', '严重');
+  if (s === 'warning' || s === 'warn') return tt('warning', '告警');
+  return tt('unknown', '未知');
 }
 
 function wdReasonZh(reason) {
   const r = String(reason || '').toLowerCase();
   const map = {
-    recovered: '已恢复',
-    runtime_stopped: '运行时停止',
-    rpc_probe_failed: 'RPC 探活失败',
-    health_unreachable: '健康检查不可达',
-    config_invalid: '配置无效',
-    config_rewritten: '配置被改写',
-    auth_mismatch: '鉴权不匹配',
-    gateway_check_failed: '网关检查失败',
-    none: '无',
-    unknown: '未知',
+    recovered: tt('recovered', '已恢复'),
+    runtime_stopped: tt('runtime stopped', '运行时停止'),
+    rpc_probe_failed: tt('RPC probe failed', 'RPC 探活失败'),
+    health_unreachable: tt('health check unreachable', '健康检查不可达'),
+    config_invalid: tt('invalid config', '配置无效'),
+    config_rewritten: tt('config overwritten', '配置被改写'),
+    auth_mismatch: tt('auth mismatch', '鉴权不匹配'),
+    gateway_check_failed: tt('gateway check failed', '网关检查失败'),
+    none: tt('none', '无'),
+    unknown: tt('unknown', '未知'),
   };
-  return map[r] || String(reason || '未知');
+  return map[r] || String(reason || tt('unknown', '未知'));
 }
 
 function renderWatchdogTimeline(timeline, watchdog) {
@@ -1408,50 +1509,47 @@ function renderWatchdogTimeline(timeline, watchdog) {
     el.innerHTML = '<div class="ops-ch-meta">No timeline data.</div>';
     return;
   }
-
-  const colors = {
-    down: 'var(--red)',
-    healthy: 'var(--green)',
-    degraded: 'var(--yellow)',
-    unknown: 'var(--text2)',
-  };
-  const totals = { down: 0, healthy: 0, degraded: 0, unknown: 0 };
-  const bars = points.map((p, idx) => {
-    const status = (p.status || 'unknown').toLowerCase();
-    totals[status] = (totals[status] || 0) + 1;
-    const c = colors[status] || colors.unknown;
-    const label = `${wdFmtClock(p._ms)} · ${wdStatusZh(status)}`;
-    const border = idx === points.length - 1 ? '1px solid rgba(255,255,255,0.55)' : '1px solid rgba(255,255,255,0.08)';
-    return `<div title="${label}" style="height:16px;flex:1;min-width:3px;background:${c};opacity:.95;border:${border};border-radius:2px"></div>`;
-  }).join('');
-
-  const segments = [];
-  let startIdx = 0;
-  for (let i = 1; i < points.length; i++) {
-    const prev = (points[i - 1].status || 'unknown');
-    const curr = (points[i].status || 'unknown');
-    if (prev !== curr) {
-      segments.push({ status: prev, startMs: points[startIdx]._ms, endMs: points[i - 1]._ms });
-      startIdx = i;
-    }
-  }
-  segments.push({
-    status: points[points.length - 1].status || 'unknown',
-    startMs: points[startIdx]._ms,
-    endMs: points[points.length - 1]._ms,
-  });
-
-  const lastDownSeg = [...segments].reverse().find(s => s.status === 'down');
   const totalBars = points.length || 1;
+  const stateByIndex = points.map((p) => {
+    const s = String(p.status || '').toLowerCase();
+    if (s === 'down') return 'critical';
+    if (s === 'degraded') return 'normal_error';
+    return 'healthy';
+  });
+  const criticalCount = stateByIndex.filter(s => s === 'critical').length;
+  const normalErrorCount = stateByIndex.filter(s => s === 'normal_error').length;
+  const healthyCount = totalBars - criticalCount - normalErrorCount;
   const pct = (n) => `${Math.round((n / totalBars) * 100)}%`;
   const firstMs = points[0]._ms;
   const lastMs = points[points.length - 1]._ms;
+  const gradientStops = [];
+  for (let i = 0; i < totalBars; i++) {
+    const color = stateByIndex[i] === 'critical'
+      ? 'var(--red)'
+      : (stateByIndex[i] === 'normal_error' ? 'var(--yellow)' : 'var(--green)');
+    const startPct = (i / totalBars) * 100;
+    const endPct = ((i + 1) / totalBars) * 100;
+    gradientStops.push(`${color} ${startPct.toFixed(3)}% ${endPct.toFixed(3)}%`);
+  }
 
-  let latestOutageLine = '<span style="color:var(--text2)">当前时间窗口内没有断连区段。</span>';
-  if (lastDownSeg) {
-    const downEnd = Math.max(lastDownSeg.endMs, lastDownSeg.startMs);
-    const downDurSec = Math.max(0, Math.floor((downEnd - lastDownSeg.startMs) / 1000));
-    latestOutageLine = `<span style="color:#ffb4b4">窗口内最近一次断连：</span> ${wdFmtClock(lastDownSeg.startMs)} → ${wdFmtClock(downEnd)}（${wdFmtDuration(downDurSec)}）`;
+  let latestOutageLine = `<span style="color:var(--text2)">${tt('No error segment in the selected window.', '当前窗口内未发现错误时段。')}</span>`;
+  let latestErrorStart = -1;
+  let latestErrorEnd = -1;
+  for (let i = totalBars - 1; i >= 0; i--) {
+    if (stateByIndex[i] === 'critical' || stateByIndex[i] === 'normal_error') {
+      latestErrorEnd = i;
+      let j = i;
+      while (j >= 0 && (stateByIndex[j] === 'critical' || stateByIndex[j] === 'normal_error')) j--;
+      latestErrorStart = j + 1;
+      break;
+    }
+  }
+  if (latestErrorStart >= 0) {
+    const startTs = points[latestErrorStart]._ms;
+    const endTs = points[latestErrorEnd]._ms;
+    const errSec = Math.max(0, Math.floor((endTs - startTs) / 1000));
+    const latestLevel = stateByIndex[latestErrorEnd] === 'critical' ? 'Critical' : tt('Normal error', '普通错误');
+    latestOutageLine = `<span style="color:#ffb4b4">${tt('Latest error segment in window:', '窗口内最近错误时段：')}</span> ${wdFmtClock(startTs)} → ${wdFmtClock(endTs)} (${wdFmtDuration(errSec)}, ${tt('level', '级别')}: ${latestLevel})`;
   }
 
   const stateRecoveredMs = Number.isFinite(Number(watchdog?.last_recovered_at))
@@ -1462,21 +1560,26 @@ function renderWatchdogTimeline(timeline, watchdog) {
     : NaN;
   let outsideWindowHint = '';
   if (Number.isFinite(stateRecoveredMs) && stateRecoveredMs < firstMs) {
-    outsideWindowHint = `最近一次恢复发生在当前 ${windowMinutes} 分钟窗口之外（${wdFmtDateTime(stateRecoveredMs)}，洛杉矶时区）。`;
+    outsideWindowHint = tt(
+      `Last recovery happened before ${wdWindowLabel(windowMinutes)} (${wdFmtDateTime(stateRecoveredMs)}, America/Los_Angeles).`,
+      `最近一次恢复发生在当前${wdWindowLabel(windowMinutes)}窗口之外（${wdFmtDateTime(stateRecoveredMs)}，洛杉矶时区）。`
+    );
   } else if (Number.isFinite(stateAlertMs) && stateAlertMs < firstMs && !lastDownSeg) {
-    outsideWindowHint = `最近一次断连开始于当前 ${windowMinutes} 分钟窗口之外（${wdFmtDateTime(stateAlertMs)}，洛杉矶时区）。`;
+    outsideWindowHint = tt(
+      `Last outage started before ${wdWindowLabel(windowMinutes)} (${wdFmtDateTime(stateAlertMs)}, America/Los_Angeles).`,
+      `最近一次断连开始于当前${wdWindowLabel(windowMinutes)}窗口之外（${wdFmtDateTime(stateAlertMs)}，洛杉矶时区）。`
+    );
   }
 
   el.innerHTML = `
     <div class="ops-ch-meta" style="margin-bottom:8px">
-      <strong>状态时间线</strong>（最近 ${windowMinutes} 分钟）· ${wdFmtClock(firstMs)} → ${wdFmtClock(lastMs)}（洛杉矶时区）
+      <strong>${tt('Status timeline', '状态时间线')}</strong> (${wdWindowLabel(windowMinutes)}) · ${wdFmtClock(firstMs)} → ${wdFmtClock(lastMs)} (${tt('America/Los_Angeles', '洛杉矶时区')})
     </div>
-    <div style="display:flex;gap:2px;align-items:center">${bars}</div>
+    <div title="${tt('Green=healthy, yellow=normal error, red=critical', '绿色=正常，黄色=普通错误，红色=Critical')}" style="height:18px;width:100%;border-radius:999px;border:1px solid rgba(255,255,255,0.16);background:linear-gradient(to right, ${gradientStops.join(',')});box-shadow:inset 0 1px 2px rgba(0,0,0,.28)"></div>
     <div class="ops-ch-meta" style="margin-top:8px">
-      健康=${totals.healthy || 0}（${pct(totals.healthy || 0)}） ·
-      断连=${totals.down || 0}（${pct(totals.down || 0)}） ·
-      降级=${totals.degraded || 0}（${pct(totals.degraded || 0)}） ·
-      未知=${totals.unknown || 0}（${pct(totals.unknown || 0)}）
+      ${tt('Healthy', '正常')}=${healthyCount} (${pct(healthyCount)}) ·
+      ${tt('Normal error', '普通错误')}=${normalErrorCount} (${pct(normalErrorCount)}) ·
+      Critical=${criticalCount}（${pct(criticalCount)}）
     </div>
     <div class="ops-ch-meta" style="margin-top:6px">${latestOutageLine}</div>
     ${outsideWindowHint ? `<div class="ops-ch-meta" style="margin-top:4px;color:#caa46b">${outsideWindowHint}</div>` : ''}
@@ -1510,44 +1613,59 @@ function renderWatchdogStatus(data) {
 
   if (effective === 'down' || !runtimeRunning || hasOngoingOutage) {
     const driftMsg = suspectedConfigDrift
-      ? ' 可能根因：配置漂移（`openclaw.json` 与 `.good` 不一致）。'
+      ? tt(' Suspected root cause: config drift (`openclaw.json` differs from `.good`).', ' 可能根因：配置漂移（`openclaw.json` 与 `.good` 不一致）。')
       : '';
     const startMs = Number.isFinite(lastAlertMs) ? lastAlertMs : nowMs;
     const downFor = wdFmtDuration(Math.floor((nowMs - startMs) / 1000));
-    statusEl.innerHTML = `<span style="color:var(--red)">运行时已断连</span> · 已持续 <strong>${downFor}</strong>。原因：<strong>${escHtml(wdReasonZh(reason))}</strong>。${driftMsg}`;
+    statusEl.innerHTML = `<span style="color:var(--red)">${tt('Runtime disconnected', '运行时已断连')}</span> · ${tt('for', '已持续')} <strong>${downFor}</strong>. ${tt('Reason', '原因')}: <strong>${escHtml(wdReasonZh(reason))}</strong>.${driftMsg}`;
+    statusEl.dataset.liveRendered = '1';
     globalAlert.style.display = 'block';
-    globalText.textContent = `OpenClaw 已断连 ${downFor} · 原因=${wdReasonZh(reason)} · 连续失败=${failures}${suspectedConfigDrift ? ' · 配置漂移=是' : ''}`;
+    globalText.textContent = tt(
+      `OpenClaw down ${downFor} · reason=${wdReasonZh(reason)} · consecutive failures=${failures}${suspectedConfigDrift ? ' · config drift=yes' : ''}`,
+      `OpenClaw 已断连 ${downFor} · 原因=${wdReasonZh(reason)} · 连续失败=${failures}${suspectedConfigDrift ? ' · 配置漂移=是' : ''}`
+    );
   } else if (effective === 'healthy') {
     let recoveryLine = '';
     if (Number.isFinite(lastAlertMs) && Number.isFinite(lastRecoveredMs) && lastRecoveredMs >= lastAlertMs) {
       const outageSec = Math.floor((lastRecoveredMs - lastAlertMs) / 1000);
-      recoveryLine = ` 上次断连：<strong>${wdFmtDuration(outageSec)}</strong>（${wdFmtAgo(lastRecoveredMs)}恢复）。`;
+      recoveryLine = tt(
+        ` Last outage: <strong>${wdFmtDuration(outageSec)}</strong> (recovered ${wdFmtAgo(lastRecoveredMs)}).`,
+        ` 上次断连：<strong>${wdFmtDuration(outageSec)}</strong>（${wdFmtAgo(lastRecoveredMs)}恢复）。`
+      );
     }
-    statusEl.innerHTML = `<span style="color:var(--green)">运行时健康</span> · 检查全部通过。${recoveryLine}`;
+    statusEl.innerHTML = `<span style="color:var(--green)">${tt('Runtime healthy', '运行时健康')}</span> · ${tt('all checks passed', '检查全部通过')}。${recoveryLine}`;
+    statusEl.dataset.liveRendered = '1';
     globalAlert.style.display = 'none';
   } else {
     const driftMsg = configDriftDetected
-      ? ' 检测到配置漂移，建议在下次事故前尽快处理。'
+      ? tt(' Config drift detected, fix it before the next incident.', ' 检测到配置漂移，建议在下次事故前尽快处理。')
       : '';
-    statusEl.innerHTML = `<span style="color:var(--yellow)">看门狗降级 / 状态不确定</span> · 运行时可能不稳定。最近原因：<strong>${escHtml(wdReasonZh(reason))}</strong>。${driftMsg}`;
+    statusEl.innerHTML = `<span style="color:var(--yellow)">${tt('Watchdog degraded / uncertain state', '看门狗降级 / 状态不确定')}</span> · ${tt('runtime may be unstable', '运行时可能不稳定')}。${tt('Recent reason', '最近原因')}: <strong>${escHtml(wdReasonZh(reason))}</strong>.${driftMsg}`;
+    statusEl.dataset.liveRendered = '1';
     globalAlert.style.display = 'block';
-    globalText.textContent = `看门狗告警 · 原因=${wdReasonZh(reason)} · 连续失败=${failures}${configDriftDetected ? ' · 配置漂移=是' : ''}`;
+    globalText.textContent = tt(
+      `Watchdog alert · reason=${wdReasonZh(reason)} · consecutive failures=${failures}${configDriftDetected ? ' · config drift=yes' : ''}`,
+      `看门狗告警 · 原因=${wdReasonZh(reason)} · 连续失败=${failures}${configDriftDetected ? ' · 配置漂移=是' : ''}`
+    );
   }
 
   metaEl.innerHTML = `
-    运行时=<strong>${runtimeRunning ? '运行中' : '已停止'}</strong> ·
-    看门狗状态=<strong>${wdStatusZh(wd.status || 'unknown')}</strong> ·
-    连续失败=<strong>${escHtml(String(failures))}</strong> ·
-    最近原因=<strong>${escHtml(wdReasonZh(reason))}</strong><br>
-    配置守护=<strong>${escHtml(configGuardStatus)}</strong> ·
-    配置漂移=<strong>${configDriftDetected ? '是' : '否'}</strong> ·
-    更新时间=<strong>${updatedAt ? wdFmtDateTime(wdParseMs(updatedAt)) : '—'}</strong> ·
-    事件过滤=<strong>${_watchdogCriticalOnly ? '仅 Critical' : '全部'}</strong>
+    ${tt('Runtime', '运行时')}=<strong>${runtimeRunning ? tt('running', '运行中') : tt('stopped', '已停止')}</strong> ·
+    ${tt('Watchdog', '看门狗状态')}=<strong>${wdStatusZh(wd.status || 'unknown')}</strong> ·
+    ${tt('Consecutive failures', '连续失败')}=<strong>${escHtml(String(failures))}</strong> ·
+    ${tt('Recent reason', '最近原因')}=<strong>${escHtml(wdReasonZh(reason))}</strong><br>
+    ${tt('Config guard', '配置守护')}=<strong>${escHtml(configGuardStatus)}</strong> ·
+    ${tt('Config drift', '配置漂移')}=<strong>${configDriftDetected ? tt('yes', '是') : tt('no', '否')}</strong> ·
+    ${tt('Updated at', '更新时间')}=<strong>${updatedAt ? wdFmtDateTime(wdParseMs(updatedAt)) : '—'}</strong> ·
+    ${tt('Event filter', '事件过滤')}=<strong>${_watchdogCriticalOnly ? tt('Critical only', '仅 Critical') : tt('All', '全部')}</strong>
   `;
   renderWatchdogTimeline(timeline, wd);
 
   if (!recent.length) {
-    eventsEl.innerHTML = `<div class="ops-ch-meta">在最近 ${_watchdogWindowMins} 分钟内，没有命中当前过滤条件的看门狗事件。</div>`;
+    eventsEl.innerHTML = `<div class="ops-ch-meta">${tt(
+      `No watchdog events matched current filters in ${wdWindowLabel(_watchdogWindowMins)}.`,
+      `在${wdWindowLabel(_watchdogWindowMins)}内，没有命中当前过滤条件的看门狗事件。`
+    )}</div>`;
     return;
   }
   eventsEl.innerHTML = recent.map(ev => {
@@ -2726,7 +2844,7 @@ const CONNECTED_APIS = [
     icon: '🎮',
     iconClass: 'discord',
     status: 'connected',
-    description: '主消息频道，用于接收指令、发送报告和互动。支持 Components v2 组件交互。',
+    description: tt('Primary messaging channel for commands, reports, and interactions. Supports Components v2 interactions.', '主消息频道，用于接收指令、发送报告和互动。支持 Components v2 组件交互。'),
     capabilities: [
       { label: 'Send Messages', type: 'messaging' },
       { label: 'Read Messages', type: 'messaging' },
@@ -2741,7 +2859,7 @@ const CONNECTED_APIS = [
     icon: '🧠',
     iconClass: 'anthropic',
     status: 'connected',
-    description: '主 LLM 引擎。Claude Sonnet 4.6 / Opus 4.6，用于推理、代码生成和对话。',
+    description: tt('Primary LLM engine. Claude Sonnet 4.6 / Opus 4.6 for reasoning, code generation, and chat.', '主 LLM 引擎。Claude Sonnet 4.6 / Opus 4.6，用于推理、代码生成和对话。'),
     capabilities: [
       { label: 'Claude Sonnet 4.6', type: 'ai' },
       { label: 'Claude Opus 4.6', type: 'ai' },
@@ -2756,7 +2874,7 @@ const CONNECTED_APIS = [
     icon: '🦁',
     iconClass: 'brave',
     status: 'connected',
-    description: '实时网页搜索 API，用于信息检索和最新内容获取。',
+    description: tt('Real-time web search API for retrieval and fresh information.', '实时网页搜索 API，用于信息检索和最新内容获取。'),
     capabilities: [
       { label: 'Web Search', type: 'search' },
       { label: 'Region Filter', type: 'search' },
@@ -2770,7 +2888,7 @@ const CONNECTED_APIS = [
     icon: 'N',
     iconClass: 'notion',
     status: 'connected',
-    description: '数据库读写，用于任务管理、项目跟踪和知识库存储。',
+    description: tt('Database read/write for task management, project tracking, and knowledge storage.', '数据库读写，用于任务管理、项目跟踪和知识库存储。'),
     capabilities: [
       { label: 'Database Read', type: 'data' },
       { label: 'Database Write', type: 'data' },
@@ -2785,7 +2903,7 @@ const CONNECTED_APIS = [
     icon: '⚡',
     iconClass: 'openai',
     status: 'connected',
-    description: 'GPT-5.2 / Codex，用于代码补全、内容生成和多模态任务。',
+    description: tt('GPT-5.2 / Codex for code completion, content generation, and multimodal tasks.', 'GPT-5.2 / Codex，用于代码补全、内容生成和多模态任务。'),
     capabilities: [
       { label: 'GPT-5.2', type: 'ai' },
       { label: 'Codex', type: 'ai' },
@@ -2800,7 +2918,7 @@ const CONNECTED_APIS = [
     icon: 'G',
     iconClass: 'google',
     status: 'connected',
-    description: 'Gemini 3 Pro / Flash，用于多模态推理、图像理解和长上下文任务。',
+    description: tt('Gemini 3 Pro / Flash for multimodal reasoning, image understanding, and long context.', 'Gemini 3 Pro / Flash，用于多模态推理、图像理解和长上下文任务。'),
     capabilities: [
       { label: 'Gemini 3 Pro', type: 'ai' },
       { label: 'Gemini Flash', type: 'ai' },
@@ -2815,7 +2933,7 @@ const CONNECTED_APIS = [
     icon: '𝕏',
     iconClass: 'twitter',
     status: 'connected',
-    description: '推文抓取与监控，追踪 @steipete @openclaw 及相关话题动态。',
+    description: tt('Tweet fetching and monitoring for @steipete, @openclaw, and related topics.', '推文抓取与监控，追踪 @steipete @openclaw 及相关话题动态。'),
     capabilities: [
       { label: 'Tweet Fetch', type: 'data' },
       { label: '@steipete', type: 'search' },
@@ -2830,7 +2948,7 @@ const CONNECTED_APIS = [
     icon: '🌐',
     iconClass: 'web',
     status: 'connected',
-    description: '网页内容提取工具，用于抓取和解析任意 URL 的页面内容。',
+    description: tt('Web content extraction tool to fetch and parse page content from any URL.', '网页内容提取工具，用于抓取和解析任意 URL 的页面内容。'),
     capabilities: [
       { label: 'URL Fetch', type: 'data' },
       { label: 'Content Extract', type: 'data' },
@@ -2844,7 +2962,7 @@ const CONNECTED_APIS = [
     icon: '🎙️',
     iconClass: 'whisper',
     status: 'connected',
-    description: '语音转文字服务，支持多语言识别，用于音频内容处理。',
+    description: tt('Speech-to-text service with multilingual recognition for audio processing.', '语音转文字服务，支持多语言识别，用于音频内容处理。'),
     capabilities: [
       { label: 'Speech-to-Text', type: 'ai' },
       { label: 'Multi-Language', type: 'ai' },
@@ -2852,6 +2970,45 @@ const CONNECTED_APIS = [
     ]
   }
 ];
+
+const API_DESC_BY_ID = {
+  discord: {
+    en: 'Primary messaging channel for commands, reports, and interactions. Supports Components v2 interactions.',
+    zh: '主消息频道，用于接收指令、发送报告和互动。支持 Components v2 组件交互。',
+  },
+  anthropic: {
+    en: 'Primary LLM engine. Claude Sonnet 4.6 / Opus 4.6 for reasoning, code generation, and chat.',
+    zh: '主 LLM 引擎。Claude Sonnet 4.6 / Opus 4.6，用于推理、代码生成和对话。',
+  },
+  'brave-search': {
+    en: 'Real-time web search API for retrieval and fresh information.',
+    zh: '实时网页搜索 API，用于信息检索和最新内容获取。',
+  },
+  notion: {
+    en: 'Database read/write for task management, project tracking, and knowledge storage.',
+    zh: '数据库读写，用于任务管理、项目跟踪和知识库存储。',
+  },
+  openai: {
+    en: 'GPT-5.2 / Codex for code completion, content generation, and multimodal tasks.',
+    zh: 'GPT-5.2 / Codex，用于代码补全、内容生成和多模态任务。',
+  },
+  gemini: {
+    en: 'Gemini 3 Pro / Flash for multimodal reasoning, image understanding, and long context.',
+    zh: 'Gemini 3 Pro / Flash，用于多模态推理、图像理解和长上下文任务。',
+  },
+  'x-api': {
+    en: 'Tweet fetching and monitoring for @steipete, @openclaw, and related topics.',
+    zh: '推文抓取与监控，追踪 @steipete @openclaw 及相关话题动态。',
+  },
+  'web-fetch': {
+    en: 'Web content extraction tool to fetch and parse page content from any URL.',
+    zh: '网页内容提取工具，用于抓取和解析任意 URL 的页面内容。',
+  },
+  whisper: {
+    en: 'Speech-to-text service with multilingual recognition for audio processing.',
+    zh: '语音转文字服务，支持多语言识别，用于音频内容处理。',
+  },
+};
 
 function renderAPIs() {
   const grid = document.getElementById('apisGrid');
@@ -2940,7 +3097,7 @@ function loadSystemInfo() {
     c.innerHTML = `
       <span>🖥️ <strong>${sys.macModel || sys.hostname}</strong></span>
       <span>🍎 ${sys.macOS || '—'}</span>
-      <span>🧮 ${sys.cpus}核 · Load ${sys.loadAvg?.['1m']?.toFixed(1) || '—'}</span>
+      <span>🧮 ${sys.cpus} ${tt('cores', '核')} · Load ${sys.loadAvg?.['1m']?.toFixed(1) || '—'}</span>
       <span style="color:${memColor}">💾 RAM ${memPct}%</span>
       <span style="color:${diskColor}">💿 Disk ${sys.disk?.usePct || '—'}</span>
       <span>📦 Node ${sys.nodeVersion || '—'}</span>
@@ -3061,7 +3218,7 @@ async function loadCronRuns() {
     count.textContent = runs.length;
 
     if (runs.length === 0) {
-      body.innerHTML = '<div style="padding:12px 18px;font-size:.8rem;color:var(--text2)">今日暂无 Cron 执行记录</div>';
+      body.innerHTML = `<div style="padding:12px 18px;font-size:.8rem;color:var(--text2)">${tt('No Cron runs today', '今日暂无 Cron 执行记录')}</div>`;
       return;
     }
 
@@ -3282,7 +3439,7 @@ loadTasks = async function() {
 // ─── Sessions Panel ───
 // ─── Model Selector ───
 const MODEL_OPTIONS = [
-  { value: 'default', label: '默认', short: 'default' },
+  { value: 'default', label: tt('Default', '默认'), short: 'default' },
   { value: 'opus',   label: 'Opus',   full: 'claude-opus-4-6' },
   { value: 'sonnet', label: 'Sonnet', full: 'claude-sonnet-4-6' },
   { value: 'flash',  label: 'Flash',  full: 'gemini-3.0-flash' },
@@ -3320,7 +3477,7 @@ async function changeModel(type, id, model, el) {
     el.style.color = '#f87171';
     el.disabled = false;
     el.style.opacity = '1';
-    alert('模型切换失败: ' + e.message);
+    alert(tt('Model switch failed: ', '模型切换失败: ') + e.message);
   }
 }
 
@@ -3351,6 +3508,32 @@ function toggleSessionSort(key) {
 function sessionSortIndicator(key) {
   if (sessionSortState.key !== key) return '&harr;';
   return sessionSortState.dir === 'asc' ? '&uarr;' : '&darr;';
+}
+
+function normalizeTaskTag(tag) {
+  if (!tag) return '';
+  if (isZh()) return tag;
+  const map = {
+    '🔧 深度开发': '🔧 Deep build',
+    '🧠 架构讨论': '🧠 Architecture',
+    '📊 汇报转发': '📊 Reporting',
+    '💬 闲聊': '💬 Chat',
+    '🔍 监控播报': '🔍 Monitoring',
+    '💼 搜索整理': '💼 Job research',
+    '🐦 内容创作': '🐦 Content',
+    '📰 摘要生成': '📰 Summary',
+    '📝 内容摘要': '📝 Summary',
+    '👁️ 图片路由': '👁️ Image routing',
+    '🎯 活动搜索': '🎯 Event search',
+    '📅 规划': '📅 Planning',
+    '👤 信息录入': '👤 Data entry',
+    '🍷 品鉴记录': '🍷 Tasting log',
+    '🚬 品鉴记录': '🚬 Tasting log',
+    '🍵 品鉴记录': '🍵 Tasting log',
+    '🌱 记录': '🌱 Logging',
+    '📖 灵修提醒': '📖 Reflection reminder',
+  };
+  return map[tag] || tag.replace(/[\u4E00-\u9FFF]/g, '').replace(/\s+/g, ' ').trim();
 }
 
 async function loadSessions() {
@@ -3436,19 +3619,19 @@ async function loadSessions() {
       const mTier = modelTier(s.model);
       const tiers = { easy: 0, medium: 1, hard: 2 };
       const diff = tiers[mTier] - tiers[taskTier];
-      if (diff >= 2) return { emoji: '🔴', text: '过高', tip: '模型远超任务需求，建议降级' };
-      if (diff === 1) return { emoji: '🟡', text: '偏高', tip: '可考虑降级节省成本' };
-      if (diff === 0) return { emoji: '🟢', text: '匹配', tip: '模型与任务复杂度匹配' };
-      if (diff === -1) return { emoji: '🔵', text: '偏低', tip: '任务较复杂，可考虑升级' };
+      if (diff >= 2) return { emoji: '🔴', text: tt('Overkill', '过高'), tip: tt('Model is far above task complexity, consider downgrade', '模型远超任务需求，建议降级') };
+      if (diff === 1) return { emoji: '🟡', text: tt('High', '偏高'), tip: tt('Could downgrade to save cost', '可考虑降级节省成本') };
+      if (diff === 0) return { emoji: '🟢', text: tt('Match', '匹配'), tip: tt('Model matches task complexity', '模型与任务复杂度匹配') };
+      if (diff === -1) return { emoji: '🔵', text: tt('Low', '偏低'), tip: tt('Task might need stronger model', '任务较复杂，可考虑升级') };
       return { emoji: '⚪', text: '—', tip: '' };
     }
 
     const fitSortRank = s => {
       const text = fitLabel(s).text;
-      if (text === '过高') return 4;
-      if (text === '偏高') return 3;
-      if (text === '匹配') return 2;
-      if (text === '偏低') return 1;
+      if (text === tt('Overkill', '过高')) return 4;
+      if (text === tt('High', '偏高')) return 3;
+      if (text === tt('Match', '匹配')) return 2;
+      if (text === tt('Low', '偏低')) return 1;
       return 0;
     };
 
@@ -3484,27 +3667,27 @@ async function loadSessions() {
 
     let html = `<table class="sessions-table">
       <thead><tr>
-        <th>频道</th>
-        <th>任务</th>
-        <th><button type="button" class="sess-sort-btn ${sessionSortState.key === 'model' ? 'active' : ''}" onclick="toggleSessionSort('model')">模型 <span class="sess-sort-indicator">${sessionSortIndicator('model')}</span></button></th>
-        <th><button type="button" class="sess-sort-btn ${sessionSortState.key === 'messages' ? 'active' : ''}" onclick="toggleSessionSort('messages')">消息 <span class="sess-sort-indicator">${sessionSortIndicator('messages')}</span></button></th>
+        <th>${tt('Channel', '频道')}</th>
+        <th>${tt('Task', '任务')}</th>
+        <th><button type="button" class="sess-sort-btn ${sessionSortState.key === 'model' ? 'active' : ''}" onclick="toggleSessionSort('model')">${tt('Model', '模型')} <span class="sess-sort-indicator">${sessionSortIndicator('model')}</span></button></th>
+        <th><button type="button" class="sess-sort-btn ${sessionSortState.key === 'messages' ? 'active' : ''}" onclick="toggleSessionSort('messages')">${tt('Messages', '消息')} <span class="sess-sort-indicator">${sessionSortIndicator('messages')}</span></button></th>
         <th><button type="button" class="sess-sort-btn ${sessionSortState.key === 'tokens' ? 'active' : ''}" onclick="toggleSessionSort('tokens')">Tokens <span class="sess-sort-indicator">${sessionSortIndicator('tokens')}</span></button></th>
-        <th><button type="button" class="sess-sort-btn ${sessionSortState.key === 'cost' ? 'active' : ''}" onclick="toggleSessionSort('cost')">花费 <span class="sess-sort-indicator">${sessionSortIndicator('cost')}</span></button></th>
-        <th><button type="button" class="sess-sort-btn ${sessionSortState.key === 'costPerMsg' ? 'active' : ''}" onclick="toggleSessionSort('costPerMsg')">$/条 <span class="sess-sort-indicator">${sessionSortIndicator('costPerMsg')}</span></button></th>
-        <th><button type="button" class="sess-sort-btn ${sessionSortState.key === 'fit' ? 'active' : ''}" onclick="toggleSessionSort('fit')">匹配 <span class="sess-sort-indicator">${sessionSortIndicator('fit')}</span></button></th>
+        <th><button type="button" class="sess-sort-btn ${sessionSortState.key === 'cost' ? 'active' : ''}" onclick="toggleSessionSort('cost')">${tt('Cost', '花费')} <span class="sess-sort-indicator">${sessionSortIndicator('cost')}</span></button></th>
+        <th><button type="button" class="sess-sort-btn ${sessionSortState.key === 'costPerMsg' ? 'active' : ''}" onclick="toggleSessionSort('costPerMsg')">${tt('$/msg', '$/条')} <span class="sess-sort-indicator">${sessionSortIndicator('costPerMsg')}</span></button></th>
+        <th><button type="button" class="sess-sort-btn ${sessionSortState.key === 'fit' ? 'active' : ''}" onclick="toggleSessionSort('fit')">${tt('Fit', '匹配')} <span class="sess-sort-indicator">${sessionSortIndicator('fit')}</span></button></th>
       </tr></thead><tbody>`;
 
     for (const s of sortedSessions) {
       const meta = channelMeta[s.displayName] || {};
       const cn = meta.cn || '';
-      const taskTag = meta.task || '';
+      const taskTag = normalizeTaskTag(meta.task || '');
       const eff = s.today.effectiveMessages || 0;
       const costPerMsg = eff > 0 ? (s.today.cost / eff) : 0;
       const costColor = costPerMsg > 1.5 ? '#f87171' : costPerMsg > 0.5 ? '#fbbf24' : 'var(--green)';
       const fit = fitLabel(s);
 
       const nameHtml = cn
-        ? `<span class="sess-name">${escHtml(s.displayName)}</span><br><span style="color:var(--text2);font-size:.65rem">${cn}</span>`
+        ? `<span class="sess-name">${escHtml(s.displayName)}</span><br><span style="color:var(--text2);font-size:.65rem">${isZh() ? cn : `CN: ${cn}`}</span>`
         : `<span class="sess-name">${escHtml(s.displayName)}</span>`;
 
       // Model selector dropdown
@@ -3514,7 +3697,7 @@ async function loadSessions() {
         <td><span class="sess-status ${s.status}"></span>${nameHtml}</td>
         <td style="font-size:.7rem">${taskTag}</td>
         <td>${modelSelect}</td>
-        <td>${s.today.messages}<span style="color:var(--text2);font-size:.65rem"><br>${eff} 有效</span></td>
+        <td>${s.today.messages}<span style="color:var(--text2);font-size:.65rem"><br>${eff} ${tt('effective', '有效')}</span></td>
         <td>${fmtTokens(s.today.totalTokens)}</td>
         <td style="font-weight:600">$${s.today.cost.toFixed(2)}</td>
         <td style="color:${costColor};font-weight:600">${eff > 0 ? '$' + costPerMsg.toFixed(2) : '—'}</td>
@@ -3537,7 +3720,10 @@ async function loadQuality() {
     // Sort by idle rate desc
     sessions.sort((a, b) => b.today.noReplyRate - a.today.noReplyRate);
 
-    let html = '<div class="glass-card" style="padding:16px;margin-bottom:12px"><div class="card-title">Session Quality (Today)</div><div class="card-sub">静默率 = (NO_REPLY 无回复 + HEARTBEAT_OK 心跳) / 总消息数。高静默率说明该频道大量消息不需要回复，可考虑降级模型节省成本。</div></div>';
+    let html = `<div class="glass-card" style="padding:16px;margin-bottom:12px"><div class="card-title">${tt('Session Quality (Today)', '会话质量（今日）')}</div><div class="card-sub">${tt(
+      'Silent rate = (NO_REPLY + HEARTBEAT_OK) / total messages. High silent rate means many messages need no response, so you can downgrade the model to save cost.',
+      '静默率 = (NO_REPLY 无回复 + HEARTBEAT_OK 心跳) / 总消息数。高静默率说明该频道大量消息不需要回复，可考虑降级模型节省成本。'
+    )}</div></div>`;
     html += '<div class="ops-channel-list">';
     for (const s of sessions) {
       const barWidth = Math.min(s.today.noReplyRate, 100);
@@ -3550,7 +3736,7 @@ async function loadQuality() {
           </div>
           <div class="ops-ch-meta"><span>${s.today.messages} msgs</span><span>${s.today.effectiveMessages} effective</span><span>${s.today.noReply} silent</span><span>${s.today.heartbeat} heartbeat</span></div>
         </div>
-        <div class="ops-ch-right"><div class="ops-ch-tokens" style="color:${color}">${s.today.noReplyRate}%</div><div class="ops-ch-cost">静默率</div></div>
+        <div class="ops-ch-right"><div class="ops-ch-tokens" style="color:${color}">${s.today.noReplyRate}%</div><div class="ops-ch-cost">${tt('Silent rate', '静默率')}</div></div>
       </div>`;
     }
     html += '</div>';
@@ -3715,7 +3901,10 @@ async function loadCronEnhanced() {
 
     let html = `<div class="glass-card" style="padding:14px;margin-bottom:12px">
       <div class="card-title">Cron Jobs</div>
-      <div class="card-sub">${data.total} 个任务 · ${data.enabled} 启用 · ${data.disabled} 停用</div>
+      <div class="card-sub">${tt(
+        `${data.total} jobs · ${data.enabled} enabled · ${data.disabled} disabled`,
+        `${data.total} 个任务 · ${data.enabled} 启用 · ${data.disabled} 停用`
+      )}</div>
     </div>`;
 
     for (const j of jobs) {
@@ -3725,7 +3914,7 @@ async function loadCronEnhanced() {
         const dur = j.lastRun.durationMs ? (j.lastRun.durationMs / 1000).toFixed(0) + 's' : '';
         const tokens = j.lastRun.tokens ? fmtTokens(j.lastRun.tokens) : '';
         return [ago, dur, tokens, j.lastRun.model ? shortModel(j.lastRun.model) : ''].filter(Boolean).join(' · ');
-      })() : '尚未运行';
+      })() : tt('Never run', '尚未运行');
 
       html += `<div class="cron-card ${j.enabled ? '' : 'disabled'}">
         <div class="cron-header">
@@ -3733,13 +3922,13 @@ async function loadCronEnhanced() {
             <div class="cron-name">${escHtml(j.name)}</div>
             <div class="cron-schedule">🕐 ${escHtml(j.schedule)}</div>
           </div>
-          <span class="cron-status"><span class="dot ${statusDot}"></span>${j.enabled ? '启用' : '停用'}</span>
+          <span class="cron-status"><span class="dot ${statusDot}"></span>${j.enabled ? tt('Enabled', '启用') : tt('Disabled', '停用')}</span>
         </div>
         <div class="cron-desc">${escHtml(j.description)}</div>
         <div class="cron-footer">
           <span>📋 ${j.payloadKind || '—'}</span>
           <span>🧠 ${buildModelSelect(j.model || '', j.id, 'cron')}</span>
-          <span>⏱ 上次: ${lastRunText}</span>
+          <span>⏱ ${tt('Last', '上次')}: ${lastRunText}</span>
         </div>
       </div>`;
     }
@@ -3793,7 +3982,10 @@ async function loadCronCosts() {
     const data = await apiFetch('/ops/cron-costs');
     const s = data.summary || {};
     const today = s.today || {};
-    summaryEl.textContent = `累计 ${s.totalRuns || 0} 次执行 · 总固定成本 ${fmtUsd(s.totalCronCost, 2)}（${fmtTokens(s.totalCronTokens || 0)} tokens） · 日均固定成本 ${fmtUsd(s.avgDailyCronCost, 2)} · 基线固定 ${fmtUsd(s.avgFixedBaselineCost, 2)} / 任务量波动 ${fmtUsd(s.avgWorkloadVariableCost, 2)} / 交互波动 ${fmtUsd(s.avgInteractiveVariableCost, 2)} · 今日固定 ${fmtUsd(today.cronCost, 2)}（${fmtTokens(today.cronTokens || 0)}） · 今日浮动 ${fmtUsd(today.interactiveCost, 2)} · ${s.days || 0} 天`;
+    summaryEl.textContent = tt(
+      `${s.totalRuns || 0} runs · total fixed ${fmtUsd(s.totalCronCost, 2)} (${fmtTokens(s.totalCronTokens || 0)} tokens) · avg daily fixed ${fmtUsd(s.avgDailyCronCost, 2)} · baseline fixed ${fmtUsd(s.avgFixedBaselineCost, 2)} / workload variable ${fmtUsd(s.avgWorkloadVariableCost, 2)} / interactive variable ${fmtUsd(s.avgInteractiveVariableCost, 2)} · today fixed ${fmtUsd(today.cronCost, 2)} (${fmtTokens(today.cronTokens || 0)}) · today variable ${fmtUsd(today.interactiveCost, 2)} · ${s.days || 0} days`,
+      `累计 ${s.totalRuns || 0} 次执行 · 总固定成本 ${fmtUsd(s.totalCronCost, 2)}（${fmtTokens(s.totalCronTokens || 0)} tokens） · 日均固定成本 ${fmtUsd(s.avgDailyCronCost, 2)} · 基线固定 ${fmtUsd(s.avgFixedBaselineCost, 2)} / 任务量波动 ${fmtUsd(s.avgWorkloadVariableCost, 2)} / 交互波动 ${fmtUsd(s.avgInteractiveVariableCost, 2)} · 今日固定 ${fmtUsd(today.cronCost, 2)}（${fmtTokens(today.cronTokens || 0)}） · 今日浮动 ${fmtUsd(today.interactiveCost, 2)} · ${s.days || 0} 天`
+    );
 
     // Per-job cost table (each run + each day)
     const jobs = data.jobs || [];
@@ -3802,18 +3994,18 @@ async function loadCronCosts() {
     const ri = review.interactive || {};
     const cov = review.coverage || {};
     let html = `<div class="glass-card" style="padding:10px;margin-bottom:10px">
-      <div style="font-size:.8rem;font-weight:600;margin-bottom:6px">🔎 数据质量 Review</div>
+      <div style="font-size:.8rem;font-weight:600;margin-bottom:6px">🔎 ${tt('Data quality review', '数据质量 Review')}</div>
       <div style="font-size:.74rem;color:var(--text2);display:flex;gap:14px;flex-wrap:wrap">
         <span>Cron finished: <b>${rc.finishedRuns || 0}</b></span>
-        <span>无 usage: <b style="color:${(rc.runsWithoutUsage || 0) > 0 ? '#fbbf24' : 'var(--green)'}">${rc.runsWithoutUsage || 0}</b></span>
-        <span>零 tokens: <b style="color:${(rc.runsWithZeroTokens || 0) > 0 ? '#fbbf24' : 'var(--green)'}">${rc.runsWithZeroTokens || 0}</b></span>
-        <span>交互覆盖天数: <b>${cov.daysWithInteractive || 0}/${cov.daysWithCron || 0}</b>（${cov.interactiveCoveragePct || 0}%）</span>
-        <span>交互 usage消息: <b>${ri.messagesWithUsage || 0}</b></span>
+        <span>${tt('No usage', '无 usage')}: <b style="color:${(rc.runsWithoutUsage || 0) > 0 ? '#fbbf24' : 'var(--green)'}">${rc.runsWithoutUsage || 0}</b></span>
+        <span>${tt('Zero tokens', '零 tokens')}: <b style="color:${(rc.runsWithZeroTokens || 0) > 0 ? '#fbbf24' : 'var(--green)'}">${rc.runsWithZeroTokens || 0}</b></span>
+        <span>${tt('Interactive coverage days', '交互覆盖天数')}: <b>${cov.daysWithInteractive || 0}/${cov.daysWithCron || 0}</b>（${cov.interactiveCoveragePct || 0}%）</span>
+        <span>${tt('Interactive msgs with usage', '交互 usage消息')}: <b>${ri.messagesWithUsage || 0}</b></span>
       </div>
       ${(review.notes || []).length > 0 ? `<div style="margin-top:6px;font-size:.72rem;color:#fbbf24">${(review.notes || []).map(n => `• ${escHtml(n)}`).join('<br>')}</div>` : ''}
     </div>`;
 
-    html += '<table class="sessions-table"><thead><tr><th>Cron 任务</th><th>总次数</th><th>平均时长/次</th><th>Tokens/次</th><th>$/次</th><th>今日（tokens / $）</th><th>日均 $</th><th>总花费</th></tr></thead><tbody>';
+    html += `<table class="sessions-table"><thead><tr><th>${tt('Cron job', 'Cron 任务')}</th><th>${tt('Runs', '总次数')}</th><th>${tt('Avg duration/run', '平均时长/次')}</th><th>Tokens/${tt('run', '次')}</th><th>$/ ${tt('run', '次')}</th><th>${tt('Today (tokens / $)', '今日（tokens / $）')}</th><th>${tt('Avg daily $', '日均 $')}</th><th>${tt('Total cost', '总花费')}</th></tr></thead><tbody>`;
     for (const j of jobs) {
       html += `<tr>
         <td style="font-weight:600;font-size:.78rem">
@@ -4591,6 +4783,7 @@ document.addEventListener('keydown', e => {
 });
 
 // ═══ INIT ═══
+applyLanguageUI();
 checkConnection();
 loadSessions(); // Load sessions tab (default)
 loadAgentMonitor();
