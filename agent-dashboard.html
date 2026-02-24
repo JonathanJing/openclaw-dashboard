@@ -1347,6 +1347,35 @@ async function apiFetch(path, opts = {}) {
   return res.text();
 }
 
+const DASHBOARD_CAPS = {
+  mutatingOpsEnabled: false,
+  mutatingOpsLoopbackOnly: true,
+  attachmentFilePathCopyEnabled: false,
+};
+
+function applyCapabilitiesUI() {
+  const mutatingEnabled = !!DASHBOARD_CAPS.mutatingOpsEnabled;
+  ['btnBackup', 'btnRestore', 'btnUpdateOpenClaw'].forEach((id) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.style.display = mutatingEnabled ? '' : 'none';
+  });
+}
+
+async function refreshCapabilities() {
+  try {
+    const data = await apiFetch('/ops/config');
+    const caps = data?.capabilities || {};
+    DASHBOARD_CAPS.mutatingOpsEnabled = !!caps.mutatingOpsEnabled;
+    DASHBOARD_CAPS.mutatingOpsLoopbackOnly = caps.mutatingOpsLoopbackOnly !== false;
+    DASHBOARD_CAPS.attachmentFilePathCopyEnabled = !!caps.attachmentFilePathCopyEnabled;
+  } catch {
+    DASHBOARD_CAPS.mutatingOpsEnabled = false;
+    DASHBOARD_CAPS.attachmentFilePathCopyEnabled = false;
+  }
+  applyCapabilitiesUI();
+}
+
 // ─── Connection Check ───
 async function checkConnection() {
   const dot = document.getElementById('statusDot');
@@ -3455,6 +3484,7 @@ function buildModelSelect(currentModel, id, type) {
   }).join('');
   const color = getModelColor(currentModel);
   return `<select class="model-select" style="border-color:${color};color:${color}"
+    ${DASHBOARD_CAPS.mutatingOpsEnabled ? '' : 'disabled title="Model changes disabled by server policy"'}
     onchange="changeModel('${type}','${id}',this.value,this)">${opts}</select>`;
 }
 
@@ -3850,6 +3880,11 @@ async function loadConfig() {
   if (!el) return;
   try {
     const data = await apiFetch('/ops/config');
+    const caps = data.capabilities || {};
+    DASHBOARD_CAPS.mutatingOpsEnabled = !!caps.mutatingOpsEnabled;
+    DASHBOARD_CAPS.mutatingOpsLoopbackOnly = caps.mutatingOpsLoopbackOnly !== false;
+    DASHBOARD_CAPS.attachmentFilePathCopyEnabled = !!caps.attachmentFilePathCopyEnabled;
+    applyCapabilitiesUI();
     const files = data.files || [];
     const cats = { core: '⚙️ Core Config', keys: '🔑 API Keys', personality: '🎭 Personality & Agents' };
     const grouped = {};
@@ -4285,6 +4320,10 @@ async function loadOpsAudit() {
 
 // ─── Ops Management Actions ───
 async function opsAction(action) {
+  if (!DASHBOARD_CAPS.mutatingOpsEnabled && ['backup', 'restore', 'updateOpenClaw'].includes(action)) {
+    alert(tt('This operation is disabled by server policy.', '当前服务策略禁用了该操作。'));
+    return;
+  }
   const btnMap = { backup: 'btnBackup', restore: 'btnRestore', updateOpenClaw: 'btnUpdateOpenClaw', restart: 'btnRestart' };
   const badgeMap = { backup: 'badgeBackup', restore: 'badgeRestore', updateOpenClaw: 'badgeUpdateOpenClaw', restart: 'badgeRestart' };
   const btn = document.getElementById(btnMap[action]);
@@ -4785,6 +4824,7 @@ document.addEventListener('keydown', e => {
 // ═══ INIT ═══
 applyLanguageUI();
 checkConnection();
+refreshCapabilities();
 loadSessions(); // Load sessions tab (default)
 loadAgentMonitor();
 pollWatchdogStatus();

@@ -42,6 +42,9 @@ const OPENCLAW_CONFIG_FILE = process.env.OPENCLAW_CONFIG_FILE || path.join(HOME_
 const OPENCLAW_CONFIG_BASELINE_FILE = process.env.OPENCLAW_CONFIG_BASELINE_FILE || path.join(HOME_DIR, '.openclaw', 'openclaw.json.good');
 const BACKUP_REMOTE = process.env.OPENCLAW_BACKUP_REMOTE || 'origin';
 const BACKUP_BRANCH = process.env.OPENCLAW_BACKUP_BRANCH || '';
+const ENABLE_MUTATING_OPS = process.env.OPENCLAW_ENABLE_MUTATING_OPS === '1';
+const ALLOW_ATTACHMENT_FILEPATH_COPY = process.env.OPENCLAW_ALLOW_ATTACHMENT_FILEPATH_COPY === '1';
+const MUTATING_OPS_LOOPBACK_ONLY = process.env.OPENCLAW_MUTATING_OPS_LOOPBACK_ONLY !== '0';
 // Load keys from keys.env if not in env
 function loadKeysEnv() {
   try {
@@ -97,6 +100,13 @@ function triggerTaskExecution(task) {
     console.error(`[webhook] Error scanning attachments for task ${task.id}:`, e.message);
   }
 
+  const attachmentStep = ALLOW_ATTACHMENT_FILEPATH_COPY
+    ? `3. **IMPORTANT — File Attachments:** If you generate ANY files (images, documents, PDFs, etc.) as part of this task, attach them to the task using this command for EACH file:
+   curl -s -X POST 'http://localhost:18790/tasks/${task.id}/attachments?token=${AUTH_TOKEN}' -H 'Content-Type: application/json' -d '{"filePath":"/absolute/path/to/file.ext","source":"agent"}'
+   The filePath must be an absolute path to the generated file on the server. This lets the dashboard display the file.`
+    : `3. **IMPORTANT — File Attachments:** Server-side filePath upload is disabled in this deployment.
+   If you need to return generated files, provide the absolute output path in your result note so operators can attach files manually.`;
+
   const message = `Execute this dashboard task immediately.
 
 Task ID: ${task.id}
@@ -107,9 +117,7 @@ Priority: ${task.priority || 'medium'}${attachmentInfo}
 Steps:
 1. Update status to in-progress: curl -s -X PATCH 'http://localhost:18790/tasks/${task.id}?token=${AUTH_TOKEN}' -H 'Content-Type: application/json' -d '{"status":"in-progress"}'
 2. Execute the task (do what the title/description says)
-3. **IMPORTANT — File Attachments:** If you generate ANY files (images, documents, PDFs, etc.) as part of this task, attach them to the task using this command for EACH file:
-   curl -s -X POST 'http://localhost:18790/tasks/${task.id}/attachments?token=${AUTH_TOKEN}' -H 'Content-Type: application/json' -d '{"filePath":"/absolute/path/to/file.ext","source":"agent"}'
-   The filePath must be an absolute path to the generated file on the server. This lets the dashboard display the file.
+${attachmentStep}
 4. Add result as a note: curl -s -X POST 'http://localhost:18790/tasks/${task.id}/notes?token=${AUTH_TOKEN}' -H 'Content-Type: application/json' -d '{"text":"<YOUR_RESULT>"}'
 5. Mark done: curl -s -X PATCH 'http://localhost:18790/tasks/${task.id}?token=${AUTH_TOKEN}' -H 'Content-Type: application/json' -d '{"status":"done"}'
 6. If it fails, mark failed with error in note.`;
@@ -182,6 +190,23 @@ function authenticate(req) {
   const cookies = parseCookies(req);
   if (cookies['ds'] === AUTH_TOKEN) return true;
   return false;
+}
+
+function isLoopbackRequest(req) {
+  const addr = String(req.socket?.remoteAddress || '').trim();
+  return addr === '127.0.0.1' || addr === '::1' || addr === '::ffff:127.0.0.1';
+}
+
+function guardMutatingOps(req, res, opName) {
+  if (!ENABLE_MUTATING_OPS) {
+    errorReply(res, 403, `Mutating op disabled: ${opName}. Set OPENCLAW_ENABLE_MUTATING_OPS=1 to enable.`);
+    return false;
+  }
+  if (MUTATING_OPS_LOOPBACK_ONLY && !isLoopbackRequest(req)) {
+    errorReply(res, 403, `Mutating op requires loopback request: ${opName}.`);
+    return false;
+  }
+  return true;
 }
 
 function readBody(req, maxSize) {
@@ -770,6 +795,12 @@ function handleAttachments(req, res, parsed, segments, method) {
 
       // Option 1: Server-side file copy (for agent-generated files)
       if (body.filePath && typeof body.filePath === 'string') {
+        if (!ALLOW_ATTACHMENT_FILEPATH_COPY) {
+          throw new Error('filePath upload disabled (set OPENCLAW_ALLOW_ATTACHMENT_FILEPATH_COPY=1 to enable)');
+        }
+        if (MUTATING_OPS_LOOPBACK_ONLY && !isLoopbackRequest(req)) {
+          throw new Error('filePath upload requires loopback request');
+        }
         const srcPath = path.resolve(body.filePath);
         // Security: only allow files from /tmp, workspace, or user home
         const homeDir = process.env.HOME || '';
@@ -1642,6 +1673,7 @@ function runBackupAndPush() {
 
 function handleOpsUpdateOpenClaw(req, res, method) {
   if (method !== 'POST') return errorReply(res, 405, 'Method not allowed');
+  if (!guardMutatingOps(req, res, 'ops/update-openclaw')) return;
   const report = {
     ok: true,
     timestamp: new Date().toISOString(),
@@ -1710,6 +1742,7 @@ function handleOpsUpdateOpenClaw(req, res, method) {
 // ─── POST /backup and POST /backup/load ───
 async function handleBackup(req, res, method, segments) {
   if (method !== 'POST') return errorReply(res, 405, 'Method not allowed');
+  if (!guardMutatingOps(req, res, segments[1] === 'load' ? 'backup/load' : 'backup')) return;
   const { execFileSync } = require('child_process');
   if (segments[1] === 'load') {
     try {
@@ -2381,7 +2414,14 @@ function handleOpsConfig(req, res, method) {
     } catch {}
   }
 
-  return jsonReply(res, 200, { files });
+  return jsonReply(res, 200, {
+    files,
+    capabilities: {
+      mutatingOpsEnabled: ENABLE_MUTATING_OPS,
+      mutatingOpsLoopbackOnly: MUTATING_OPS_LOOPBACK_ONLY,
+      attachmentFilePathCopyEnabled: ALLOW_ATTACHMENT_FILEPATH_COPY,
+    },
+  });
 }
 
 // --- Ops: Enhanced Cron ---
@@ -2827,6 +2867,7 @@ function sendAuditNotification(message) {
 
 function handleOpsSessionModel(req, res, method) {
   if (method !== 'POST') return errorReply(res, 405, 'POST only');
+  if (!guardMutatingOps(req, res, 'ops/session-model')) return;
   return readJsonBody(req).then(body => {
     const { channelId, model } = body;
     if (!channelId) return errorReply(res, 400, 'channelId required');
@@ -2891,6 +2932,7 @@ function handleOpsSessionModel(req, res, method) {
 // ─── POST /ops/cron-model ─── Set model override for a cron job
 function handleOpsCronModel(req, res, method) {
   if (method !== 'POST') return errorReply(res, 405, 'POST only');
+  if (!guardMutatingOps(req, res, 'ops/cron-model')) return;
   return readJsonBody(req).then(body => {
     const { jobId, model } = body;
     if (!jobId) return errorReply(res, 400, 'jobId required');
