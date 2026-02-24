@@ -882,8 +882,8 @@ header{display:flex;align-items:center;justify-content:space-between;padding:16p
 
   <div id="watchdogGlobalAlert" class="glass-card" style="padding:10px 14px;margin-bottom:12px;border-color:var(--red);display:none">
     <div style="display:flex;justify-content:space-between;gap:10px;align-items:center">
-      <div style="font-size:.8rem;color:#ffb4b4" id="watchdogGlobalText">OpenClaw watchdog alert</div>
-      <button class="btn-secondary" style="padding:6px 10px;font-size:.72rem" onclick="focusOperationsTab()">Open Operations</button>
+      <div style="font-size:.8rem;color:#ffb4b4" id="watchdogGlobalText">OpenClaw 看门狗告警</div>
+      <button class="btn-secondary" style="padding:6px 10px;font-size:.72rem" onclick="focusOperationsTab()">打开 Operations</button>
     </div>
   </div>
 
@@ -996,17 +996,17 @@ header{display:flex;align-items:center;justify-content:space-between;padding:16p
     </div>
     <div class="glass-card" style="padding:16px;margin-top:16px">
       <div class="card-title" style="margin-bottom:4px">🐶 Watchdog</div>
-      <div class="card-sub" id="watchdogStatusText">Loading watchdog status…</div>
+      <div class="card-sub" id="watchdogStatusText">正在加载看门狗状态…</div>
       <div class="ops-ch-meta" id="watchdogStatusMeta" style="margin-top:8px"></div>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px">
         <select id="watchdogWindowSelect" class="form-input" style="max-width:180px;padding:6px 10px;font-size:.75rem" onchange="setWatchdogWindow(this.value)">
-          <option value="5">Last 5 min</option>
-          <option value="10">Last 10 min</option>
-          <option value="15" selected>Last 15 min</option>
+          <option value="5">最近 5 分钟</option>
+          <option value="10">最近 10 分钟</option>
+          <option value="15" selected>最近 15 分钟</option>
         </select>
         <label style="display:flex;align-items:center;gap:6px;font-size:.75rem;color:var(--text2);cursor:pointer">
           <input type="checkbox" id="watchdogCriticalOnly" onchange="setWatchdogCriticalOnly(this.checked)">
-          Only critical events
+          仅看 Critical 事件
         </label>
       </div>
       <div id="watchdogTimeline" style="margin-top:10px"></div>
@@ -1322,23 +1322,164 @@ async function pollWatchdogStatus() {
   }
 }
 
-function renderWatchdogTimeline(timeline) {
+function wdParseMs(v) {
+  const t = Date.parse(v || '');
+  return Number.isFinite(t) ? t : NaN;
+}
+
+function wdFmtClock(tsMs) {
+  if (!Number.isFinite(tsMs)) return '未知时间';
+  return new Date(tsMs).toLocaleTimeString('zh-CN', { timeZone: 'America/Los_Angeles', hour12: false });
+}
+
+function wdFmtDateTime(tsMs) {
+  if (!Number.isFinite(tsMs)) return '未知时间';
+  return new Date(tsMs).toLocaleString('zh-CN', {
+    timeZone: 'America/Los_Angeles',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  });
+}
+
+function wdFmtDuration(seconds) {
+  let s = Number(seconds);
+  if (!Number.isFinite(s) || s < 0) s = 0;
+  s = Math.floor(s);
+  const d = Math.floor(s / 86400);
+  const h = Math.floor((s % 86400) / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  const parts = [];
+  if (d) parts.push(`${d}d`);
+  if (h) parts.push(`${h}h`);
+  if (m) parts.push(`${m}m`);
+  if (sec || !parts.length) parts.push(`${sec}s`);
+  return parts.join(' ');
+}
+
+function wdFmtAgo(tsMs) {
+  if (!Number.isFinite(tsMs)) return '未知';
+  const diffSec = Math.floor((Date.now() - tsMs) / 1000);
+  if (diffSec < 0) return '刚刚';
+  return `${wdFmtDuration(diffSec)}前`;
+}
+
+function wdStatusZh(status) {
+  const s = String(status || '').toLowerCase();
+  if (s === 'healthy') return '健康';
+  if (s === 'down') return '断连';
+  if (s === 'degraded') return '降级';
+  if (s === 'critical') return '严重';
+  if (s === 'warning' || s === 'warn') return '告警';
+  return '未知';
+}
+
+function wdReasonZh(reason) {
+  const r = String(reason || '').toLowerCase();
+  const map = {
+    recovered: '已恢复',
+    runtime_stopped: '运行时停止',
+    rpc_probe_failed: 'RPC 探活失败',
+    health_unreachable: '健康检查不可达',
+    config_invalid: '配置无效',
+    config_rewritten: '配置被改写',
+    auth_mismatch: '鉴权不匹配',
+    gateway_check_failed: '网关检查失败',
+    none: '无',
+    unknown: '未知',
+  };
+  return map[r] || String(reason || '未知');
+}
+
+function renderWatchdogTimeline(timeline, watchdog) {
   const el = document.getElementById('watchdogTimeline');
   if (!el) return;
-  const points = Array.isArray(timeline?.points) ? timeline.points : [];
+  const rawPoints = Array.isArray(timeline?.points) ? timeline.points : [];
+  const points = rawPoints
+    .map(p => ({ ...p, _ms: wdParseMs(p?.ts) }))
+    .filter(p => Number.isFinite(p._ms));
   const windowMinutes = timeline?.windowMinutes || _watchdogWindowMins;
   if (!points.length) {
     el.innerHTML = '<div class="ops-ch-meta">No timeline data.</div>';
     return;
   }
-  const bars = points.map(p => {
-    const color = p.status === 'down' ? 'var(--red)' : (p.status === 'healthy' ? 'var(--green)' : 'var(--yellow)');
-    const ts = new Date(p.ts || Date.now()).toLocaleTimeString();
-    return `<div title="${ts} · ${p.status}" style="height:14px;flex:1;background:${color};opacity:.9;border-radius:2px"></div>`;
+
+  const colors = {
+    down: 'var(--red)',
+    healthy: 'var(--green)',
+    degraded: 'var(--yellow)',
+    unknown: 'var(--text2)',
+  };
+  const totals = { down: 0, healthy: 0, degraded: 0, unknown: 0 };
+  const bars = points.map((p, idx) => {
+    const status = (p.status || 'unknown').toLowerCase();
+    totals[status] = (totals[status] || 0) + 1;
+    const c = colors[status] || colors.unknown;
+    const label = `${wdFmtClock(p._ms)} · ${wdStatusZh(status)}`;
+    const border = idx === points.length - 1 ? '1px solid rgba(255,255,255,0.55)' : '1px solid rgba(255,255,255,0.08)';
+    return `<div title="${label}" style="height:16px;flex:1;min-width:3px;background:${c};opacity:.95;border:${border};border-radius:2px"></div>`;
   }).join('');
+
+  const segments = [];
+  let startIdx = 0;
+  for (let i = 1; i < points.length; i++) {
+    const prev = (points[i - 1].status || 'unknown');
+    const curr = (points[i].status || 'unknown');
+    if (prev !== curr) {
+      segments.push({ status: prev, startMs: points[startIdx]._ms, endMs: points[i - 1]._ms });
+      startIdx = i;
+    }
+  }
+  segments.push({
+    status: points[points.length - 1].status || 'unknown',
+    startMs: points[startIdx]._ms,
+    endMs: points[points.length - 1]._ms,
+  });
+
+  const lastDownSeg = [...segments].reverse().find(s => s.status === 'down');
+  const totalBars = points.length || 1;
+  const pct = (n) => `${Math.round((n / totalBars) * 100)}%`;
+  const firstMs = points[0]._ms;
+  const lastMs = points[points.length - 1]._ms;
+
+  let latestOutageLine = '<span style="color:var(--text2)">当前时间窗口内没有断连区段。</span>';
+  if (lastDownSeg) {
+    const downEnd = Math.max(lastDownSeg.endMs, lastDownSeg.startMs);
+    const downDurSec = Math.max(0, Math.floor((downEnd - lastDownSeg.startMs) / 1000));
+    latestOutageLine = `<span style="color:#ffb4b4">窗口内最近一次断连：</span> ${wdFmtClock(lastDownSeg.startMs)} → ${wdFmtClock(downEnd)}（${wdFmtDuration(downDurSec)}）`;
+  }
+
+  const stateRecoveredMs = Number.isFinite(Number(watchdog?.last_recovered_at))
+    ? Number(watchdog.last_recovered_at) * 1000
+    : NaN;
+  const stateAlertMs = Number.isFinite(Number(watchdog?.last_alert_at))
+    ? Number(watchdog.last_alert_at) * 1000
+    : NaN;
+  let outsideWindowHint = '';
+  if (Number.isFinite(stateRecoveredMs) && stateRecoveredMs < firstMs) {
+    outsideWindowHint = `最近一次恢复发生在当前 ${windowMinutes} 分钟窗口之外（${wdFmtDateTime(stateRecoveredMs)}，洛杉矶时区）。`;
+  } else if (Number.isFinite(stateAlertMs) && stateAlertMs < firstMs && !lastDownSeg) {
+    outsideWindowHint = `最近一次断连开始于当前 ${windowMinutes} 分钟窗口之外（${wdFmtDateTime(stateAlertMs)}，洛杉矶时区）。`;
+  }
+
   el.innerHTML = `
-    <div class="ops-ch-meta" style="margin-bottom:6px">Status timeline (${windowMinutes} min): green=healthy · red=down</div>
+    <div class="ops-ch-meta" style="margin-bottom:8px">
+      <strong>状态时间线</strong>（最近 ${windowMinutes} 分钟）· ${wdFmtClock(firstMs)} → ${wdFmtClock(lastMs)}（洛杉矶时区）
+    </div>
     <div style="display:flex;gap:2px;align-items:center">${bars}</div>
+    <div class="ops-ch-meta" style="margin-top:8px">
+      健康=${totals.healthy || 0}（${pct(totals.healthy || 0)}） ·
+      断连=${totals.down || 0}（${pct(totals.down || 0)}） ·
+      降级=${totals.degraded || 0}（${pct(totals.degraded || 0)}） ·
+      未知=${totals.unknown || 0}（${pct(totals.unknown || 0)}）
+    </div>
+    <div class="ops-ch-meta" style="margin-top:6px">${latestOutageLine}</div>
+    ${outsideWindowHint ? `<div class="ops-ch-meta" style="margin-top:4px;color:#caa46b">${outsideWindowHint}</div>` : ''}
   `;
 }
 
@@ -1362,31 +1503,51 @@ function renderWatchdogStatus(data) {
   const suspectedConfigDrift = !!cfg?.suspectedConfigDrift;
   const recent = Array.isArray(data?.recentEvents) ? data.recentEvents : [];
   const timeline = data?.timeline || { points: [] };
+  const nowMs = Date.now();
+  const lastAlertMs = Number.isFinite(Number(wd?.last_alert_at)) ? Number(wd.last_alert_at) * 1000 : NaN;
+  const lastRecoveredMs = Number.isFinite(Number(wd?.last_recovered_at)) ? Number(wd.last_recovered_at) * 1000 : NaN;
+  const hasOngoingOutage = Number.isFinite(lastAlertMs) && (!Number.isFinite(lastRecoveredMs) || lastAlertMs > lastRecoveredMs);
 
-  if (effective === 'down') {
+  if (effective === 'down' || !runtimeRunning || hasOngoingOutage) {
     const driftMsg = suspectedConfigDrift
-      ? ' Probable root cause: config drift (`openclaw.json` vs `.good`).'
+      ? ' 可能根因：配置漂移（`openclaw.json` 与 `.good` 不一致）。'
       : '';
-    statusEl.innerHTML = `<span style="color:var(--red)">OpenClaw is DOWN</span> — watchdog detected runtime outage.${driftMsg}`;
+    const startMs = Number.isFinite(lastAlertMs) ? lastAlertMs : nowMs;
+    const downFor = wdFmtDuration(Math.floor((nowMs - startMs) / 1000));
+    statusEl.innerHTML = `<span style="color:var(--red)">运行时已断连</span> · 已持续 <strong>${downFor}</strong>。原因：<strong>${escHtml(wdReasonZh(reason))}</strong>。${driftMsg}`;
     globalAlert.style.display = 'block';
-    globalText.textContent = `OpenClaw down: ${reason} · failures=${failures}${suspectedConfigDrift ? ' · config_drift=YES' : ''}`;
+    globalText.textContent = `OpenClaw 已断连 ${downFor} · 原因=${wdReasonZh(reason)} · 连续失败=${failures}${suspectedConfigDrift ? ' · 配置漂移=是' : ''}`;
   } else if (effective === 'healthy') {
-    statusEl.innerHTML = '<span style="color:var(--green)">OpenClaw is healthy</span> — watchdog is monitoring.';
+    let recoveryLine = '';
+    if (Number.isFinite(lastAlertMs) && Number.isFinite(lastRecoveredMs) && lastRecoveredMs >= lastAlertMs) {
+      const outageSec = Math.floor((lastRecoveredMs - lastAlertMs) / 1000);
+      recoveryLine = ` 上次断连：<strong>${wdFmtDuration(outageSec)}</strong>（${wdFmtAgo(lastRecoveredMs)}恢复）。`;
+    }
+    statusEl.innerHTML = `<span style="color:var(--green)">运行时健康</span> · 检查全部通过。${recoveryLine}`;
     globalAlert.style.display = 'none';
   } else {
     const driftMsg = configDriftDetected
-      ? ' Config drift is present; investigate before it escalates.'
+      ? ' 检测到配置漂移，建议在下次事故前尽快处理。'
       : '';
-    statusEl.innerHTML = `<span style="color:var(--yellow)">Watchdog degraded / unknown</span> — check events below.${driftMsg}`;
+    statusEl.innerHTML = `<span style="color:var(--yellow)">看门狗降级 / 状态不确定</span> · 运行时可能不稳定。最近原因：<strong>${escHtml(wdReasonZh(reason))}</strong>。${driftMsg}`;
     globalAlert.style.display = 'block';
-    globalText.textContent = `Watchdog warning: ${reason} · failures=${failures}${configDriftDetected ? ' · config_drift=YES' : ''}`;
+    globalText.textContent = `看门狗告警 · 原因=${wdReasonZh(reason)} · 连续失败=${failures}${configDriftDetected ? ' · 配置漂移=是' : ''}`;
   }
 
-  metaEl.textContent = `runtime=${runtimeRunning ? 'running' : 'stopped'} · watchdog=${wd.status || 'unknown'} · failures=${failures} · last_reason=${reason} · config_guard=${configGuardStatus} · config_drift=${configDriftDetected ? 'yes' : 'no'} · updated=${updatedAt ? new Date(updatedAt).toLocaleString() : '—'} · filter=${_watchdogCriticalOnly ? 'critical only' : 'all'}`;
-  renderWatchdogTimeline(timeline);
+  metaEl.innerHTML = `
+    运行时=<strong>${runtimeRunning ? '运行中' : '已停止'}</strong> ·
+    看门狗状态=<strong>${wdStatusZh(wd.status || 'unknown')}</strong> ·
+    连续失败=<strong>${escHtml(String(failures))}</strong> ·
+    最近原因=<strong>${escHtml(wdReasonZh(reason))}</strong><br>
+    配置守护=<strong>${escHtml(configGuardStatus)}</strong> ·
+    配置漂移=<strong>${configDriftDetected ? '是' : '否'}</strong> ·
+    更新时间=<strong>${updatedAt ? wdFmtDateTime(wdParseMs(updatedAt)) : '—'}</strong> ·
+    事件过滤=<strong>${_watchdogCriticalOnly ? '仅 Critical' : '全部'}</strong>
+  `;
+  renderWatchdogTimeline(timeline, wd);
 
   if (!recent.length) {
-    eventsEl.innerHTML = `<div class="ops-ch-meta">No watchdog events for selected filter in last ${_watchdogWindowMins} minutes.</div>`;
+    eventsEl.innerHTML = `<div class="ops-ch-meta">在最近 ${_watchdogWindowMins} 分钟内，没有命中当前过滤条件的看门狗事件。</div>`;
     return;
   }
   eventsEl.innerHTML = recent.map(ev => {
@@ -1395,10 +1556,10 @@ function renderWatchdogStatus(data) {
     const detailsHtml = escHtml(ev.details || '').replace(/\n/g, '<br>');
     return `<div class="ops-channel-card" style="padding:8px 10px">
       <div class="ops-ch-left">
-        <div class="ops-ch-name" style="font-size:.8rem;color:${color}">${escHtml(ev.event || 'event')} · ${escHtml(ev.reason || 'n/a')}</div>
+        <div class="ops-ch-name" style="font-size:.8rem;color:${color}">${escHtml(ev.event || 'event')} · ${escHtml(wdReasonZh(ev.reason || 'unknown'))}</div>
         <div class="ops-ch-meta">${detailsHtml}</div>
       </div>
-      <div class="ops-ch-right"><div class="ops-ch-cost">${new Date(ev.time || Date.now()).toLocaleTimeString()}</div></div>
+      <div class="ops-ch-right"><div class="ops-ch-cost">${wdFmtClock(wdParseMs(ev.time || Date.now()))}</div></div>
     </div>`;
   }).join('');
 }

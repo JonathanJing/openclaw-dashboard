@@ -21,6 +21,7 @@ Apply this skill when requests mention any of:
 - Frontend single file: `agent-dashboard.html`
 - Service docs and quick start: `README.md`
 - LaunchAgent template: `macos/com.openclaw.dashboard.plist.example`
+- Watchdog script snapshot: `.cursor/skills/clawhub-dashboard/scripts/gateway-watchdog.sh`
 
 ## Default workflow
 
