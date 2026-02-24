@@ -57,3 +57,4 @@ curl -fsSL "https://raw.githubusercontent.com/JonathanJing/jony-openclaw-dashboa
 - Keep `SKILL.md` under 500 lines.
 - Update this file when repository path or default branch changes.
 - Keep trigger terms in `SKILL.md` aligned with real dashboard modules.
+- For public sharing, keep mutating ops flags disabled by default (`OPENCLAW_ENABLE_MUTATING_OPS=0`, `OPENCLAW_ALLOW_ATTACHMENT_FILEPATH_COPY=0`).
