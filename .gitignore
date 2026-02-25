@@ -8,3 +8,5 @@ node_modules/
 .DS_Store
 .cursor/
 *.log
+scripts/
+.env.example
