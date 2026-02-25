@@ -2053,7 +2053,13 @@ function handleOpsConfig(req, res, method) {
     } catch {}
   }
 
-  return jsonReply(res, 200, { files });
+  return jsonReply(res, 200, {
+    files,
+    capabilities: {
+      mutatingOpsEnabled: ENABLE_MUTATING_OPS,
+      mutatingOpsLoopbackOnly: true,
+    }
+  });
 }
 
 // --- Ops: Enhanced Cron ---
