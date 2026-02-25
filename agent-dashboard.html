@@ -6,7 +6,6 @@
 <title>OpenClaw Dashboard</title>
 <link rel="icon" href="/icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" sizes="180x180" href="/icon-180.png">
-<link rel="manifest" href="/manifest.json">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -339,11 +338,6 @@ header{display:flex;align-items:center;justify-content:space-between;padding:16p
 .timeline-dot.fail{background:var(--red)}
 .timeline-dot.run{background:var(--yellow)}
 .timeline-right{font-size:.78rem;color:var(--text2);text-align:right;white-space:nowrap}
-.vision-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
-.vision-card{padding:12px;border:1px solid var(--border);border-radius:12px;background:var(--card)}
-.vision-label{font-size:.78rem;color:var(--text2);margin-bottom:6px}
-.vision-count{font-size:1.4rem;font-weight:700}
-.vision-sub{font-size:.72rem;color:var(--text2);margin-top:4px}
 
 /* ─── Ops Channel Usage ─── */
 .ops-channel-list{display:flex;flex-direction:column;gap:8px}
@@ -437,7 +431,6 @@ header{display:flex;align-items:center;justify-content:space-between;padding:16p
 @media(max-width:768px){
   .ops-mgmt-grid{grid-template-columns:1fr}
   .ops-grid{grid-template-columns:1fr}
-  .vision-grid{grid-template-columns:1fr 1fr}
 
   body{padding-bottom:calc(64px + env(safe-area-inset-bottom))}
   header{flex-direction:column;gap:8px;text-align:center;padding:calc(12px + env(safe-area-inset-top)) 0 16px}
@@ -528,43 +521,6 @@ header{display:flex;align-items:center;justify-content:space-between;padding:16p
 .detail-actions{display:flex;gap:8px;padding:16px 28px;border-top:1px solid var(--border);background:var(--bg2);flex-wrap:wrap}
 .detail-actions .action-btn{padding:8px 18px;font-size:.82rem}
 
-/* ─── Connected APIs Grid ─── */
-.apis-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px;margin-top:12px}
-.api-card{padding:20px;cursor:default;transition:all .3s}
-.api-card::before{background:linear-gradient(180deg,var(--accent),var(--green))}
-.api-card:hover{transform:translateY(-3px);box-shadow:0 12px 40px rgba(124,92,252,0.12)}
-.api-card-header{display:flex;align-items:center;gap:14px;margin-bottom:14px}
-.api-icon{width:48px;height:48px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:1.5rem;flex-shrink:0;border:1px solid var(--border);background:var(--bg)}
-.api-icon.telegram{background:linear-gradient(135deg,#2AABEE,#229ED9);border:none;color:#fff}
-.api-icon.google{background:linear-gradient(135deg,#4285F4,#34A853);border:none;color:#fff}
-.api-icon.notion{background:#000;border:none;color:#fff}
-.api-icon.brevo{background:linear-gradient(135deg,#0092FF,#004DFF);border:none;color:#fff}
-.api-icon.email{background:linear-gradient(135deg,#EA4335,#FBBC05);border:none;color:#fff}
-.api-icon.whisper{background:linear-gradient(135deg,#10a37f,#1a7f64);border:none;color:#fff}
-.api-icon.tavily{background:linear-gradient(135deg,#6366F1,#8B5CF6);border:none;color:#fff}
-.api-icon.brave{background:linear-gradient(135deg,#FB542B,#FF7654);border:none;color:#fff}
-.api-icon.imagen{background:linear-gradient(135deg,#4285F4,#DB4437,#F4B400,#0F9D58);border:none;color:#fff}
-.api-icon.meta{background:linear-gradient(135deg,#0081FB,#0064E0,#0082FB);border:none;color:#fff}
-.api-icon.openclaw{background:linear-gradient(135deg,var(--accent),var(--accent2));border:none;color:#fff}
-.api-card-info{flex:1;min-width:0}
-.api-card-name{font-weight:700;font-size:1rem;margin-bottom:2px;display:flex;align-items:center;gap:8px}
-.api-card-name .api-status{width:8px;height:8px;border-radius:50%;flex-shrink:0}
-.api-card-name .api-status.connected{background:var(--green);box-shadow:0 0 6px rgba(45,212,160,0.4)}
-.api-card-name .api-status.disconnected{background:var(--red);box-shadow:0 0 6px rgba(248,81,73,0.4)}
-.api-card-name .api-status.partial{background:var(--yellow);box-shadow:0 0 6px rgba(245,166,35,0.4)}
-.api-card-provider{font-size:.78rem;color:var(--text2)}
-.api-card-desc{font-size:.82rem;color:var(--text2);line-height:1.5;margin-bottom:14px}
-.api-capabilities{display:flex;flex-wrap:wrap;gap:6px}
-.api-cap{display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border-radius:8px;font-size:.7rem;font-weight:500;background:rgba(124,92,252,0.08);color:var(--accent2);border:1px solid rgba(124,92,252,0.12);letter-spacing:.3px}
-.api-cap svg{width:12px;height:12px;opacity:.7}
-.api-cap.messaging{background:rgba(88,166,255,0.08);color:var(--blue);border-color:rgba(88,166,255,0.15)}
-.api-cap.data{background:rgba(45,212,160,0.08);color:var(--green);border-color:rgba(45,212,160,0.15)}
-.api-cap.ai{background:rgba(167,139,250,0.08);color:var(--accent2);border-color:rgba(167,139,250,0.15)}
-.api-cap.search{background:rgba(248,166,35,0.08);color:var(--yellow);border-color:rgba(248,166,35,0.15)}
-.apis-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:20px}
-.api-stat-card{background:var(--glass);backdrop-filter:blur(16px);border:1px solid var(--border);border-radius:14px;padding:16px 20px;text-align:center}
-.api-stat-value{font-size:1.8rem;font-weight:800;background:linear-gradient(135deg,var(--accent),var(--green));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
-.api-stat-label{font-size:.75rem;color:var(--text2);text-transform:uppercase;letter-spacing:1px;margin-top:4px}
 
 /* ─── Agent Monitor Bar ─── */
 .agent-monitor{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:24px}
@@ -714,96 +670,9 @@ header{display:flex;align-items:center;justify-content:space-between;padding:16p
 .detail-content-empty{text-align:center;padding:30px 20px;color:var(--text2);font-size:.84rem}
 .detail-content-empty svg{width:40px;height:40px;opacity:.3;margin-bottom:8px;display:block;margin:0 auto 8px}
 
-/* ─── Parallel Execution Panel ─── */
-.parallel-panel{background:var(--glass);backdrop-filter:blur(16px);border:1px solid rgba(124,92,252,0.25);border-radius:16px;margin-bottom:20px;overflow:hidden;animation:fadeIn .3s ease}
-.parallel-header{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid var(--border)}
-.parallel-title{font-size:.85rem;font-weight:700;display:flex;align-items:center;gap:8px;background:linear-gradient(135deg,var(--accent),var(--blue));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
-.parallel-count{font-size:.72rem;font-family:var(--mono);color:var(--green);background:rgba(45,212,160,0.1);padding:3px 10px;border-radius:999px;border:1px solid rgba(45,212,160,0.2)}
-.parallel-tasks{padding:8px;max-height:300px;overflow-y:auto}
-.parallel-task-row{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;transition:background .2s;font-size:.82rem}
-.parallel-task-row:hover{background:rgba(124,92,252,0.04)}
-.parallel-spinner{width:16px;height:16px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .6s linear infinite;flex-shrink:0}
-.parallel-done-icon{width:16px;height:16px;display:flex;align-items:center;justify-content:center;border-radius:50%;background:var(--green);color:#000;font-size:.6rem;font-weight:700;flex-shrink:0}
-.parallel-fail-icon{width:16px;height:16px;display:flex;align-items:center;justify-content:center;border-radius:50%;background:var(--red);color:#fff;font-size:.6rem;font-weight:700;flex-shrink:0}
-.parallel-task-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text)}
-.parallel-task-time{font-family:var(--mono);font-size:.7rem;color:var(--text2);white-space:nowrap}
-.parallel-task-status{padding:2px 8px;border-radius:999px;font-size:.65rem;font-weight:600;text-transform:uppercase;letter-spacing:.5px}
-.parallel-task-status.running{background:rgba(88,166,255,0.15);color:var(--blue);border:1px solid rgba(88,166,255,0.25)}
-.parallel-task-status.done{background:rgba(45,212,160,0.15);color:var(--green);border:1px solid rgba(45,212,160,0.25)}
-.parallel-task-status.failed{background:rgba(248,81,73,0.15);color:var(--red);border:1px solid rgba(248,81,73,0.25)}
-.parallel-actions{display:flex;gap:8px;padding:10px 18px;border-top:1px solid var(--border)}
-.parallel-clear-btn{padding:5px 14px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text2);font-family:var(--font);font-size:.75rem;cursor:pointer;transition:all .2s}
-.parallel-clear-btn:hover{border-color:var(--accent);color:var(--text)}
-
-/* ─── Task Selection ─── */
-.task-checkbox{width:18px;height:18px;border-radius:6px;border:2px solid var(--border);background:transparent;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .2s;flex-shrink:0;margin-right:4px}
-.task-checkbox:hover{border-color:var(--accent)}
-.task-checkbox.checked{background:var(--accent);border-color:var(--accent)}
-.task-checkbox.checked::after{content:'✓';color:#fff;font-size:.7rem;font-weight:700}
-.batch-bar{display:flex;align-items:center;gap:12px;padding:10px 16px;background:rgba(124,92,252,0.08);border:1px solid rgba(124,92,252,0.2);border-radius:12px;margin-bottom:16px;animation:fadeIn .2s ease}
-.batch-bar-count{font-size:.85rem;font-weight:600;color:var(--accent2)}
-.batch-run-btn{padding:7px 18px;border-radius:8px;border:none;background:linear-gradient(135deg,var(--accent),var(--blue));color:#fff;font-family:var(--font);font-size:.82rem;font-weight:600;cursor:pointer;transition:all .25s;display:flex;align-items:center;gap:6px}
-.batch-run-btn:hover{transform:translateY(-1px);box-shadow:0 4px 16px rgba(124,92,252,0.3)}
-.batch-deselect-btn{padding:6px 14px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text2);font-family:var(--font);font-size:.78rem;cursor:pointer;transition:all .2s}
-.batch-deselect-btn:hover{border-color:var(--accent);color:var(--text)}
-
 /* ─── Spawn button in task actions ─── */
 .spawn-btn{padding:6px 14px;border-radius:8px;border:1px solid rgba(124,92,252,0.3);background:rgba(124,92,252,0.06);color:var(--accent2);font-family:var(--font);font-size:.78rem;cursor:pointer;transition:all .2s;display:flex;align-items:center;gap:4px}
 .spawn-btn:hover{background:rgba(124,92,252,0.15);border-color:var(--accent);transform:translateY(-1px)}
-
-/* ─── Attachments Section ─── */
-.attachments-section{margin-top:20px}
-.attachments-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;margin-top:10px}
-.attachment-card{background:var(--bg);border:1px solid var(--border);border-radius:12px;overflow:hidden;transition:all .2s;position:relative;cursor:pointer}
-.attachment-card:hover{border-color:rgba(124,92,252,0.3);transform:translateY(-2px);box-shadow:0 4px 16px rgba(0,0,0,0.2)}
-.attachment-card .att-preview{width:100%;height:110px;display:flex;align-items:center;justify-content:center;background:var(--bg2);overflow:hidden;position:relative}
-.attachment-card .att-preview img{width:100%;height:100%;object-fit:cover;transition:transform .3s}
-.attachment-card:hover .att-preview img{transform:scale(1.05)}
-.attachment-card .att-preview .att-icon{font-size:2.2rem;opacity:.5}
-.attachment-card .att-info{padding:8px 10px}
-.attachment-card .att-name{font-size:.72rem;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;line-height:1.3}
-.attachment-card .att-size{font-size:.65rem;color:var(--text2);font-family:var(--mono);margin-top:2px}
-.attachment-card .att-delete{position:absolute;top:6px;right:6px;width:22px;height:22px;border-radius:50%;background:rgba(248,81,73,0.85);color:#fff;border:none;font-size:.65rem;cursor:pointer;display:none;align-items:center;justify-content:center;transition:all .15s;z-index:2;line-height:1}
-.attachment-card:hover .att-delete{display:flex}
-.attachment-card .att-delete:hover{background:var(--red);transform:scale(1.1)}
-
-.att-drop-zone{border:2px dashed var(--border);border-radius:14px;padding:24px;text-align:center;cursor:pointer;transition:all .25s;margin-top:12px;position:relative}
-.att-drop-zone:hover,.att-drop-zone.drag-over{border-color:var(--accent);background:rgba(124,92,252,0.04)}
-.att-drop-zone.drag-over{box-shadow:0 0 16px rgba(124,92,252,0.12)}
-.att-drop-zone-icon{font-size:2rem;opacity:.4;margin-bottom:6px}
-.att-drop-zone-text{font-size:.82rem;color:var(--text2)}
-.att-drop-zone-hint{font-size:.7rem;color:var(--text2);opacity:.5;margin-top:4px}
-.att-drop-zone input[type="file"]{position:absolute;inset:0;opacity:0;cursor:pointer}
-.att-upload-progress{margin-top:8px;display:none}
-.att-upload-bar{height:4px;background:var(--border);border-radius:2px;overflow:hidden}
-.att-upload-bar-fill{height:100%;background:linear-gradient(90deg,var(--accent),var(--green));border-radius:2px;transition:width .3s;width:0%}
-.att-upload-status{font-size:.72rem;color:var(--text2);margin-top:4px;text-align:center}
-/* Create modal attachments */
-.create-att-drop-zone{border:2px dashed var(--border);border-radius:14px;padding:18px;text-align:center;cursor:pointer;transition:all .25s;position:relative}
-.create-att-drop-zone:hover,.create-att-drop-zone.drag-over{border-color:var(--accent);background:rgba(124,92,252,0.04)}
-.create-att-drop-zone.drag-over{box-shadow:0 0 16px rgba(124,92,252,0.12)}
-.create-att-drop-zone input[type="file"]{position:absolute;inset:0;opacity:0;cursor:pointer}
-.create-att-queue{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
-.create-att-item{display:flex;align-items:center;gap:6px;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:6px 10px;font-size:.75rem;max-width:100%;transition:all .2s}
-.create-att-item:hover{border-color:rgba(124,92,252,0.3)}
-.create-att-item .cai-icon{font-size:1rem;flex-shrink:0}
-.create-att-item .cai-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text);font-weight:500}
-.create-att-item .cai-size{color:var(--text2);font-family:var(--mono);flex-shrink:0;font-size:.68rem}
-.create-att-item .cai-remove{background:none;border:none;color:var(--text2);cursor:pointer;font-size:.9rem;padding:0 2px;border-radius:4px;transition:color .15s;flex-shrink:0;line-height:1}
-.create-att-item .cai-remove:hover{color:var(--red)}
-.create-att-item .cai-thumb{width:32px;height:32px;border-radius:6px;object-fit:cover;flex-shrink:0}
-
-/* ─── Image Lightbox ─── */
-.lightbox-overlay{position:fixed;inset:0;z-index:2000;background:rgba(6,8,14,0.92);backdrop-filter:blur(12px);display:none;align-items:center;justify-content:center;cursor:zoom-out;animation:fadeIn .2s ease}
-.lightbox-overlay.show{display:flex}
-.lightbox-img{max-width:90%;max-height:85vh;border-radius:12px;box-shadow:0 16px 64px rgba(0,0,0,0.6);animation:modalSlideIn .3s ease forwards}
-.lightbox-close{position:fixed;top:20px;right:24px;width:40px;height:40px;border-radius:50%;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.15);color:#fff;font-size:1.2rem;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .2s;z-index:2001}
-.lightbox-close:hover{background:rgba(255,255,255,0.2);transform:scale(1.1)}
-.lightbox-info{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);color:var(--text2);font-size:.82rem;display:flex;align-items:center;gap:12px;background:var(--glass);backdrop-filter:blur(16px);border:1px solid var(--border);border-radius:12px;padding:8px 18px;z-index:2001}
-.lightbox-download{padding:5px 14px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--accent2);font-family:var(--font);font-size:.78rem;cursor:pointer;transition:all .2s;text-decoration:none}
-.lightbox-download:hover{border-color:var(--accent);background:var(--glow);color:var(--text)}
-.att-empty{text-align:center;padding:20px;color:var(--text2);font-size:.82rem;opacity:.6}
-.att-empty svg{width:36px;height:36px;opacity:.25;margin-bottom:6px;display:block;margin:0 auto 6px}
 </style>
 </head>
 <body>
@@ -889,7 +758,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:16p
   <div id="watchdogGlobalAlert" class="glass-card" style="padding:10px 14px;margin-bottom:12px;border-color:var(--red);display:none">
     <div style="display:flex;justify-content:space-between;gap:10px;align-items:center">
       <div style="font-size:.8rem;color:#ffb4b4" id="watchdogGlobalText">OpenClaw Watchdog alert</div>
-      <button class="btn-secondary" id="openOpsBtn" style="padding:6px 10px;font-size:.72rem" onclick="focusOperationsTab()">Open Operations</button>
+      <button class="btn-secondary" id="openOpsBtn" style="padding:6px 10px;font-size:.72rem" onclick="focusHealthTab()">Open Health</button>
     </div>
   </div>
 
@@ -907,20 +776,27 @@ header{display:flex;align-items:center;justify-content:space-between;padding:16p
 
   <!-- Tab Bar -->
   <div class="tab-bar">
-    <button class="tab-btn active" data-tab="sessions">Sessions</button>
-    <button class="tab-btn" data-tab="ops">Cost</button>
-    <button class="tab-btn" data-tab="operations">Operations</button>
-    <button class="tab-btn" data-tab="tasks">Cron<span class="badge-count" id="taskCount">0</span></button>
-    <button class="tab-btn" data-tab="quality">Quality</button>
-    <button class="tab-btn" data-tab="audit">Audit</button>
-    <button class="tab-btn" data-tab="config">Config</button>
+    <button class="tab-btn active" data-tab="overview"><span id="tabOverviewLabel">Overview</span></button>
+    <button class="tab-btn" data-tab="ops"><span id="tabCostLabel">Cost</span></button>
+    <button class="tab-btn" data-tab="tasks"><span id="tabCronLabel">Cron</span></button>
+    <button class="tab-btn" data-tab="health"><span id="tabHealthLabel">Health</span></button>
+    <button class="tab-btn" data-tab="config"><span id="tabConfigLabel">Config</span></button>
   </div>
 
-  <!-- ═══ Sessions Panel ═══ -->
-  <div class="tab-panel active" id="panel-sessions">
+  <!-- ═══ Overview Panel ═══ -->
+  <div class="tab-panel active" id="panel-overview">
     <div id="sessionsAlerts" style="margin-bottom:12px"></div>
     <div id="sessionsTable" class="sessions-table-wrap">
       <div class="skeleton skeleton-card"></div>
+    </div>
+    <div class="glass-card" style="padding:16px;margin-top:16px">
+      <div class="card-title">Tasks</div>
+      <div class="card-sub" style="margin-bottom:10px">Basic list view</div>
+      <input type="text" class="search-input" id="taskSearch" placeholder="Search tasks…" style="width:100%;max-width:none;margin-bottom:12px">
+      <div id="taskList" class="task-list">
+        <div class="skeleton skeleton-card"></div>
+        <div class="skeleton skeleton-card"></div>
+      </div>
     </div>
   </div>
 
@@ -969,8 +845,22 @@ header{display:flex;align-items:center;justify-content:space-between;padding:16p
 
   </div>
 
-  <!-- ═══ Operations Panel ═══ -->
-  <div class="tab-panel" id="panel-operations">
+  <!-- ═══ Health Panel ═══ -->
+  <div class="tab-panel" id="panel-health">
+    <div class="glass-card" style="padding:16px;margin-bottom:16px">
+      <div class="card-title" style="margin-bottom:4px">System Health</div>
+      <div class="card-sub">Watchdog, runtime state, quality and audit</div>
+    </div>
+    <div class="glass-card" style="padding:16px;margin-bottom:16px">
+      <div class="card-title" style="margin-bottom:4px">Quality</div>
+      <div class="card-sub" style="margin-bottom:10px">Session quality and silence ratios</div>
+      <div id="qualityContent"><div class="skeleton skeleton-card"></div></div>
+    </div>
+    <div class="glass-card" style="padding:16px;margin-bottom:16px">
+      <div class="card-title" style="margin-bottom:4px">Audit</div>
+      <div class="card-sub" style="margin-bottom:10px">Model fit suggestions and configuration checks</div>
+      <div id="auditContent2"><div class="skeleton skeleton-card"></div></div>
+    </div>
     <div class="glass-card" style="padding:16px">
       <div class="card-title" style="margin-bottom:4px">⚙️ Operations Management</div>
       <div class="card-sub" style="margin-bottom:16px">Backup/restore, restart and safe OpenClaw update workflow</div>
@@ -1026,41 +916,44 @@ header{display:flex;align-items:center;justify-content:space-between;padding:16p
     </div>
   </div>
 
-  <!-- ═══ Cron Panel ═══ -->
-  <!-- ═══ Quality Panel ═══ -->
-  <div class="tab-panel" id="panel-quality">
-    <div id="qualityContent"><div class="skeleton skeleton-card"></div></div>
-  </div>
-
-  <!-- ═══ Audit Panel ═══ -->
-  <div class="tab-panel" id="panel-audit">
-    <div id="auditContent2"><div class="skeleton skeleton-card"></div></div>
-  </div>
-
   <!-- ═══ Config Panel ═══ -->
   <div class="tab-panel" id="panel-config">
-    <div id="configContent"><div class="skeleton skeleton-card"></div></div>
+    <div class="glass-card" style="padding:16px;margin-bottom:16px">
+      <div class="card-title" style="margin-bottom:4px">Config</div>
+      <div class="card-sub" style="margin-bottom:10px">Server capabilities and loaded configuration files</div>
+      <div id="configContent"><div class="skeleton skeleton-card"></div></div>
+    </div>
+    <div class="glass-card" style="padding:16px">
+      <div class="card-title" style="margin-bottom:4px">Documents</div>
+      <div class="card-sub" style="margin-bottom:12px">Workspace file viewer/editor</div>
+      <div class="docs-layout">
+        <div class="glass-card" style="padding:12px">
+          <div class="file-sidebar-header">Workspace Files</div>
+          <div class="file-sidebar" id="fileSidebar"></div>
+        </div>
+        <div class="editor-area" id="editorArea">
+          <div class="editor-toolbar">
+            <div class="editor-filename" id="editorFilename">Select a file<span>to begin editing</span></div>
+            <button class="edit-toggle-btn" id="editToggleBtn" onclick="toggleEditMode()" style="display:none">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+              <span id="editToggleLabel">Edit</span>
+            </button>
+            <button class="save-btn" id="saveBtn" onclick="saveFile()" disabled style="display:none">Save</button>
+          </div>
+          <div class="md-preview" id="mdPreview">
+            <div class="md-empty-hint">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+              <p>Select a file from the sidebar to view its contents</p>
+            </div>
+          </div>
+          <textarea class="editor-textarea" id="editorTextarea" placeholder="Select a file from the sidebar to view and edit its contents…" disabled style="display:none"></textarea>
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- ═══ Cron Panel ═══ -->
   <div class="tab-panel" id="panel-tasks">
-    <div class="ops-grid">
-      <div class="glass-card" style="padding:16px">
-        <div class="card-header">
-          <div>
-            <div class="card-title">Vision Ingestion</div>
-            <div class="card-sub" id="visionStatus">Notion source</div>
-          </div>
-        </div>
-        <div id="visionGrid" class="vision-grid">
-          <div class="skeleton skeleton-card" style="height:80px"></div>
-          <div class="skeleton skeleton-card" style="height:80px"></div>
-          <div class="skeleton skeleton-card" style="height:80px"></div>
-          <div class="skeleton skeleton-card" style="height:80px"></div>
-        </div>
-      </div>
-    </div>
-
     <!-- Cron Cost Analysis -->
     <div class="glass-card" style="padding:16px;margin-top:16px">
       <div class="card-title" id="cronCostTitle">💰 Cron Cost Analysis</div>
@@ -1074,81 +967,6 @@ header{display:flex;align-items:center;justify-content:space-between;padding:16p
       <div class="card-sub" id="cronTrendSub">Cron (fixed) = scheduled jobs · Interactive (variable) = manually triggered chats</div>
       <canvas id="cronTrendChart" height="160" style="width:100%;margin-top:8px"></canvas>
       <div id="cronTrendLegend" style="margin-top:6px;font-size:.72rem;display:flex;gap:16px"></div>
-    </div>
-  </div>
-
-  <!-- ═══ Documents Panel ═══ -->
-  <div class="tab-panel" id="panel-documents">
-    <div class="docs-layout">
-      <div class="glass-card" style="padding:12px">
-        <div class="file-sidebar-header">Workspace Files</div>
-        <div class="file-sidebar" id="fileSidebar"></div>
-        <div class="file-divider"></div>
-        <div class="file-sidebar-header">Skills</div>
-        <div style="padding:0 8px 8px">
-          <div class="view-toggle" id="viewToggle">
-            <button class="active" data-view="editor" onclick="setDocView('editor')">Editor</button>
-            <button data-view="skills" onclick="setDocView('skills')">Skills</button>
-          </div>
-        </div>
-      </div>
-      <div class="editor-area" id="editorArea">
-        <div class="editor-toolbar">
-          <div class="editor-filename" id="editorFilename">Select a file<span>to begin editing</span></div>
-          <button class="edit-toggle-btn" id="editToggleBtn" onclick="toggleEditMode()" style="display:none">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-            <span id="editToggleLabel">Edit</span>
-          </button>
-          <button class="save-btn" id="saveBtn" onclick="saveFile()" disabled style="display:none">Save</button>
-        </div>
-        <div class="md-preview" id="mdPreview">
-          <div class="md-empty-hint">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-            <p>Select a file from the sidebar to view its contents</p>
-          </div>
-        </div>
-        <textarea class="editor-textarea" id="editorTextarea" placeholder="Select a file from the sidebar to view and edit its contents…" disabled style="display:none"></textarea>
-      </div>
-      <div id="skillsArea" style="display:none">
-        <input type="text" class="search-input" id="skillSearch" placeholder="Search skills…" style="width:100%;margin-bottom:12px">
-        <div class="skills-grid" id="skillsGrid">
-          <div class="skeleton skeleton-card" style="height:120px"></div>
-          <div class="skeleton skeleton-card" style="height:120px"></div>
-          <div class="skeleton skeleton-card" style="height:120px"></div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- ═══ Connected APIs Panel ═══ -->
-  <div class="tab-panel" id="panel-apis">
-    <div class="apis-stats" id="apiStats"></div>
-    <input type="text" class="search-input" id="apiSearch" placeholder="Search APIs…" style="width:100%;max-width:360px;margin-bottom:16px">
-    <div class="apis-grid" id="apisGrid">
-      <div class="skeleton skeleton-card" style="height:180px"></div>
-      <div class="skeleton skeleton-card" style="height:180px"></div>
-      <div class="skeleton skeleton-card" style="height:180px"></div>
-    </div>
-  </div>
-
-  <!-- ═══ Logs Panel ═══ -->
-  <div class="tab-panel" id="panel-logs">
-    <div class="logs-toolbar">
-      <div class="filter-group" id="logDateFilters">
-        <button class="filter-btn active" data-days="7">7 Days</button>
-        <button class="filter-btn" data-days="30">30 Days</button>
-        <button class="filter-btn" data-days="0">All</button>
-      </div>
-      <span class="spacer"></span>
-      <div class="toggle-switch">
-        <span>Auto-refresh</span>
-        <div class="toggle-track" id="autoRefreshToggle" onclick="toggleAutoRefresh()"></div>
-      </div>
-    </div>
-    <div class="timeline" id="logsTimeline">
-      <div class="skeleton skeleton-card"></div>
-      <div class="skeleton skeleton-card"></div>
-      <div class="skeleton skeleton-card"></div>
     </div>
   </div>
 </div>
@@ -1205,31 +1023,10 @@ header{display:flex;align-items:center;justify-content:space-between;padding:16p
       <label class="form-label">Due Date</label>
       <input type="date" class="form-input" id="newDueDate">
     </div>
-    <div class="form-group">
-      <label class="form-label">📎 Attachments</label>
-      <div class="create-att-drop-zone" id="createAttDropZone">
-        <input type="file" id="createAttFileInput" multiple>
-        <div class="att-drop-zone-icon">📁</div>
-        <div class="att-drop-zone-text">Drop files here or click to upload</div>
-        <div class="att-drop-zone-hint">Images, PDFs, documents — up to 20MB each</div>
-      </div>
-      <div class="create-att-queue" id="createAttQueue" style="display:none"></div>
-    </div>
     <div class="modal-actions">
       <button class="action-btn" onclick="closeCreateModal()">Cancel</button>
       <button class="action-btn primary" id="createTaskBtn" onclick="createTask()">Create Task</button>
     </div>
-  </div>
-</div>
-
-<!-- Image Lightbox -->
-<div class="lightbox-overlay" id="lightboxOverlay" onclick="closeLightbox()">
-  <button class="lightbox-close" onclick="closeLightbox()">✕</button>
-  <img class="lightbox-img" id="lightboxImg" onclick="event.stopPropagation()">
-  <div class="lightbox-info" onclick="event.stopPropagation()">
-    <span id="lightboxName"></span>
-    <span id="lightboxSize" style="font-family:var(--mono);font-size:.72rem"></span>
-    <a class="lightbox-download" id="lightboxDownload" target="_blank">⬇ Download</a>
   </div>
 </div>
 
@@ -1281,7 +1078,18 @@ function applyLanguageUI() {
   if (label) label.textContent = isZh() ? '中文' : 'EN';
 
   const openOpsBtn = document.getElementById('openOpsBtn');
-  if (openOpsBtn) openOpsBtn.textContent = tt('Open Operations', '打开 Operations');
+  if (openOpsBtn) openOpsBtn.textContent = tt('Open Health', '打开健康面板');
+
+  const tabOverviewLabel = document.getElementById('tabOverviewLabel');
+  if (tabOverviewLabel) tabOverviewLabel.textContent = tt('Overview', '总览');
+  const tabCostLabel = document.getElementById('tabCostLabel');
+  if (tabCostLabel) tabCostLabel.textContent = tt('Cost', '成本');
+  const tabCronLabel = document.getElementById('tabCronLabel');
+  if (tabCronLabel) tabCronLabel.textContent = tt('Cron', '定时任务');
+  const tabHealthLabel = document.getElementById('tabHealthLabel');
+  if (tabHealthLabel) tabHealthLabel.textContent = tt('Health', '健康');
+  const tabConfigLabel = document.getElementById('tabConfigLabel');
+  if (tabConfigLabel) tabConfigLabel.textContent = tt('Config', '配置');
 
   const cronRunsTitle = document.getElementById('cronRunsTitleText');
   if (cronRunsTitle) cronRunsTitle.textContent = tt("Today's Cron Runs", '今日 Cron 执行记录');
@@ -1311,12 +1119,6 @@ function applyLanguageUI() {
     });
   }
 
-  if (Array.isArray(CONNECTED_APIS)) {
-    CONNECTED_APIS.forEach((api) => {
-      const desc = API_DESC_BY_ID[api.id];
-      if (desc) api.description = tt(desc.en, desc.zh);
-    });
-  }
   if (Array.isArray(MODEL_OPTIONS) && MODEL_OPTIONS[0]) {
     MODEL_OPTIONS[0].label = tt('Default', '默认');
   }
@@ -1327,11 +1129,9 @@ function toggleLanguage() {
   localStorage.setItem(LANG_KEY, currentLang);
   applyLanguageUI();
   if (_watchdogCache) renderWatchdogStatus(_watchdogCache);
-  renderTasks();
   loadSessions();
   loadCronEnhanced();
   loadCronCosts();
-  renderAPIs();
 }
 
 async function apiFetch(path, opts = {}) {
@@ -1409,13 +1209,11 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
     btn.classList.add('active');
     document.getElementById(`panel-${btn.dataset.tab}`).classList.add('active');
-    if (btn.dataset.tab === 'sessions') loadSessions();
-    if (btn.dataset.tab === 'tasks') { loadCronEnhanced(); loadTasks(true); loadCronCosts(); }
+    if (btn.dataset.tab === 'overview') { loadSessions(); loadTasks(true); }
+    if (btn.dataset.tab === 'tasks') { loadCronEnhanced(); loadCronCosts(); }
     if (btn.dataset.tab === 'ops') { loadOpsChannels(); loadOpsAlltime(); loadOpsAudit(); }
-    if (btn.dataset.tab === 'operations') loadOperationsStatus();
-    if (btn.dataset.tab === 'quality') loadQuality();
-    if (btn.dataset.tab === 'audit') loadAudit();
-    if (btn.dataset.tab === 'config') loadConfig();
+    if (btn.dataset.tab === 'health') { loadOperationsStatus(); loadQuality(); loadAudit(); }
+    if (btn.dataset.tab === 'config') { loadConfig(); loadFileList(); }
   });
 });
 
@@ -1423,8 +1221,8 @@ let _watchdogCache = null;
 let _watchdogWindowMins = 15;
 let _watchdogCriticalOnly = false;
 
-function focusOperationsTab() {
-  const btn = document.querySelector('.tab-btn[data-tab="operations"]');
+function focusHealthTab() {
+  const btn = document.querySelector('.tab-btn[data-tab="health"]');
   if (btn) btn.click();
 }
 
@@ -1790,6 +1588,7 @@ function _hashTasks(tasks) {
 
 async function loadTasks(force) {
   const list = document.getElementById('taskList');
+  if (!list) return;
   try {
     const data = await apiFetch('/tasks');
     const tasks = Array.isArray(data) ? data : (data.tasks || []);
@@ -1798,8 +1597,9 @@ async function loadTasks(force) {
     if (!force && newHash === _tasksHash) return;
     _tasksHash = newHash;
     allTasks = tasks;
-    document.getElementById('taskCount').textContent = allTasks.length;
-    if (taskView === 'kanban') { setTaskView('kanban'); } else { setTaskView('list'); }
+    const taskCountEl = document.getElementById('taskCount');
+    if (taskCountEl) taskCountEl.textContent = allTasks.length;
+    renderTasks();
     // If detail modal is open and user isn't editing content, refresh it
     if (detailTaskId && !isContentEditing) {
       const updated = allTasks.find(t => t.id === detailTaskId);
@@ -1839,6 +1639,7 @@ function toggleLivePolling() {
 
 function renderTasks() {
   const list = document.getElementById('taskList');
+  if (!list) return;
   const search = (document.getElementById('taskSearch').value || '').toLowerCase();
   let filtered = allTasks;
   if (currentFilter !== 'all') filtered = filtered.filter(t => (t.status || 'new') === currentFilter);
@@ -1866,7 +1667,6 @@ function renderTasks() {
     const dueDate = task.dueDate ? new Date(task.dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
     return `<div class="glass-card task-card status-${status} ${isExpanded ? 'expanded' : ''}" onclick="toggleTask('${task.id}')" style="animation:cardIn .4s ease backwards;animation-delay:${i * 0.05}s">
       <div class="task-header">
-        ${selectionMode ? `<div class="task-checkbox ${selectedTaskIds.has(task.id) ? 'checked' : ''}" data-task-id="${task.id}" onclick="toggleTaskSelection('${task.id}', event)"></div>` : ''}
         <span class="task-title">${escHtml(task.title || 'Untitled')}</span>
         <span class="badge badge-${status}">${statusLabel(status)}</span>
         <span class="badge badge-priority ${priority}">${priority}</span>
@@ -1961,18 +1761,13 @@ if (_statusFilters) {
 const _taskSearch = document.getElementById('taskSearch');
 if (_taskSearch) {
   _taskSearch.addEventListener('input', () => {
-    if (taskView === 'kanban') renderKanban();
-    else renderTasks();
+    renderTasks();
   });
 }
-
-// Create Modal — Pending Attachments
-let pendingCreateFiles = [];
 
 function openCreateModal() {
   document.getElementById('createModal').classList.add('show');
   document.getElementById('newTitle').focus();
-  setupCreateDropZone();
 }
 
 function closeCreateModal() {
@@ -1980,82 +1775,6 @@ function closeCreateModal() {
   ['newTitle', 'newDesc', 'newContent', 'newDueDate'].forEach(id => document.getElementById(id).value = '');
   document.getElementById('newPriority').value = 'medium';
   document.getElementById('newAssignee').value = 'main';
-  pendingCreateFiles = [];
-  renderCreateAttQueue();
-}
-
-function setupCreateDropZone() {
-  const zone = document.getElementById('createAttDropZone');
-  const fileInput = document.getElementById('createAttFileInput');
-  if (!zone || !fileInput) return;
-
-  zone.ondragover = (e) => { e.preventDefault(); zone.classList.add('drag-over'); };
-  zone.ondragleave = () => zone.classList.remove('drag-over');
-  zone.ondrop = (e) => {
-    e.preventDefault();
-    zone.classList.remove('drag-over');
-    for (let i = 0; i < e.dataTransfer.files.length; i++) {
-      addPendingFile(e.dataTransfer.files[i]);
-    }
-  };
-  fileInput.onchange = () => {
-    for (let i = 0; i < fileInput.files.length; i++) {
-      addPendingFile(fileInput.files[i]);
-    }
-    fileInput.value = '';
-  };
-}
-
-function addPendingFile(file) {
-  if (file.size > 20 * 1024 * 1024) {
-    toast(`${file.name} is too large (max 20MB)`, 'error');
-    return;
-  }
-  // Prevent duplicates by name+size
-  if (pendingCreateFiles.some(f => f.name === file.name && f.size === file.size)) return;
-  pendingCreateFiles.push(file);
-  renderCreateAttQueue();
-  toast(`📎 ${file.name} queued`, 'success');
-}
-
-function removePendingFile(index) {
-  pendingCreateFiles.splice(index, 1);
-  renderCreateAttQueue();
-}
-
-function renderCreateAttQueue() {
-  const container = document.getElementById('createAttQueue');
-  if (!container) return;
-  if (pendingCreateFiles.length === 0) {
-    container.style.display = 'none';
-    container.innerHTML = '';
-    return;
-  }
-  container.style.display = 'flex';
-  container.innerHTML = pendingCreateFiles.map((file, i) => {
-    const ext = '.' + (file.name.split('.').pop() || '').toLowerCase();
-    const isImage = ['.png','.jpg','.jpeg','.gif','.webp','.svg','.bmp'].includes(ext);
-    const icon = isImage ? '🖼️' : (typeof getFileIcon === 'function' ? getFileIcon(ext) : '📎');
-    const thumbId = 'cthumb-' + i;
-    if (isImage) {
-      // Generate thumbnail async
-      const reader = new FileReader();
-      reader.onload = () => {
-        const el = document.getElementById(thumbId);
-        if (el) { el.src = reader.result; el.style.display = 'block'; }
-        const iconEl = document.getElementById(thumbId + '-icon');
-        if (iconEl) iconEl.style.display = 'none';
-      };
-      reader.readAsDataURL(file);
-    }
-    return `<div class="create-att-item">
-      <span class="cai-icon" id="${thumbId}-icon">${icon}</span>
-      <img class="cai-thumb" id="${thumbId}" style="display:none" alt="">
-      <span class="cai-name">${escHtml(file.name)}</span>
-      <span class="cai-size">${formatSize(file.size)}</span>
-      <button class="cai-remove" onclick="removePendingFile(${i})" title="Remove">✕</button>
-    </div>`;
-  }).join('');
 }
 
 async function createTask() {
@@ -2063,9 +1782,8 @@ async function createTask() {
   if (!title) { toast('Title is required', 'error'); return; }
 
   const btn = document.getElementById('createTaskBtn');
-  const hasFiles = pendingCreateFiles.length > 0;
   btn.disabled = true;
-  btn.textContent = hasFiles ? 'Creating & Uploading…' : 'Creating…';
+  btn.textContent = 'Creating…';
 
   const payload = {
     title,
@@ -2079,28 +1797,8 @@ async function createTask() {
   if (due) payload.dueDate = due;
 
   try {
-    const task = await apiFetch('/tasks', { method: 'POST', body: JSON.stringify(payload) });
-
-    // Upload pending attachments
-    if (hasFiles) {
-      let uploaded = 0;
-      for (const file of pendingCreateFiles) {
-        try {
-          btn.textContent = `Uploading ${++uploaded}/${pendingCreateFiles.length}…`;
-          const base64 = await fileToBase64(file);
-          await apiFetch(`/tasks/${task.id}/attachments`, {
-            method: 'POST',
-            body: JSON.stringify({ filename: file.name, data: base64, source: 'user' }),
-          });
-        } catch (e) {
-          toast(`Failed to upload ${file.name}: ${e.message}`, 'error');
-        }
-      }
-      toast(`Task created with ${uploaded} attachment${uploaded !== 1 ? 's' : ''}!`, 'success');
-    } else {
-      toast('Task created!', 'success');
-    }
-
+    await apiFetch('/tasks', { method: 'POST', body: JSON.stringify(payload) });
+    toast('Task created!', 'success');
     closeCreateModal();
     loadTasks(true);
   } catch(e) {
@@ -2126,6 +1824,7 @@ function setTaskView(view) {
   const listEl = document.getElementById('taskList');
   const kanbanEl = document.getElementById('kanbanBoard');
   const filtersEl = document.getElementById('statusFilters');
+  if (!listEl || !kanbanEl || !filtersEl) return;
   if (view === 'kanban') {
     listEl.style.display = 'none';
     kanbanEl.style.display = '';
@@ -2328,30 +2027,6 @@ function openDetailModal(taskId) {
     </div>
   </div>`;
 
-  // Attachments section
-  bodyHtml += `
-  <div class="detail-section attachments-section">
-    <div class="detail-section-title" onclick="this.classList.toggle('collapsed')">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
-      Attachments <span style="font-weight:400;font-size:.7rem;color:var(--text2)" id="attachmentsCount">…</span>
-    </div>
-    <div class="detail-section-content">
-      <div class="attachments-grid" id="attachmentsGrid">
-        <div style="grid-column:1/-1;text-align:center;padding:12px;color:var(--text2);font-size:.82rem"><div class="spinner" style="margin:0 auto 8px"></div>Loading…</div>
-      </div>
-      <div class="att-drop-zone" id="attDropZone">
-        <input type="file" id="attFileInput" multiple>
-        <div class="att-drop-zone-icon">📁</div>
-        <div class="att-drop-zone-text">Drop files here or click to upload</div>
-        <div class="att-drop-zone-hint">Images, PDFs, documents — up to 20MB each</div>
-      </div>
-      <div class="att-upload-progress" id="attUploadProgress">
-        <div class="att-upload-bar"><div class="att-upload-bar-fill" id="attUploadBarFill"></div></div>
-        <div class="att-upload-status" id="attUploadStatus"></div>
-      </div>
-    </div>
-  </div>`;
-
   // Agent Output section (long notes = agent results)
   if (outputNotes.length > 0) {
     bodyHtml += `
@@ -2426,10 +2101,6 @@ function openDetailModal(taskId) {
   `;
 
   document.getElementById('detailModal').classList.add('show');
-
-  // Load attachments and setup drop zone
-  loadAttachments(taskId);
-  setTimeout(() => setupDropZone(taskId), 100);
 }
 
 function closeDetailModal() {
@@ -2564,8 +2235,6 @@ if (taskView === 'kanban') {
 // ═══ DOCUMENTS ═══
 const WORKSPACE_FILES = ['MEMORY.md', 'SOUL.md', 'USER.md', 'AGENTS.md', 'TOOLS.md', 'IDENTITY.md', 'HEARTBEAT.md'];
 let currentFile = null;
-let docView = 'editor';
-let allSkills = [];
 let memoryFiles = [];
 let isEditMode = false;
 let currentFileContent = '';
@@ -2703,415 +2372,6 @@ async function saveFile() {
   }
 }
 
-function setDocView(view) {
-  docView = view;
-  document.querySelectorAll('#viewToggle button').forEach(b => b.classList.toggle('active', b.dataset.view === view));
-  document.getElementById('editorArea').style.display = view === 'editor' ? '' : 'none';
-  document.getElementById('skillsArea').style.display = view === 'skills' ? '' : 'none';
-  if (view === 'skills') loadSkills();
-}
-
-async function loadSkills() {
-  const grid = document.getElementById('skillsGrid');
-  try {
-    const data = await apiFetch('/skills');
-    allSkills = Array.isArray(data) ? data : (data.skills || []);
-    renderSkills();
-  } catch(e) {
-    grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1"><h3>Unable to load skills</h3><p>${e.message}</p></div>`;
-  }
-}
-
-function renderSkills() {
-  const grid = document.getElementById('skillsGrid');
-  const search = (document.getElementById('skillSearch').value || '').toLowerCase();
-  const filtered = search ? allSkills.filter(s => (s.name || '').toLowerCase().includes(search) || (s.description || '').toLowerCase().includes(search)) : allSkills;
-  if (filtered.length === 0) {
-    grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1"><h3>No skills found</h3></div>';
-    return;
-  }
-  grid.innerHTML = filtered.map((s, i) => `
-    <div class="glass-card skill-card" style="animation:cardIn .4s ease backwards;animation-delay:${i * 0.04}s">
-      <div class="skill-name">${escHtml(s.name || s.id || 'Unnamed')}</div>
-      <div class="skill-desc">${escHtml(s.description || 'No description')}</div>
-      ${s.version ? `<div class="skill-meta">v${escHtml(s.version)}</div>` : ''}
-    </div>
-  `).join('');
-}
-
-document.getElementById('skillSearch')?.addEventListener('input', () => renderSkills());
-
-// ═══ LOGS ═══
-let logDays = 7;
-let autoRefresh = false;
-let autoRefreshInterval = null;
-
-async function loadLogs() {
-  const timeline = document.getElementById('logsTimeline');
-  timeline.innerHTML = '<div class="skeleton skeleton-card"></div><div class="skeleton skeleton-card"></div><div class="skeleton skeleton-card"></div>';
-  
-  let entries = [];
-  
-  // Fetch memory files for log entries
-  try {
-    const data = await apiFetch('/files?path=memory/&list=true');
-    const files = Array.isArray(data) ? data : (data.files || []);
-    
-    for (const f of files) {
-      const name = typeof f === 'string' ? f : (f.name || f.path || '');
-      const fname = name.split('/').pop();
-      // Check date filter
-      const dateMatch = fname.match(/(\d{4}-\d{2}-\d{2})/);
-      if (dateMatch && logDays > 0) {
-        const fileDate = new Date(dateMatch[1]);
-        const cutoff = new Date();
-        cutoff.setDate(cutoff.getDate() - logDays);
-        if (fileDate < cutoff) continue;
-      }
-      
-      try {
-        const content = await apiFetch(`/files?path=memory/${encodeURIComponent(fname)}`);
-        const text = typeof content === 'string' ? content : (content.content || '');
-        entries.push({
-          type: 'memory',
-          date: dateMatch ? dateMatch[1] : fname,
-          title: fname,
-          content: text,
-          timestamp: dateMatch ? new Date(dateMatch[1]).getTime() : 0
-        });
-      } catch(e) { /* skip */ }
-    }
-  } catch(e) { /* ok */ }
-
-  // Fetch tasks for status history
-  try {
-    const data = await apiFetch('/tasks');
-    const tasks = Array.isArray(data) ? data : (data.tasks || []);
-    tasks.forEach(t => {
-      if (t.createdAt) {
-        entries.push({
-          type: 'task',
-          date: new Date(t.createdAt).toISOString().slice(0, 10),
-          title: `Task: ${t.title || 'Untitled'}`,
-          content: `Status: ${statusLabel(t.status || 'new')}${t.description ? '\n' + t.description : ''}`,
-          timestamp: new Date(t.createdAt).getTime()
-        });
-      }
-      // Add notes as log entries
-      (t.notes || []).forEach(n => {
-        if (n.createdAt) {
-          entries.push({
-            type: 'task',
-            date: new Date(n.createdAt).toISOString().slice(0, 10),
-            title: `Note on: ${t.title || 'Untitled'}`,
-            content: n.text || n.content || '',
-            timestamp: new Date(n.createdAt).getTime()
-          });
-        }
-      });
-    });
-  } catch(e) { /* ok */ }
-
-  // Sort by date desc
-  entries.sort((a, b) => b.timestamp - a.timestamp);
-
-  if (entries.length === 0) {
-    timeline.innerHTML = `<div class="empty-state">
-      <svg viewBox="0 0 80 80"><circle cx="40" cy="40" r="36" fill="none" stroke="currentColor" stroke-width="1.5"/><polyline points="40 20 40 40 52 46" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-      <h3>No log entries</h3>
-      <p>Memory files and task activity will appear here as a timeline.</p>
-    </div>`;
-    return;
-  }
-
-  timeline.innerHTML = entries.map((entry, i) => {
-    const preview = entry.content.length > 200 ? entry.content.slice(0, 200) + '…' : entry.content;
-    return `<div class="timeline-item type-${entry.type}" style="animation-delay:${i * 0.06}s">
-      <div class="timeline-date">${entry.date}</div>
-      <div class="timeline-content" onclick="this.classList.toggle('expanded')">
-        <span class="timeline-tag ${entry.type}">${entry.type === 'memory' ? '📝 Memory' : '📋 Task'}</span>
-        <div><strong>${escHtml(entry.title)}</strong></div>
-        <div class="preview">${escHtml(preview)}</div>
-        <div style="display:none" class="full-content">${escHtml(entry.content)}</div>
-      </div>
-    </div>`;
-  }).join('');
-
-  // Handle expand/collapse to show full content
-  timeline.querySelectorAll('.timeline-content').forEach(el => {
-    el.addEventListener('click', function() {
-      const preview = this.querySelector('.preview');
-      const full = this.querySelector('.full-content');
-      if (this.classList.contains('expanded')) {
-        preview.style.display = 'none';
-        full.style.display = 'block';
-      } else {
-        preview.style.display = '';
-        full.style.display = 'none';
-      }
-    });
-  });
-}
-
-// Log date filters
-document.getElementById('logDateFilters').addEventListener('click', e => {
-  const btn = e.target.closest('.filter-btn');
-  if (!btn) return;
-  document.querySelectorAll('#logDateFilters .filter-btn').forEach(b => b.classList.remove('active'));
-  btn.classList.add('active');
-  logDays = parseInt(btn.dataset.days) || 0;
-  loadLogs();
-});
-
-function toggleAutoRefresh() {
-  autoRefresh = !autoRefresh;
-  const toggle = document.getElementById('autoRefreshToggle');
-  toggle.classList.toggle('on', autoRefresh);
-  if (autoRefresh) {
-    autoRefreshInterval = setInterval(() => loadLogs(), 30000);
-    toast('Auto-refresh enabled (30s)', 'info');
-  } else {
-    clearInterval(autoRefreshInterval);
-    toast('Auto-refresh disabled', 'info');
-  }
-}
-
-// ═══ CONNECTED APIs ═══
-const CONNECTED_APIS = [
-  {
-    id: 'discord',
-    name: 'Discord Bot',
-    provider: 'Discord API',
-    icon: '🎮',
-    iconClass: 'discord',
-    status: 'connected',
-    description: tt('Primary messaging channel for commands, reports, and interactions. Supports Components v2 interactions.', '主消息频道，用于接收指令、发送报告和互动。支持 Components v2 组件交互。'),
-    capabilities: [
-      { label: 'Send Messages', type: 'messaging' },
-      { label: 'Read Messages', type: 'messaging' },
-      { label: 'React', type: 'messaging' },
-      { label: 'Components v2', type: 'messaging' }
-    ]
-  },
-  {
-    id: 'anthropic',
-    name: 'Anthropic Claude',
-    provider: 'Anthropic API',
-    icon: '🧠',
-    iconClass: 'anthropic',
-    status: 'connected',
-    description: tt('Primary LLM engine. Claude Sonnet 4 / Claude Opus 4 for reasoning, code generation, and chat.', '主 LLM 引擎。Claude Sonnet 4 / Claude Opus 4，用于推理、代码生成和对话。'),
-    capabilities: [
-      { label: 'Claude Sonnet 4', type: 'ai' },
-      { label: 'Claude Opus 4', type: 'ai' },
-      { label: 'Reasoning', type: 'ai' },
-      { label: 'Code Gen', type: 'ai' }
-    ]
-  },
-  {
-    id: 'brave-search',
-    name: 'Brave Search',
-    provider: 'Brave API',
-    icon: '🦁',
-    iconClass: 'brave',
-    status: 'connected',
-    description: tt('Real-time web search API for retrieval and fresh information.', '实时网页搜索 API，用于信息检索和最新内容获取。'),
-    capabilities: [
-      { label: 'Web Search', type: 'search' },
-      { label: 'Region Filter', type: 'search' },
-      { label: 'Freshness Filter', type: 'search' }
-    ]
-  },
-  {
-    id: 'notion',
-    name: 'Notion',
-    provider: 'Notion API',
-    icon: 'N',
-    iconClass: 'notion',
-    status: 'connected',
-    description: tt('Database read/write for task management, project tracking, and knowledge storage.', '数据库读写，用于任务管理、项目跟踪和知识库存储。'),
-    capabilities: [
-      { label: 'Database Read', type: 'data' },
-      { label: 'Database Write', type: 'data' },
-      { label: 'Pages', type: 'data' },
-      { label: 'Task Queue', type: 'ai' }
-    ]
-  },
-  {
-    id: 'openai',
-    name: 'OpenAI',
-    provider: 'OpenAI API',
-    icon: '⚡',
-    iconClass: 'openai',
-    status: 'connected',
-    description: tt('GPT-5 / GPT-5 Codex for code completion, content generation, and multimodal tasks.', 'GPT-5 / GPT-5 Codex，用于代码补全、内容生成和多模态任务。'),
-    capabilities: [
-      { label: 'GPT-5.2', type: 'ai' },
-      { label: 'GPT-5 Codex', type: 'ai' },
-      { label: 'Code Completion', type: 'ai' },
-      { label: 'Multimodal', type: 'ai' }
-    ]
-  },
-  {
-    id: 'gemini',
-    name: 'Google Gemini',
-    provider: 'Google AI',
-    icon: 'G',
-    iconClass: 'google',
-    status: 'connected',
-    description: tt('Gemini 3 Pro / Flash for multimodal reasoning, image understanding, and long context.', 'Gemini 3 Pro / Flash，用于多模态推理、图像理解和长上下文任务。'),
-    capabilities: [
-      { label: 'Gemini 3 Pro', type: 'ai' },
-      { label: 'Gemini 3 Flash', type: 'ai' },
-      { label: 'Image Understanding', type: 'ai' },
-      { label: 'Long Context', type: 'ai' }
-    ]
-  },
-  {
-    id: 'x-api',
-    name: 'X API',
-    provider: 'Twitter API v2',
-    icon: '𝕏',
-    iconClass: 'twitter',
-    status: 'connected',
-    description: tt('Tweet fetching and monitoring for @steipete, @openclaw, and related topics.', '推文抓取与监控，追踪 @steipete @openclaw 及相关话题动态。'),
-    capabilities: [
-      { label: 'Tweet Fetch', type: 'data' },
-      { label: '@steipete', type: 'search' },
-      { label: '@openclaw', type: 'search' },
-      { label: 'Timeline', type: 'data' }
-    ]
-  },
-  {
-    id: 'web-fetch',
-    name: 'Web Fetch',
-    provider: 'Built-in',
-    icon: '🌐',
-    iconClass: 'web',
-    status: 'connected',
-    description: tt('Web content extraction tool to fetch and parse page content from any URL.', '网页内容提取工具，用于抓取和解析任意 URL 的页面内容。'),
-    capabilities: [
-      { label: 'URL Fetch', type: 'data' },
-      { label: 'Content Extract', type: 'data' },
-      { label: 'HTML Parse', type: 'data' }
-    ]
-  },
-  {
-    id: 'whisper',
-    name: 'OpenAI Whisper API',
-    provider: 'OpenAI API',
-    icon: '🎙️',
-    iconClass: 'whisper',
-    status: 'connected',
-    description: tt('Speech-to-text service with multilingual recognition for audio processing.', '语音转文字服务，支持多语言识别，用于音频内容处理。'),
-    capabilities: [
-      { label: 'Speech-to-Text', type: 'ai' },
-      { label: 'Multi-Language', type: 'ai' },
-      { label: 'Audio Transcribe', type: 'ai' }
-    ]
-  }
-];
-
-const API_DESC_BY_ID = {
-  discord: {
-    en: 'Primary messaging channel for commands, reports, and interactions. Supports Components v2 interactions.',
-    zh: '主消息频道，用于接收指令、发送报告和互动。支持 Components v2 组件交互。',
-  },
-  anthropic: {
-    en: 'Primary LLM engine. Claude Sonnet 4 / Claude Opus 4 for reasoning, code generation, and chat.',
-    zh: '主 LLM 引擎。Claude Sonnet 4 / Claude Opus 4，用于推理、代码生成和对话。',
-  },
-  'brave-search': {
-    en: 'Real-time web search API for retrieval and fresh information.',
-    zh: '实时网页搜索 API，用于信息检索和最新内容获取。',
-  },
-  notion: {
-    en: 'Database read/write for task management, project tracking, and knowledge storage.',
-    zh: '数据库读写，用于任务管理、项目跟踪和知识库存储。',
-  },
-  openai: {
-    en: 'GPT-5 / GPT-5 Codex for code completion, content generation, and multimodal tasks.',
-    zh: 'GPT-5 / GPT-5 Codex，用于代码补全、内容生成和多模态任务。',
-  },
-  gemini: {
-    en: 'Gemini 3 Pro / Flash for multimodal reasoning, image understanding, and long context.',
-    zh: 'Gemini 3 Pro / Flash，用于多模态推理、图像理解和长上下文任务。',
-  },
-  'x-api': {
-    en: 'Tweet fetching and monitoring for @steipete, @openclaw, and related topics.',
-    zh: '推文抓取与监控，追踪 @steipete @openclaw 及相关话题动态。',
-  },
-  'web-fetch': {
-    en: 'Web content extraction tool to fetch and parse page content from any URL.',
-    zh: '网页内容提取工具，用于抓取和解析任意 URL 的页面内容。',
-  },
-  whisper: {
-    en: 'Speech-to-text service with multilingual recognition for audio processing.',
-    zh: '语音转文字服务，支持多语言识别，用于音频内容处理。',
-  },
-};
-
-function renderAPIs() {
-  const grid = document.getElementById('apisGrid');
-  const stats = document.getElementById('apiStats');
-  const search = (document.getElementById('apiSearch')?.value || '').toLowerCase();
-
-  const filtered = search
-    ? CONNECTED_APIS.filter(a => a.name.toLowerCase().includes(search) || a.provider.toLowerCase().includes(search) || a.description.toLowerCase().includes(search) || a.capabilities.some(c => c.label.toLowerCase().includes(search)))
-    : CONNECTED_APIS;
-
-  const connected = CONNECTED_APIS.filter(a => a.status === 'connected').length;
-  const totalCaps = CONNECTED_APIS.reduce((sum, a) => sum + a.capabilities.length, 0);
-  const categories = new Set();
-  CONNECTED_APIS.forEach(a => a.capabilities.forEach(c => categories.add(c.type)));
-
-  document.getElementById('apiCount').textContent = CONNECTED_APIS.length;
-
-  stats.innerHTML = `
-    <div class="api-stat-card">
-      <div class="api-stat-value">${CONNECTED_APIS.length}</div>
-      <div class="api-stat-label">Total APIs</div>
-    </div>
-    <div class="api-stat-card">
-      <div class="api-stat-value">${connected}</div>
-      <div class="api-stat-label">Connected</div>
-    </div>
-    <div class="api-stat-card">
-      <div class="api-stat-value">${totalCaps}</div>
-      <div class="api-stat-label">Capabilities</div>
-    </div>
-    <div class="api-stat-card">
-      <div class="api-stat-value">${categories.size}</div>
-      <div class="api-stat-label">Categories</div>
-    </div>
-  `;
-
-  if (filtered.length === 0) {
-    grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1"><h3>No APIs match your search</h3><p>Try a different search term.</p></div>`;
-    return;
-  }
-
-  grid.innerHTML = filtered.map((api, i) => `
-    <div class="glass-card api-card" style="animation:cardIn .4s ease backwards;animation-delay:${i * 0.06}s">
-      <div class="api-card-header">
-        <div class="api-icon ${api.iconClass}">${api.icon}</div>
-        <div class="api-card-info">
-          <div class="api-card-name">
-            ${escHtml(api.name)}
-            <span class="api-status ${api.status}" title="${api.status}"></span>
-          </div>
-          <div class="api-card-provider">${escHtml(api.provider)}</div>
-        </div>
-      </div>
-      <div class="api-card-desc">${escHtml(api.description)}</div>
-      <div class="api-capabilities">
-        ${api.capabilities.map(cap => `<span class="api-cap ${cap.type}">${escHtml(cap.label)}</span>`).join('')}
-      </div>
-    </div>
-  `).join('');
-}
-
-document.getElementById('apiSearch')?.addEventListener('input', () => renderAPIs());
 
 // ═══ AGENT MONITOR ═══
 let agentData = null;
@@ -3300,182 +2560,15 @@ function toggleSessionsPanel() {
   // Panel toggle handled by CSS via collapsed class
 }
 
-// ═══ PARALLEL EXECUTION ═══
-let selectionMode = false;
-let selectedTaskIds = new Set();
-let parallelRuns = new Map(); // taskId -> { status, startTime, title }
-
-function toggleSelectionMode() {
-  selectionMode = !selectionMode;
-  const btn = document.getElementById('selectionModeBtn');
-  btn.style.background = selectionMode ? 'var(--accent)' : '';
-  btn.style.color = selectionMode ? '#fff' : '';
-  btn.style.borderColor = selectionMode ? 'var(--accent)' : '';
-  selectedTaskIds.clear();
-  updateBatchBar();
-  // Re-render to show/hide checkboxes
-  if (taskView === 'kanban') renderKanban(); else renderTasks();
-}
-
-function toggleTaskSelection(taskId, event) {
-  if (event) event.stopPropagation();
-  if (selectedTaskIds.has(taskId)) {
-    selectedTaskIds.delete(taskId);
-  } else {
-    selectedTaskIds.add(taskId);
-  }
-  updateBatchBar();
-  // Update checkbox visual
-  const cb = document.querySelector(`.task-checkbox[data-task-id="${taskId}"]`);
-  if (cb) cb.classList.toggle('checked', selectedTaskIds.has(taskId));
-}
-
-function selectAllNew() {
-  allTasks.filter(t => t.status === 'new').forEach(t => selectedTaskIds.add(t.id));
-  updateBatchBar();
-  if (taskView === 'kanban') renderKanban(); else renderTasks();
-}
-
-function clearSelection() {
-  selectedTaskIds.clear();
-  updateBatchBar();
-  if (taskView === 'kanban') renderKanban(); else renderTasks();
-}
-
-function updateBatchBar() {
-  const bar = document.getElementById('batchBar');
-  const count = document.getElementById('batchCount');
-  if (selectionMode && selectedTaskIds.size > 0) {
-    bar.style.display = '';
-    count.textContent = `${selectedTaskIds.size} selected`;
-  } else {
-    bar.style.display = 'none';
-  }
-}
-
 async function spawnSingleTask(taskId) {
   try {
-    const task = allTasks.find(t => t.id === taskId);
     await apiFetch(`/tasks/${taskId}/spawn`, { method: 'POST' });
-    parallelRuns.set(taskId, { status: 'running', startTime: Date.now(), title: task?.title || 'Untitled' });
-    renderParallelPanel();
     toast('Task spawned as sub-agent', 'success');
     loadTasks(true);
   } catch(e) {
     toast(`Spawn failed: ${e.message}`, 'error');
   }
 }
-
-async function spawnBatch() {
-  const ids = Array.from(selectedTaskIds);
-  if (ids.length === 0) { toast('No tasks selected', 'error'); return; }
-  try {
-    const result = await apiFetch('/tasks/spawn-batch', {
-      method: 'POST',
-      body: JSON.stringify({ taskIds: ids })
-    });
-    // Track spawned tasks
-    ids.forEach(id => {
-      const task = allTasks.find(t => t.id === id);
-      parallelRuns.set(id, { status: 'running', startTime: Date.now(), title: task?.title || 'Untitled' });
-    });
-    renderParallelPanel();
-    const spawned = result.spawned || ids.length;
-    const skipped = result.skipped?.length || 0;
-    toast(`⚡ ${spawned} tasks spawned in parallel${skipped ? ` (${skipped} skipped)` : ''}`, 'success');
-    selectedTaskIds.clear();
-    updateBatchBar();
-    loadTasks(true);
-  } catch(e) {
-    toast(`Batch spawn failed: ${e.message}`, 'error');
-  }
-}
-
-function renderParallelPanel() {
-  const panel = document.getElementById('parallelPanel');
-  const container = document.getElementById('parallelTasks');
-  const countEl = document.getElementById('parallelCount');
-  
-  // Update statuses from task data
-  parallelRuns.forEach((run, taskId) => {
-    const task = allTasks.find(t => t.id === taskId);
-    if (task) {
-      if (task.status === 'done') run.status = 'done';
-      else if (task.status === 'failed') run.status = 'failed';
-      else if (task.status === 'in-progress') run.status = 'running';
-    }
-  });
-
-  if (parallelRuns.size === 0) {
-    panel.style.display = 'none';
-    return;
-  }
-  panel.style.display = '';
-
-  const running = Array.from(parallelRuns.values()).filter(r => r.status === 'running').length;
-  countEl.textContent = `${running} running / ${parallelRuns.size} total`;
-
-  container.innerHTML = Array.from(parallelRuns.entries()).map(([taskId, run]) => {
-    const elapsed = Math.round((Date.now() - run.startTime) / 1000);
-    const elapsedStr = elapsed < 60 ? `${elapsed}s` : `${Math.floor(elapsed/60)}m ${elapsed%60}s`;
-    let icon = '<div class="parallel-spinner"></div>';
-    if (run.status === 'done') icon = '<div class="parallel-done-icon">✓</div>';
-    if (run.status === 'failed') icon = '<div class="parallel-fail-icon">✕</div>';
-    return `<div class="parallel-task-row">
-      ${icon}
-      <span class="parallel-task-name" title="${escHtml(run.title)}">${escHtml(run.title)}</span>
-      <span class="parallel-task-status ${run.status}">${run.status}</span>
-      <span class="parallel-task-time">${elapsedStr}</span>
-    </div>`;
-  }).join('');
-}
-
-function clearCompletedParallel() {
-  parallelRuns.forEach((run, taskId) => {
-    if (run.status === 'done' || run.status === 'failed') parallelRuns.delete(taskId);
-  });
-  renderParallelPanel();
-}
-
-function hideParallelPanel() {
-  document.getElementById('parallelPanel').style.display = 'none';
-}
-
-// ─── Ops Dashboard (Cron + Vision) ───
-async function loadOps() {
-  const visionEl = document.getElementById('visionGrid');
-  const visionStatus = document.getElementById('visionStatus');
-  if (!visionEl) return;
-
-  try {
-    const vision = await apiFetch('/vision/stats');
-    renderVisionStats(vision, visionEl, visionStatus);
-  } catch (e) {
-    visionEl.innerHTML = `<div class="empty-state"><h3>Unable to Load Vision Stats</h3><p>${e.message}</p></div>`;
-  }
-}
-
-function renderVisionStats(data, visionEl, statusEl) {
-  const cats = data?.categories || {};
-  if (statusEl) statusEl.textContent = data?.status === 'not_configured' ? 'Notion not configured' : 'Notion source';
-  const entries = Object.entries(cats);
-  if (entries.length === 0) {
-    visionEl.innerHTML = `<div class="empty-state"><h3>No vision stats</h3><p>Configure Notion databases to see ingestion counts.</p></div>`;
-    return;
-  }
-  visionEl.innerHTML = entries.map(([k, v]) => {
-    return `<div class="vision-card">
-      <div class="vision-label">${k}</div>
-      <div class="vision-count">${v.count ?? 0}</div>
-      <div class="vision-sub">Today</div>
-    </div>`;
-  }).join('');
-}
-
-// Override tasks loader to cron loader
-loadTasks = async function() {
-  await loadOps();
-};
 
 // ─── Sessions Panel ───
 // ─── Model names (single source of truth for display) ───
@@ -3946,15 +3039,13 @@ async function loadConfig() {
 async function loadCronEnhanced() {
   const panel = document.getElementById('panel-tasks');
   if (!panel) return;
-  const opsGrid = panel.querySelector('.ops-grid');
-  if (!opsGrid) return;
 
   let jobsContainer = document.getElementById('cronJobsContainer');
   if (!jobsContainer) {
     jobsContainer = document.createElement('div');
     jobsContainer.id = 'cronJobsContainer';
     jobsContainer.style.marginBottom = '12px';
-    panel.insertBefore(jobsContainer, opsGrid);
+    panel.insertBefore(jobsContainer, panel.firstElementChild);
   }
 
   try {
@@ -4655,201 +3746,13 @@ function drawDailyCostChart(canvas, daily) {
   }
 }
 
-// ═══ ATTACHMENTS ═══
-let currentAttachments = [];
-
-async function loadAttachments(taskId) {
-  try {
-    currentAttachments = await apiFetch(`/tasks/${taskId}/attachments`);
-    if (!Array.isArray(currentAttachments)) currentAttachments = [];
-  } catch (e) {
-    currentAttachments = [];
-  }
-  renderAttachments(taskId);
-}
-
-function renderAttachments(taskId) {
-  const container = document.getElementById('attachmentsGrid');
-  const countEl = document.getElementById('attachmentsCount');
-  if (!container) return;
-
-  countEl.textContent = currentAttachments.length;
-
-  if (currentAttachments.length === 0) {
-    container.innerHTML = `<div class="att-empty" style="grid-column:1/-1">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
-      No attachments yet — drag & drop or click below to upload
-    </div>`;
-    return;
-  }
-
-  container.innerHTML = currentAttachments.map(file => {
-    const fileUrl = `${API}/tasks/${taskId}/attachments/${encodeURIComponent(file.name)}?token=${encodeURIComponent(TOKEN)}`;
-    const fileIcon = getFileIcon(file.ext);
-
-    return `<div class="attachment-card" onclick="${file.isImage ? `openLightbox('${escAttr(fileUrl)}', '${escAttr(file.name)}', '${formatSize(file.size)}')` : `window.open('${escAttr(fileUrl)}&download=1','_blank')`}">
-      <button class="att-delete" onclick="event.stopPropagation();deleteAttachment('${taskId}','${escAttr(file.name)}')" title="Delete">✕</button>
-      <div class="att-preview">
-        ${file.isImage
-          ? `<img src="${fileUrl}" alt="${escHtml(file.name)}" loading="lazy">`
-          : `<span class="att-icon">${fileIcon}</span>`}
-      </div>
-      <div class="att-info">
-        <div class="att-name" title="${escHtml(file.name)}">${escHtml(file.name)}</div>
-        <div class="att-size">${formatSize(file.size)}</div>
-      </div>
-    </div>`;
-  }).join('');
-}
-
-function getFileIcon(ext) {
-  const icons = {
-    '.pdf': '📄', '.doc': '📝', '.docx': '📝', '.txt': '📃', '.md': '📃',
-    '.xls': '📊', '.xlsx': '📊', '.csv': '📊',
-    '.pptx': '📽️', '.ppt': '📽️',
-    '.zip': '📦', '.rar': '📦', '.tar': '📦', '.gz': '📦',
-    '.json': '{ }', '.xml': '🏷️', '.html': '🌐',
-    '.mp4': '🎬', '.mov': '🎬', '.avi': '🎬',
-    '.mp3': '🎵', '.wav': '🎵', '.ogg': '🎵',
-    '.py': '🐍', '.js': '📜', '.ts': '📜',
-  };
-  return icons[ext] || '📎';
-}
-
-function formatSize(bytes) {
-  if (bytes < 1024) return bytes + ' B';
-  if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
-  return (bytes / 1048576).toFixed(1) + ' MB';
-}
-
-function escAttr(s) {
-  return s.replace(/'/g, "\\'").replace(/"/g, '&quot;');
-}
-
-async function uploadAttachment(taskId, file, source) {
-  const progressEl = document.getElementById('attUploadProgress');
-  const barFill = document.getElementById('attUploadBarFill');
-  const statusEl = document.getElementById('attUploadStatus');
-
-  if (file.size > 20 * 1024 * 1024) {
-    toast('File too large (max 20MB)', 'error');
-    return;
-  }
-
-  progressEl.style.display = '';
-  barFill.style.width = '20%';
-  statusEl.textContent = `Uploading ${file.name}…`;
-
-  try {
-    const base64 = await fileToBase64(file);
-    barFill.style.width = '60%';
-
-    await apiFetch(`/tasks/${taskId}/attachments`, {
-      method: 'POST',
-      body: JSON.stringify({
-        filename: file.name,
-        data: base64,
-        source: source || 'user',
-      }),
-    });
-
-    barFill.style.width = '100%';
-    statusEl.textContent = 'Upload complete!';
-    toast(`📎 ${file.name} attached`, 'success');
-
-    setTimeout(() => {
-      progressEl.style.display = 'none';
-      barFill.style.width = '0%';
-    }, 1500);
-
-    loadAttachments(taskId);
-    loadTasks(false); // refresh notes
-  } catch (e) {
-    progressEl.style.display = 'none';
-    barFill.style.width = '0%';
-    toast(`Upload failed: ${e.message}`, 'error');
-  }
-}
-
-function fileToBase64(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
-
-async function deleteAttachment(taskId, filename) {
-  if (!confirm(`Delete "${filename}"?`)) return;
-  try {
-    await apiFetch(`/tasks/${taskId}/attachments/${encodeURIComponent(filename)}`, { method: 'DELETE' });
-    toast('Attachment deleted', 'success');
-    loadAttachments(taskId);
-    loadTasks(false);
-  } catch (e) {
-    toast(`Delete failed: ${e.message}`, 'error');
-  }
-}
-
-function setupDropZone(taskId) {
-  const zone = document.getElementById('attDropZone');
-  const fileInput = document.getElementById('attFileInput');
-  if (!zone || !fileInput) return;
-
-  zone.ondragover = (e) => { e.preventDefault(); zone.classList.add('drag-over'); };
-  zone.ondragleave = () => zone.classList.remove('drag-over');
-  zone.ondrop = (e) => {
-    e.preventDefault();
-    zone.classList.remove('drag-over');
-    const files = e.dataTransfer.files;
-    for (let i = 0; i < files.length; i++) {
-      uploadAttachment(taskId, files[i], 'user');
-    }
-  };
-
-  fileInput.onchange = () => {
-    for (let i = 0; i < fileInput.files.length; i++) {
-      uploadAttachment(taskId, fileInput.files[i], 'user');
-    }
-    fileInput.value = '';
-  };
-}
-
-// ─── Lightbox ───
-function openLightbox(url, name, size) {
-  const overlay = document.getElementById('lightboxOverlay');
-  const img = document.getElementById('lightboxImg');
-  const nameEl = document.getElementById('lightboxName');
-  const sizeEl = document.getElementById('lightboxSize');
-  const downloadEl = document.getElementById('lightboxDownload');
-
-  img.src = url;
-  nameEl.textContent = name;
-  sizeEl.textContent = size;
-  downloadEl.href = url + '&download=1';
-  overlay.classList.add('show');
-  document.body.style.overflow = 'hidden';
-}
-
-function closeLightbox() {
-  const overlay = document.getElementById('lightboxOverlay');
-  overlay.classList.remove('show');
-  document.body.style.overflow = '';
-}
-
-document.addEventListener('keydown', e => {
-  if (e.key === 'Escape' && document.getElementById('lightboxOverlay').classList.contains('show')) {
-    closeLightbox();
-  }
-});
-
 // ═══ INIT ═══
 applyLanguageUI();
 checkConnection();
 (async () => {
   await refreshCapabilities();
   loadSessions(); // Load sessions tab (default) after caps so model selects render enabled when allowed
+  loadTasks(true);
 })();
 loadAgentMonitor();
 pollWatchdogStatus();
@@ -4862,6 +3765,7 @@ setInterval(pollWatchdogStatus, 10000);
 window.addEventListener('resize', () => {
   if (taskView === 'kanban') {
     const board = document.getElementById('kanbanBoard');
+    if (!board) return;
     if (window.innerWidth <= 768) board.classList.add('horizontal-scroll');
     else board.classList.remove('horizontal-scroll');
   }
