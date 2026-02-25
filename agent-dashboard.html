@@ -1119,9 +1119,7 @@ function applyLanguageUI() {
     });
   }
 
-  if (Array.isArray(MODEL_OPTIONS) && MODEL_OPTIONS[0]) {
-    MODEL_OPTIONS[0].label = tt('Default', '默认');
-  }
+  // Default model label is now dynamic (set by loadSystemInfo)
 }
 
 function toggleLanguage() {
@@ -2388,6 +2386,11 @@ async function loadAgentMonitor() {
 
 function loadSystemInfo() {
   apiFetch('/ops/system').then(sys => {
+    // Update global default model from live config
+    if (sys.models?.primary) {
+      const p = sys.models.primary;
+      globalDefaultModel = p.includes('/') ? p.split('/').pop() : p;
+    }
     const el = document.getElementById('systemInfoBar');
     const c = document.getElementById('systemInfoContent');
     if (!el || !c) return;
@@ -2589,8 +2592,10 @@ const MODEL_DISPLAY_NAMES = [
 ];
 
 // ─── Model Selector ───
+let globalDefaultModel = 'claude-sonnet-4-6'; // updated dynamically from /ops/system
+
 const MODEL_OPTIONS = [
-  { value: 'default', label: tt('Default', '默认'), short: 'default' },
+  { value: 'default', label: '', full: null, isDefault: true },
   { value: 'opus',   label: 'Claude Opus 4',   full: 'claude-opus-4-6' },
   { value: 'sonnet', label: 'Claude Sonnet 4', full: 'claude-sonnet-4-6' },
   { value: 'flash',  label: 'Gemini 3.0 Flash',  full: 'gemini-3.0-flash' },
@@ -2598,11 +2603,18 @@ const MODEL_OPTIONS = [
   { value: 'codex',  label: 'GPT-5.3 Codex',   full: 'gpt-5.3-codex' },
 ];
 
+function getDefaultModelLabel() {
+  // Show actual model name instead of "默认"
+  const m = globalDefaultModel || '';
+  return shortModel(m) + ' ★';
+}
+
 function buildModelSelect(currentModel, id, type) {
   // type: 'session' (channelId) or 'cron' (jobId)
   const opts = MODEL_OPTIONS.map(o => {
+    let label = o.isDefault ? getDefaultModelLabel() : o.label;
     const isCurrent = o.full ? currentModel.includes(o.full) : (!currentModel || currentModel === 'unknown');
-    return `<option value="${o.value}" ${isCurrent ? 'selected' : ''}>${o.label}</option>`;
+    return `<option value="${o.value}" ${isCurrent ? 'selected' : ''}>${label}</option>`;
   }).join('');
   const color = getModelColor(currentModel);
   return `<select class="model-select" style="border-color:${color};color:${color}"
