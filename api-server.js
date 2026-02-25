@@ -58,12 +58,9 @@ const OPENCLAW_CONFIG_FILE = process.env.OPENCLAW_CONFIG_FILE || path.join(HOME_
 const OPENCLAW_CONFIG_BASELINE_FILE = process.env.OPENCLAW_CONFIG_BASELINE_FILE || path.join(HOME_DIR, '.openclaw', 'openclaw.json.good');
 const BACKUP_REMOTE = process.env.OPENCLAW_BACKUP_REMOTE || 'origin';
 const BACKUP_BRANCH = process.env.OPENCLAW_BACKUP_BRANCH || '';
-// Private dashboard: when AUTH_TOKEN is set and not explicitly disabled, enable mutating ops (e.g. for Tailscale)
-const explicitMutating = process.env.OPENCLAW_ENABLE_MUTATING_OPS;
-const ENABLE_MUTATING_OPS = explicitMutating === '1' || (explicitMutating !== '0' && !!process.env.OPENCLAW_AUTH_TOKEN);
 const ALLOW_ATTACHMENT_FILEPATH_COPY = process.env.OPENCLAW_ALLOW_ATTACHMENT_FILEPATH_COPY === '1';
-// Only restrict to loopback when explicitly set to 1; unset or 0 allows Tailscale/remote
-const MUTATING_OPS_LOOPBACK_ONLY = process.env.OPENCLAW_MUTATING_OPS_LOOPBACK_ONLY === '1';
+const ENABLE_SYSTEMCTL_RESTART = process.env.OPENCLAW_ENABLE_SYSTEMCTL_RESTART === '1';
+const ENABLE_MUTATING_OPS = process.env.OPENCLAW_ENABLE_MUTATING_OPS === '1';
 // Load keys from keys.env if not in env
 function loadKeysEnv() {
   try {
@@ -177,12 +174,7 @@ ${attachmentStep}
 
 function jsonReply(res, status, data) {
   const body = JSON.stringify(data);
-  res.writeHead(status, {
-    'Content-Type': 'application/json',
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-  });
+  res.writeHead(status, { 'Content-Type': 'application/json' });
   res.end(body);
 }
 
@@ -190,8 +182,25 @@ function errorReply(res, status, message) {
   jsonReply(res, status, { error: message });
 }
 
-function setCors(res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
+// CORS: restrict to configured origins (default: loopback only)
+const CORS_ALLOWED_ORIGINS = (process.env.DASHBOARD_CORS_ORIGINS || '').split(',').filter(Boolean);
+function getCorsOrigin(req) {
+  const origin = req.headers['origin'] || '';
+  if (CORS_ALLOWED_ORIGINS.length === 0) {
+    if (/^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0)(:\d+)?$/.test(origin)) return origin;
+    return '';
+  }
+  if (CORS_ALLOWED_ORIGINS.includes('*')) return '*';
+  if (CORS_ALLOWED_ORIGINS.includes(origin)) return origin;
+  return '';
+}
+
+function setCors(res, req) {
+  const allowed = req ? getCorsOrigin(req) : '';
+  if (allowed) {
+    res.setHeader('Access-Control-Allow-Origin', allowed);
+    if (allowed !== '*') res.setHeader('Vary', 'Origin');
+  }
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 }
@@ -216,16 +225,13 @@ function isLoopbackRequest(req) {
   return addr === '127.0.0.1' || addr === '::1' || addr === '::ffff:127.0.0.1';
 }
 
-function guardMutatingOps(req, res, opName) {
+function requireMutatingOps(req, res, opName) {
   if (!ENABLE_MUTATING_OPS) {
-    console.warn('[ops] 403:', opName, '- mutating ops disabled (set OPENCLAW_ENABLE_MUTATING_OPS=1 in .env)');
-    errorReply(res, 403, `Mutating op disabled: ${opName}. Set OPENCLAW_ENABLE_MUTATING_OPS=1 to enable.`);
+    errorReply(res, 403, `${opName} disabled. Set OPENCLAW_ENABLE_MUTATING_OPS=1 to enable.`);
     return false;
   }
-  if (MUTATING_OPS_LOOPBACK_ONLY && !isLoopbackRequest(req)) {
-    const addr = req.socket?.remoteAddress || '?';
-    console.warn('[ops] 403:', opName, '- loopback only, request from', addr);
-    errorReply(res, 403, `Mutating op requires loopback request: ${opName}.`);
+  if (!isLoopbackRequest(req)) {
+    errorReply(res, 403, `${opName} allowed only from localhost.`);
     return false;
   }
   return true;
@@ -794,7 +800,6 @@ function handleAttachments(req, res, parsed, segments, method) {
       res.writeHead(200, {
         'Content-Type': mime,
         'Content-Length': data.length,
-        'Access-Control-Allow-Origin': '*',
         'Cache-Control': 'public, max-age=3600',
         ...(parsed.query.download === '1' ? { 'Content-Disposition': `attachment; filename="${filename}"` } : {}),
       });
@@ -820,9 +825,7 @@ function handleAttachments(req, res, parsed, segments, method) {
         if (!ALLOW_ATTACHMENT_FILEPATH_COPY) {
           throw new Error('filePath upload disabled (set OPENCLAW_ALLOW_ATTACHMENT_FILEPATH_COPY=1 to enable)');
         }
-        if (MUTATING_OPS_LOOPBACK_ONLY && !isLoopbackRequest(req)) {
-          throw new Error('filePath upload requires loopback request');
-        }
+
         const srcPath = path.resolve(body.filePath);
         // Security: only allow files from /tmp, workspace, or user home
         const homeDir = process.env.HOME || '';
@@ -939,14 +942,15 @@ function saveCronStore(store) {
 
 function signalGatewayReload() {
   try {
-    const { execSync } = require('child_process');
-    execSync("kill -USR1 $(pgrep -f 'node.*openclaw.*gateway' | head -1) 2>/dev/null || true", { timeout: 3000 });
+    const { execFileSync } = require('child_process');
+    const pids = execFileSync('pgrep', ['-f', 'openclaw.*gateway'], { encoding: 'utf8', timeout: 3000 }).trim().split('\n');
+    const pid = parseInt(pids[0], 10);
+    if (pid > 0) process.kill(pid, 'SIGUSR1');
   } catch {}
-  // Also try restarting gateway service for full reload
-  try {
-    const { execSync } = require('child_process');
-    execSync('sudo systemctl restart openclaw-gateway 2>/dev/null || true', { timeout: 10000 });
-  } catch {}
+  // Optional user-scoped restart only; never invoke sudo from dashboard process.
+  if (ENABLE_SYSTEMCTL_RESTART) {
+    runCmd('systemctl', ['--user', 'restart', 'openclaw-gateway'], { timeout: 10000 });
+  }
 }
 
 function loadCronRuns(jobId, limit) {
@@ -1732,7 +1736,7 @@ function runBackupAndPush() {
 
 function handleOpsUpdateOpenClaw(req, res, method) {
   if (method !== 'POST') return errorReply(res, 405, 'Method not allowed');
-  if (!guardMutatingOps(req, res, 'ops/update-openclaw')) return;
+  if (!requireMutatingOps(req, res, 'ops update-openclaw')) return;
   const report = {
     ok: true,
     timestamp: new Date().toISOString(),
@@ -1801,7 +1805,7 @@ function handleOpsUpdateOpenClaw(req, res, method) {
 // ─── POST /backup and POST /backup/load ───
 async function handleBackup(req, res, method, segments) {
   if (method !== 'POST') return errorReply(res, 405, 'Method not allowed');
-  if (!guardMutatingOps(req, res, segments[1] === 'load' ? 'backup/load' : 'backup')) return;
+  if (!requireMutatingOps(req, res, 'backup operations')) return;
   const { execFileSync } = require('child_process');
   if (segments[1] === 'load') {
     try {
@@ -2166,7 +2170,7 @@ function handleOpsSessions(req, res, method) {
 function handleOpsSystem(req, res, method) {
   if (method !== 'GET') return errorReply(res, 405, 'Method not allowed');
   const os = require('os');
-  const { execSync } = require('child_process');
+  const { execFileSync } = require('child_process');
 
   const totalMem = os.totalmem();
   const freeMem = os.freemem();
@@ -2176,22 +2180,23 @@ function handleOpsSystem(req, res, method) {
   const loadAvg = os.loadavg();
   const cpuCount = os.cpus().length;
 
-  // Disk usage
+  // Disk usage (no shell — execFileSync with args array)
   let disk = {};
   try {
-    const df = execSync("df -h / | tail -1", { timeout: 3000 }).toString().trim().split(/\s+/);
+    const dfRaw = execFileSync('df', ['-h', '/'], { encoding: 'utf8', timeout: 3000 });
+    const df = dfRaw.trim().split('\n').pop().split(/\s+/);
     disk = { total: df[1], used: df[2], available: df[3], usePct: df[4] };
   } catch {}
 
-  // macOS system info
+  // macOS system info (no shell)
   let macModel = '', macOS = '';
-  try { macModel = execSync("sysctl -n hw.model", { timeout: 2000 }).toString().trim(); } catch {}
-  try { macOS = execSync("sw_vers -productVersion", { timeout: 2000 }).toString().trim(); } catch {}
+  try { macModel = execFileSync('sysctl', ['-n', 'hw.model'], { encoding: 'utf8', timeout: 2000 }).trim(); } catch {}
+  try { macOS = execFileSync('sw_vers', ['-productVersion'], { encoding: 'utf8', timeout: 2000 }).trim(); } catch {}
 
   // OpenClaw version
   let clawVersion = '';
   try { clawVersion = JSON.parse(fs.readFileSync('/opt/homebrew/lib/node_modules/openclaw/package.json', 'utf8')).version; } catch {}
-  if (!clawVersion) { try { clawVersion = execSync("/opt/homebrew/bin/openclaw --version 2>&1", { timeout: 3000 }).toString().trim(); } catch {} }
+  if (!clawVersion) { try { clawVersion = execFileSync('/opt/homebrew/bin/openclaw', ['--version'], { encoding: 'utf8', timeout: 3000 }).trim(); } catch {} }
 
   // Process uptime
   const dashboardUptime = process.uptime();
@@ -2474,14 +2479,7 @@ function handleOpsConfig(req, res, method) {
     } catch {}
   }
 
-  return jsonReply(res, 200, {
-    files,
-    capabilities: {
-      mutatingOpsEnabled: ENABLE_MUTATING_OPS,
-      mutatingOpsLoopbackOnly: MUTATING_OPS_LOOPBACK_ONLY,
-      attachmentFilePathCopyEnabled: ALLOW_ATTACHMENT_FILEPATH_COPY,
-    },
-  });
+  return jsonReply(res, 200, { files });
 }
 
 // --- Ops: Enhanced Cron ---
@@ -2929,7 +2927,7 @@ function sendAuditNotification(message) {
 
 function handleOpsSessionModel(req, res, method) {
   if (method !== 'POST') return errorReply(res, 405, 'POST only');
-  if (!guardMutatingOps(req, res, 'ops/session-model')) return;
+  if (!requireMutatingOps(req, res, 'ops session-model')) return;
   return readJsonBody(req).then(body => {
     const { channelId, model } = body;
     if (!channelId) return errorReply(res, 400, 'channelId required');
@@ -2994,7 +2992,7 @@ function handleOpsSessionModel(req, res, method) {
 // ─── POST /ops/cron-model ─── Set model override for a cron job
 function handleOpsCronModel(req, res, method) {
   if (method !== 'POST') return errorReply(res, 405, 'POST only');
-  if (!guardMutatingOps(req, res, 'ops/cron-model')) return;
+  if (!requireMutatingOps(req, res, 'ops cron-model')) return;
   return readJsonBody(req).then(body => {
     const { jobId, model } = body;
     if (!jobId) return errorReply(res, 400, 'jobId required');
@@ -3020,12 +3018,8 @@ function handleOpsCronModel(req, res, method) {
     try { fs.writeFileSync(CRON_STORE_PATH, JSON.stringify(store, null, 2), 'utf8'); }
     catch (e) { return errorReply(res, 500, 'Cannot write cron store: ' + e.message); }
 
-    // Signal gateway
-    try {
-      const { execSync } = require('child_process');
-      const pid = execSync('pgrep -f "openclaw.*gateway"', { encoding: 'utf8' }).trim().split('\n')[0];
-      if (pid) process.kill(+pid, 'SIGUSR1');
-    } catch {}
+    // Signal gateway (reuse shared helper — no shell interpolation)
+    signalGatewayReload();
 
     // Audit notification
     const displayModel = model === 'default' ? '默认' : fullModel.split('/').pop();
@@ -3049,7 +3043,7 @@ const server = http.createServer((req, res) => {
 
   // CORS preflight
   if (method === 'OPTIONS') {
-    setCors(res);
+    setCors(res, req);
     res.writeHead(204);
     res.end();
     return;
@@ -3066,13 +3060,13 @@ const server = http.createServer((req, res) => {
     const ct = file.endsWith('.svg') ? 'image/svg+xml' : 'image/png';
     try {
       const data = fs.readFileSync(path.join(__dirname, file));
-      setCors(res);
+      setCors(res, req);
       res.writeHead(200, { 'Content-Type': ct, 'Cache-Control': 'public, max-age=86400' });
       return res.end(data);
     } catch { return errorReply(res, 404, 'Not found'); }
   }
   if (pathname === '/manifest.json' && method === 'GET') {
-    setCors(res);
+    setCors(res, req);
     res.writeHead(200, { 'Content-Type': 'application/manifest+json' });
     return res.end(JSON.stringify({
       name: "Jony's OpenClaw Dashboard",
@@ -3088,7 +3082,7 @@ const server = http.createServer((req, res) => {
   // Login page (no auth required)
   if (pathname === '/login') {
     if (method === 'GET') {
-      setCors(res);
+      setCors(res, req);
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
       res.end(`<!DOCTYPE html><html lang="en"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -3160,7 +3154,7 @@ button:active{opacity:.8}
     const htmlPath = path.join(__dirname, 'agent-dashboard.html');
     try {
       const html = fs.readFileSync(htmlPath);
-      setCors(res);
+      setCors(res, req);
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
       res.end(html);
     } catch (e) {
@@ -3214,5 +3208,5 @@ server.on('error', (e) => {
 
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`Agent Dashboard API server listening on port ${PORT}`);
-  if (ENABLE_MUTATING_OPS) console.log('[ops] mutating ops enabled, loopback-only:', MUTATING_OPS_LOOPBACK_ONLY);
+  if (ENABLE_MUTATING_OPS) console.log('[ops] mutating ops enabled (loopback-only)');
 });
