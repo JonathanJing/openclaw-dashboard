@@ -604,7 +604,7 @@ function saveCronStore(store) {
 function signalGatewayReload() {
   try {
     const { execFileSync } = require('child_process');
-    const pids = execFileSync('pgrep', ['-f', 'openclaw.*gateway'], { encoding: 'utf8', timeout: 3000 }).trim().split('\n');
+    const pids = execFileSync('pgrep', ['-ax', 'openclaw-gateway'], { encoding: 'utf8', timeout: 3000 }).trim().split('\n');
     const pid = parseInt(pids[0], 10);
     if (pid > 0) process.kill(pid, 'SIGUSR1');
   } catch {}
@@ -1801,29 +1801,52 @@ function handleOpsSystem(req, res, method) {
   });
 }
 
+// Literal backslash+n separator used by watchdog (writing bug: \n as two chars not real newline)
+const JSONL_LIT_SEP = String.fromCharCode(92) + 'n'; // backslash + n
+
 function readJsonl(filePath) {
   try {
     const raw = fs.readFileSync(filePath, 'utf8');
     const records = [];
-    // Watchdog events.jsonl has two formats:
-    // 1. Proper JSONL: one JSON per actual newline (early entries)
-    // 2. Compact: multiple JSON objects joined by literal backslash+n (char 92 + char 110)
-    //    instead of real newlines (later entries, watchdog writing bug)
-    const LITERAL_NEWLINE = '}' + String.fromCharCode(92) + 'n{';
+
+    // Parse a blob that may contain multiple JSON records joined by literal \n separators.
+    // Uses {"time": as the record boundary marker.
+    function parseBlob(text) {
+      const starts = [];
+      let pos = 0;
+      while (true) {
+        const idx = text.indexOf('{"time":', pos);
+        if (idx === -1) break;
+        starts.push(idx);
+        pos = idx + 1;
+      }
+      if (!starts.length) {
+        try { records.push(JSON.parse(text.trim())); } catch {}
+        return;
+      }
+      for (let i = 0; i < starts.length; i++) {
+        const start = starts[i];
+        const rawEnd = i + 1 < starts.length ? starts[i + 1] : text.length;
+        // Strip literal \n separator (and any whitespace) from the tail of the slice
+        let chunk = text.slice(start, rawEnd);
+        while (chunk.endsWith(JSONL_LIT_SEP) || chunk.endsWith('\n') || chunk.endsWith('\r') || chunk.endsWith(' ')) {
+          chunk = chunk.slice(0, chunk.length - (chunk.endsWith(JSONL_LIT_SEP) ? 2 : 1));
+        }
+        if (!chunk) continue;
+        try { records.push(JSON.parse(chunk)); continue; } catch {}
+        // Trim to last valid } in case of truncation
+        const lastBrace = chunk.lastIndexOf('}');
+        if (lastBrace > 0) { try { records.push(JSON.parse(chunk.slice(0, lastBrace + 1))); } catch {} }
+      }
+    }
 
     for (const line of raw.split('\n')) {
       const trimmed = line.trim();
       if (!trimmed) continue;
-      // Try normal parse first
+      // Fast path: single well-formed JSON on one line
       try { records.push(JSON.parse(trimmed)); continue; } catch {}
-      // Try splitting on literal backslash-n separator
-      if (trimmed.includes(LITERAL_NEWLINE)) {
-        const parts = trimmed.split(String.fromCharCode(92) + 'n');
-        parts.forEach(part => {
-          const p = part.trim();
-          if (p) { try { records.push(JSON.parse(p)); } catch {} }
-        });
-      }
+      // Slow path: blob of multiple records on one logical line
+      parseBlob(trimmed);
     }
     return records;
   } catch {
@@ -1836,9 +1859,12 @@ function eventToRuntimeStatus(ev) {
   const reason = String(ev?.reason || '').toLowerCase();
   const sev = String(ev?.severity || '').toLowerCase();
   if (event === 'recovered' || reason === 'recovered') return 'healthy';
-  if (sev === 'critical' || reason.includes('runtime_stopped')) return 'down';
+  // Only a fired alert (not suppressed) signals a real outage
+  if (event === 'alert' && (sev === 'critical' || reason.includes('runtime_stopped'))) return 'down';
+  if (event === 'alert' && (sev === 'degraded' || reason.includes('rpc_probe_failed'))) return 'degraded';
+  // Suppressed events = watchdog saw a blip but didn't escalate → degraded at most
+  if (event === 'suppressed') return 'degraded';
   if (reason.includes('rpc_probe_failed') || sev === 'degraded' || sev === 'warn' || sev === 'warning') return 'degraded';
-  if (event === 'alert' || event === 'suppressed') return 'degraded';
   return null;
 }
 
@@ -1909,7 +1935,7 @@ function buildWatchdogTimeline(eventsAsc, startMs, endMs, stepMs, initialStatus)
 function handleOpsWatchdog(req, res, method, parsed) {
   if (method !== 'GET') return errorReply(res, 405, 'Method not allowed');
   const reqLimit = parseInt(parsed?.query?.limit || '12', 10);
-  const limit = Number.isFinite(reqLimit) ? Math.min(Math.max(reqLimit, 1), 50) : 12;
+  const limit = Number.isFinite(reqLimit) ? Math.min(Math.max(reqLimit, 1), 200) : 12;
   const reqWindow = parseInt(parsed?.query?.windowMinutes || '15', 10);
   const windowMinutes = Number.isFinite(reqWindow) ? Math.min(Math.max(reqWindow, 5), 1440) : 15;
   const criticalOnly = String(parsed?.query?.criticalOnly || '0') === '1';
@@ -1926,7 +1952,7 @@ function handleOpsWatchdog(req, res, method, parsed) {
   let eventsMtime = 0;
   try { eventsMtime = fs.statSync(WATCHDOG_EVENTS_FILE).mtimeMs; } catch {}
 
-  const pgrep = runCmd('/bin/sh', ['-lc', "pgrep -f 'openclaw-gateway|node.*openclaw.*gateway' | head -1"], { timeout: 2500 });
+  const pgrep = runCmd('/bin/sh', ['-c', "pgrep -ax 'openclaw-gateway' | head -1 || pgrep -f 'node.*openclaw' | head -1"], { timeout: 2500 });
   const runtimeRunning = pgrep.ok && !!String(pgrep.output || '').trim();
   const runtimePid = String(pgrep.output || '').trim() || null;
   const configGuard = inspectConfigGuard();
@@ -2492,8 +2518,8 @@ function handleOpsCron(req, res, method) {
 const AVAILABLE_MODELS = {
   'opus':    'anthropic/claude-opus-4-6',
   'sonnet':  'anthropic/claude-sonnet-4-6',
-  'flash':   'google/gemini-3.0-flash',
-  'pro':     'google/gemini-3.1-pro',
+  'flash':   'google/gemini-3-flash-preview',
+  'pro':     'google/gemini-3-pro-preview',
   'codex':   'openai/gpt-5.3-codex',
 };
 const SESSION_MODEL_DEFAULTS_PATH = path.join(__dirname, 'ops-session-model-defaults.json');
