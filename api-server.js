@@ -7,6 +7,22 @@ const path = require('path');
 const crypto = require('crypto');
 const url = require('url');
 
+// Load .env from script dir and/or cwd (for private deployments; e.g. LaunchAgent may use different cwd)
+function loadEnvFile(dir) {
+  try {
+    const envPath = path.join(dir, '.env');
+    if (!fs.existsSync(envPath)) return;
+    const content = fs.readFileSync(envPath, 'utf8');
+    for (const line of content.split('\n')) {
+      const trimmed = line.replace(/#.*/, '').trim();
+      const m = trimmed.match(/^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/);
+      if (m && process.env[m[1]] === undefined) process.env[m[1]] = m[2].replace(/^["']|["']$/g, '').trim();
+    }
+  } catch (_) {}
+}
+loadEnvFile(__dirname);
+if (process.cwd() !== __dirname) loadEnvFile(process.cwd());
+
 // --- Config ---
 const PORT = parseInt(process.env.DASHBOARD_PORT || '18791', 10);
 const AUTH_TOKEN = process.env.OPENCLAW_AUTH_TOKEN || '';
@@ -42,9 +58,12 @@ const OPENCLAW_CONFIG_FILE = process.env.OPENCLAW_CONFIG_FILE || path.join(HOME_
 const OPENCLAW_CONFIG_BASELINE_FILE = process.env.OPENCLAW_CONFIG_BASELINE_FILE || path.join(HOME_DIR, '.openclaw', 'openclaw.json.good');
 const BACKUP_REMOTE = process.env.OPENCLAW_BACKUP_REMOTE || 'origin';
 const BACKUP_BRANCH = process.env.OPENCLAW_BACKUP_BRANCH || '';
-const ENABLE_MUTATING_OPS = process.env.OPENCLAW_ENABLE_MUTATING_OPS === '1';
+// Private dashboard: when AUTH_TOKEN is set and not explicitly disabled, enable mutating ops (e.g. for Tailscale)
+const explicitMutating = process.env.OPENCLAW_ENABLE_MUTATING_OPS;
+const ENABLE_MUTATING_OPS = explicitMutating === '1' || (explicitMutating !== '0' && !!process.env.OPENCLAW_AUTH_TOKEN);
 const ALLOW_ATTACHMENT_FILEPATH_COPY = process.env.OPENCLAW_ALLOW_ATTACHMENT_FILEPATH_COPY === '1';
-const MUTATING_OPS_LOOPBACK_ONLY = process.env.OPENCLAW_MUTATING_OPS_LOOPBACK_ONLY !== '0';
+// Only restrict to loopback when explicitly set to 1; unset or 0 allows Tailscale/remote
+const MUTATING_OPS_LOOPBACK_ONLY = process.env.OPENCLAW_MUTATING_OPS_LOOPBACK_ONLY === '1';
 // Load keys from keys.env if not in env
 function loadKeysEnv() {
   try {
@@ -199,10 +218,13 @@ function isLoopbackRequest(req) {
 
 function guardMutatingOps(req, res, opName) {
   if (!ENABLE_MUTATING_OPS) {
+    console.warn('[ops] 403:', opName, '- mutating ops disabled (set OPENCLAW_ENABLE_MUTATING_OPS=1 in .env)');
     errorReply(res, 403, `Mutating op disabled: ${opName}. Set OPENCLAW_ENABLE_MUTATING_OPS=1 to enable.`);
     return false;
   }
   if (MUTATING_OPS_LOOPBACK_ONLY && !isLoopbackRequest(req)) {
+    const addr = req.socket?.remoteAddress || '?';
+    console.warn('[ops] 403:', opName, '- loopback only, request from', addr);
     errorReply(res, 403, `Mutating op requires loopback request: ${opName}.`);
     return false;
   }
@@ -1156,11 +1178,10 @@ function handleCronToday(req, res, method) {
     const lastStatus = (lastRun?.status || job.state?.lastStatus || null);
     const lastEnded = lastStarted && lastDuration ? lastStarted + lastDuration : null;
     const runUsage = lastRun?.usage || null;
-    const inputTokens = runUsage
-      ? (runUsage.input_tokens || runUsage.input || 0) + (runUsage.cache_read_tokens || runUsage.cacheRead || 0) + (runUsage.cache_write_tokens || runUsage.cacheWrite || 0)
-      : 0;
-    const outputTokens = runUsage ? (runUsage.output_tokens || runUsage.output || 0) : 0;
-    const totalTokens = runUsage ? (runUsage.total_tokens || runUsage.totalTokens || (inputTokens + outputTokens)) : null;
+    const runUsageParts = runUsage ? usageBreakdown(runUsage) : null;
+    const inputTokens = runUsageParts ? runUsageParts.inputTotal : 0;
+    const outputTokens = runUsageParts ? runUsageParts.output : 0;
+    const totalTokens = runUsageParts ? runUsageParts.totalTokens : null;
     const runModel = lastRun?.model || job?.payload?.model || null;
     const costUsd = runUsage ? estimateCost(runModel, totalTokens || 0, inputTokens, outputTokens, runUsage.cost, runUsage) : null;
 
@@ -1278,23 +1299,54 @@ const MODEL_COSTS_IO = {
   'gemini-3.0-flash': [0.5, 3], 'gemini-3-flash-preview': [0.5, 3],
 };
 
+function n(v) {
+  const x = Number(v);
+  return Number.isFinite(x) ? x : 0;
+}
+
+function normalizeModelForPricing(model) {
+  const m = (model || '').toLowerCase();
+  // Anthropic models can contain dated variants, e.g. claude-haiku-4-5-20251001.
+  if (m.includes('claude-haiku-4-5')) return 'claude-haiku-4-5';
+  return m;
+}
+
+function usageBreakdown(u = {}) {
+  const inputNoCache = n(u.input ?? u.input_tokens ?? u.inputTokens ?? u.usage_input_tokens_no_cache);
+  const cacheRead = n(u.cacheRead ?? u.cache_read_tokens ?? u.cache_read ?? u.usage_input_tokens_cache_read);
+  const cacheWrite5m = n(u.cacheWrite5m ?? u.cache_write_5m_tokens ?? u.cache_write_5m ?? u.usage_input_tokens_cache_write_5m);
+  const cacheWrite1h = n(u.cacheWrite1h ?? u.cache_write_1h_tokens ?? u.cache_write_1h ?? u.usage_input_tokens_cache_write_1h);
+  const cacheWriteFallback = n(u.cacheWrite ?? u.cache_write_tokens ?? u.cache_write);
+  const cacheWrite = (cacheWrite5m > 0 || cacheWrite1h > 0) ? (cacheWrite5m + cacheWrite1h) : cacheWriteFallback;
+  const output = n(u.output ?? u.output_tokens ?? u.outputTokens ?? u.usage_output_tokens);
+  const inputTotal = inputNoCache + cacheRead + cacheWrite;
+  const totalTokens = n(u.totalTokens ?? u.total_tokens ?? (inputTotal + output));
+  return { inputNoCache, cacheRead, cacheWrite5m, cacheWrite1h, cacheWrite, inputTotal, output, totalTokens };
+}
+
 // estimateCost: prefer provider-reported cost.total, then cache-aware split, then fallback
 // usageObj shape: { input, output, cacheRead, cacheWrite, totalTokens, cost: { total, ... } }
 function estimateCost(model, totalTokens, inputTokens, outputTokens, costObj, usageObj) {
   // If provider gives us a cost object with total, use it directly
   if (costObj && typeof costObj.total === 'number') return costObj.total;
 
-  const key = Object.keys(MODEL_COSTS_IO).find(k => (model || '').includes(k));
+  const normalizedModel = normalizeModelForPricing(model);
+  const key = Object.keys(MODEL_COSTS_IO).find(k => normalizedModel.includes(k));
   if (!key) return 0;
   const [inCost, outCost] = MODEL_COSTS_IO[key];
 
   // Cache-aware calculation when breakdown is available
-  if (usageObj && (usageObj.cacheRead || usageObj.cacheWrite)) {
-    const uncached = (usageObj.input || 0) / 1_000_000 * inCost;
-    const cacheRead = (usageObj.cacheRead || 0) / 1_000_000 * (inCost * 0.1);
-    const cacheWrite = (usageObj.cacheWrite || 0) / 1_000_000 * (inCost * 1.25);
-    const output = (usageObj.output || 0) / 1_000_000 * outCost;
-    return uncached + cacheRead + cacheWrite + output;
+  if (usageObj) {
+    const b = usageBreakdown(usageObj);
+    if (b.inputNoCache || b.cacheRead || b.cacheWrite || b.output || b.totalTokens) {
+      const uncached = (b.inputNoCache / 1_000_000) * inCost;
+      const cacheRead = (b.cacheRead / 1_000_000) * (inCost * 0.1);
+      const cacheWrite5m = (b.cacheWrite5m / 1_000_000) * (inCost * 1.25);
+      const cacheWrite1h = (b.cacheWrite1h / 1_000_000) * (inCost * 1.25);
+      const cacheWriteFallback = (b.cacheWrite5m || b.cacheWrite1h) ? 0 : (b.cacheWrite / 1_000_000) * (inCost * 1.25);
+      const output = (b.output / 1_000_000) * outCost;
+      return uncached + cacheRead + cacheWrite5m + cacheWrite1h + cacheWriteFallback + output;
+    }
   }
 
   if (inputTokens || outputTokens) {
@@ -1338,14 +1390,15 @@ function scanSessionUsageToday(sessionFile, todayStartIso) {
         if (j.type !== 'message' || !j.message?.usage) continue;
         if (j.timestamp < todayStartIso) continue;
         const u = j.message.usage;
-        const inp = (u.input || 0) + (u.cacheRead || 0) + (u.cacheWrite || 0);
-        const out = u.output || 0;
+        const usage = usageBreakdown(u);
+        const inp = usage.inputTotal;
+        const out = usage.output;
         result.input += inp;
         result.output += out;
-        result.totalTokens += u.totalTokens || 0;
+        result.totalTokens += usage.totalTokens;
         const m = j.message.model || 'unknown';
-        result.cost += estimateCost(m, u.totalTokens || 0, inp, out, u.cost, u);
-        result.models[m] = (result.models[m] || 0) + (u.totalTokens || 0);
+        result.cost += estimateCost(m, usage.totalTokens, inp, out, u.cost, u);
+        result.models[m] = (result.models[m] || 0) + usage.totalTokens;
         result.messages++;
       } catch {}
     }
@@ -1466,9 +1519,10 @@ function handleOpsAlltime(req, res, method) {
           if (j.type !== 'message' || !j.message?.usage) continue;
           const u = j.message.usage;
           const m = j.message.model || 'unknown';
-          const tokens = u.totalTokens || 0;
-          const input = (u.input || 0) + (u.cacheRead || 0) + (u.cacheWrite || 0);
-          const output = u.output || 0;
+          const usage = usageBreakdown(u);
+          const tokens = usage.totalTokens;
+          const input = usage.inputTotal;
+          const output = usage.output;
           const cost = estimateCost(m, tokens, input, output, u.cost, u);
 
           totalTokens += tokens;
@@ -1511,14 +1565,19 @@ function handleOpsAlltime(req, res, method) {
             const j = JSON.parse(line);
             if (j.action !== 'finished' || !j.usage) continue;
             const m = j.model || 'cron';
-            const tokens = j.usage.total_tokens || j.usage.totalTokens || 0;
+            const cronUsage = usageBreakdown(j.usage || {});
+            const tokens = cronUsage.totalTokens;
             if (tokens === 0) continue;
-            let cost = estimateCost(m, tokens, j.usage.input || 0, j.usage.output || 0, j.usage.cost, j.usage);
+            let cost = estimateCost(m, tokens, cronUsage.inputTotal, cronUsage.output, j.usage.cost, j.usage);
             totalTokens += tokens;
+            totalInput += cronUsage.inputTotal;
+            totalOutput += cronUsage.output;
             totalCost += cost;
             totalMessages++;
             if (!models[m]) models[m] = { tokens: 0, input: 0, output: 0, cost: 0, messages: 0 };
             models[m].tokens += tokens;
+            models[m].input += cronUsage.inputTotal;
+            models[m].output += cronUsage.output;
             models[m].cost += cost;
             models[m].messages++;
             if (j.ts) {
@@ -2013,13 +2072,14 @@ function handleOpsSessions(req, res, method) {
           if (role === 'assistant') {
             const u = j.message?.usage;
             if (u) {
-              today.input += (u.input || 0) + (u.cacheRead || 0) + (u.cacheWrite || 0);
-              today.output += u.output || 0;
-              today.totalTokens += u.totalTokens || 0;
+              const usage = usageBreakdown(u);
+              today.input += usage.inputTotal;
+              today.output += usage.output;
+              today.totalTokens += usage.totalTokens;
               const m = j.message.model || 'unknown';
-              const cost = estimateCost(m, u.totalTokens || 0, (u.input || 0) + (u.cacheRead || 0) + (u.cacheWrite || 0), u.output || 0, u.cost, u);
+              const cost = estimateCost(m, usage.totalTokens, usage.inputTotal, usage.output, u.cost, u);
               today.cost += cost;
-              today.models[m] = (today.models[m] || 0) + (u.totalTokens || 0);
+              today.models[m] = (today.models[m] || 0) + usage.totalTokens;
             }
             today.messages++;
             if (textStr.trim() === 'NO_REPLY') today.noReply++;
@@ -2481,9 +2541,10 @@ function handleOpsCronCosts(req, res, method) {
           cronReview.runsWithoutUsage++;
           continue;
         }
-        const inp = u.input_tokens || u.input || 0;
-        const out = u.output_tokens || u.output || 0;
-        const totalTokens = u.total_tokens || u.totalTokens || (inp + out);
+        const usage = usageBreakdown(u);
+        const inp = usage.inputTotal;
+        const out = usage.output;
+        const totalTokens = usage.totalTokens;
         if (totalTokens <= 0) {
           cronReview.runsWithZeroTokens++;
           continue;
@@ -2563,9 +2624,10 @@ function handleOpsCronCosts(req, res, method) {
             if (j.type !== 'message' || !j.message?.usage || !j.timestamp) continue;
             const u = j.message.usage;
             interactiveReview.messagesWithUsage++;
-            const inp = (u.input || 0) + (u.cacheRead || 0) + (u.cacheWrite || 0);
-            const out = u.output || 0;
-            const totalTokens = u.totalTokens || (inp + out);
+            const usage = usageBreakdown(u);
+            const inp = usage.inputTotal;
+            const out = usage.output;
+            const totalTokens = usage.totalTokens;
             if (totalTokens <= 0) {
               interactiveReview.messagesWithZeroTokens++;
               continue;
@@ -3152,4 +3214,5 @@ server.on('error', (e) => {
 
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`Agent Dashboard API server listening on port ${PORT}`);
+  if (ENABLE_MUTATING_OPS) console.log('[ops] mutating ops enabled, loopback-only:', MUTATING_OPS_LOOPBACK_ONLY);
 });
