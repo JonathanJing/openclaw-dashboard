@@ -1804,10 +1804,28 @@ function handleOpsSystem(req, res, method) {
 function readJsonl(filePath) {
   try {
     const raw = fs.readFileSync(filePath, 'utf8');
-    const lines = raw.split('\n').filter(Boolean);
-    return lines.map(line => {
-      try { return JSON.parse(line); } catch { return null; }
-    }).filter(Boolean);
+    const records = [];
+    // Watchdog events.jsonl has two formats:
+    // 1. Proper JSONL: one JSON per actual newline (early entries)
+    // 2. Compact: multiple JSON objects joined by literal backslash+n (char 92 + char 110)
+    //    instead of real newlines (later entries, watchdog writing bug)
+    const LITERAL_NEWLINE = '}' + String.fromCharCode(92) + 'n{';
+
+    for (const line of raw.split('\n')) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      // Try normal parse first
+      try { records.push(JSON.parse(trimmed)); continue; } catch {}
+      // Try splitting on literal backslash-n separator
+      if (trimmed.includes(LITERAL_NEWLINE)) {
+        const parts = trimmed.split(String.fromCharCode(92) + 'n');
+        parts.forEach(part => {
+          const p = part.trim();
+          if (p) { try { records.push(JSON.parse(p)); } catch {} }
+        });
+      }
+    }
+    return records;
   } catch {
     return [];
   }
