@@ -894,23 +894,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:16p
       <div class="card-title" style="margin-bottom:4px">🐶 Watchdog</div>
       <div class="card-sub" id="watchdogStatusText">Loading watchdog status...</div>
       <div class="ops-ch-meta" id="watchdogStatusMeta" style="margin-top:8px"></div>
-      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px">
-        <select id="watchdogWindowSelect" class="form-input" style="max-width:180px;padding:6px 10px;font-size:.75rem" onchange="setWatchdogWindow(this.value)">
-          <option value="5">Last 5 min</option>
-          <option value="10">Last 10 min</option>
-          <option value="15" selected>Last 15 min</option>
-          <option value="30">Last 30 min</option>
-          <option value="60">Last 1 hour</option>
-          <option value="180">Last 3 hours</option>
-          <option value="360">Last 6 hours</option>
-          <option value="720">Last 12 hours</option>
-          <option value="1440">Last 24 hours</option>
-        </select>
-        <label id="watchdogCriticalOnlyLabel" style="display:flex;align-items:center;gap:6px;font-size:.75rem;color:var(--text2);cursor:pointer">
-          <input type="checkbox" id="watchdogCriticalOnly" onchange="setWatchdogCriticalOnly(this.checked)">
-          Critical only
-        </label>
-      </div>
+      <div style="margin-top:6px;font-size:.7rem;color:var(--text2)" id="watchdogWindowLabel">Showing last 24h · auto-refresh every 10s</div>
       <div id="watchdogTimeline" style="margin-top:10px"></div>
       <div id="watchdogEventsList" class="ops-channel-list" style="margin-top:10px"></div>
     </div>
@@ -1057,14 +1041,6 @@ function isZh() { return currentLang === 'zh'; }
 function tt(en, zh) { return isZh() ? zh : en; }
 function currentLocale() { return isZh() ? 'zh-CN' : 'en-US'; }
 
-function wdWindowOptionLabel(mins) {
-  const m = Number(mins);
-  if (!Number.isFinite(m) || m <= 0) return tt('Recent period', '最近一段时间');
-  if (m < 60) return tt(`Last ${m} min`, `最近 ${m} 分钟`);
-  if (m % 60 === 0) return tt(`Last ${m / 60} hour${m === 60 ? '' : 's'}`, `最近 ${m / 60} 小时`);
-  return tt(`Last ${m} min`, `最近 ${m} 分钟`);
-}
-
 function applyLanguageUI() {
   const html = document.documentElement;
   if (html) html.lang = isZh() ? 'zh' : 'en';
@@ -1097,11 +1073,6 @@ function applyLanguageUI() {
   const wdStatus = document.getElementById('watchdogStatusText');
   if (wdStatus && !wdStatus.dataset.liveRendered) wdStatus.textContent = tt('Loading watchdog status...', '正在加载看门狗状态...');
 
-  const criticalLabel = document.getElementById('watchdogCriticalOnlyLabel');
-  if (criticalLabel && criticalLabel.lastChild?.nodeType === Node.TEXT_NODE) {
-    criticalLabel.lastChild.textContent = tt(' Critical only', ' 仅看 Critical 事件');
-  }
-
   const cronCostTitle = document.getElementById('cronCostTitle');
   if (cronCostTitle) cronCostTitle.textContent = tt('💰 Cron Cost Analysis', '💰 Cron 成本分析');
   const cronTrendTitle = document.getElementById('cronTrendTitle');
@@ -1111,13 +1082,6 @@ function applyLanguageUI() {
     'Cron (fixed) = scheduled jobs · Interactive (variable) = manually triggered chats',
     'Cron（固定）= 每日自动任务 · 交互（浮动）= 人工触发的对话'
   );
-
-  const wdSelect = document.getElementById('watchdogWindowSelect');
-  if (wdSelect) {
-    Array.from(wdSelect.options).forEach((opt) => {
-      opt.textContent = wdWindowOptionLabel(opt.value);
-    });
-  }
 
   // Default model label is now dynamic (set by loadSystemInfo)
 }
@@ -1216,37 +1180,22 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
 });
 
 let _watchdogCache = null;
-let _watchdogWindowMins = 120;
-let _watchdogCriticalOnly = false;
 
 function focusHealthTab() {
   const btn = document.querySelector('.tab-btn[data-tab="health"]');
   if (btn) btn.click();
 }
 
-function setWatchdogWindow(v) {
-  const n = Number(v);
-  if (Number.isFinite(n)) _watchdogWindowMins = Math.min(Math.max(n, 5), 1440);
-  pollWatchdogStatus();
-}
-
-function setWatchdogCriticalOnly(checked) {
-  _watchdogCriticalOnly = !!checked;
-  pollWatchdogStatus();
-}
-
 async function pollWatchdogStatus() {
   try {
-    const data = await apiFetch(`/ops/watchdog?limit=50&windowMinutes=${_watchdogWindowMins}&criticalOnly=${_watchdogCriticalOnly ? '1' : '0'}`);
+    const data = await apiFetch('/ops/watchdog?limit=200&windowMinutes=1440');
     _watchdogCache = data;
     renderWatchdogStatus(data);
   } catch (e) {
     renderWatchdogStatus({
       effectiveStatus: 'unknown',
       runtime: { running: false, checkedAt: new Date().toISOString() },
-      watchdog: null,
-      recentEvents: [],
-      timeline: { points: [], windowMinutes: _watchdogWindowMins, stepSeconds: 30 },
+      watchdog: null, recentEvents: [], timeline: { points: [] },
       error: e.message,
     });
   }
@@ -1276,63 +1225,30 @@ function wdFmtDateTime(tsMs) {
   });
 }
 
-function renderEventDetails(details) {
-  if (!details) return '';
-  const text = String(details);
-  const lines = text.split('\n');
-  let html = '';
-  let inActions = false;
-
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
-
-    if (trimmed.startsWith('自动自愈:') || trimmed.startsWith('Auto-remediation:')) {
-      html += '<div style="margin-top:6px;font-weight:600;color:var(--blue);font-size:.72rem">⚙️ 自动自愈</div>';
-      inActions = true;
-      continue;
+// Group raw events into incidents (alert → suppressed... → recovered = one incident)
+function wdGroupIncidents(events) {
+  const sorted = [...events].sort((a, b) => Date.parse(a.time) - Date.parse(b.time));
+  const incidents = [];
+  const sysEvents = [];
+  let cur = null;
+  for (const ev of sorted) {
+    if (ev.event === 'baseline_updated' || ev.event === 'baseline_promotion_pending') {
+      sysEvents.push(ev); continue;
     }
-
-    const actionMatch = trimmed.match(/^-\s+([^:]+):\s+(ok|exit=\d+|skipped)\s*\|?\s*(.*)$/);
-    if (actionMatch) {
-      const [, name, status, output] = actionMatch;
-      const isOk = status === 'ok';
-      const isSkipped = status === 'skipped';
-      const color = isOk ? 'var(--green)' : isSkipped ? 'var(--text2)' : 'var(--red)';
-      const icon = isOk ? '✓' : isSkipped ? '○' : '✗';
-      const shortOutput = output.length > 80 ? output.slice(0, 80) + '…' : output;
-      html += '<div style="display:flex;gap:6px;align-items:baseline;margin-top:3px;font-size:.7rem">'
-        + '<span style="color:' + color + ';font-weight:700;flex-shrink:0">' + icon + '</span>'
-        + '<span style="color:var(--text2);flex-shrink:0">' + escHtml(name.trim()) + '</span>'
-        + '<span style="color:' + color + ';font-size:.65rem">' + escHtml(status) + '</span>'
-        + (shortOutput ? '<span style="color:var(--text2);font-size:.65rem;opacity:.7">' + escHtml(shortOutput) + '</span>' : '')
-        + '</div>';
-      continue;
-    }
-
-    const kvMatch = trimmed.match(/^([^:：]+)[：:]\s*(.+)$/);
-    if (kvMatch && !trimmed.startsWith('-')) {
-      const [, key, val] = kvMatch;
-      const isOutage = key.includes('断连') || key.includes('outage') || key.includes('时长');
-      html += '<div style="font-size:.7rem;color:' + (isOutage ? 'var(--yellow)' : 'var(--text2)') + '">'
-        + escHtml(key.trim()) + ': <strong>' + escHtml(val.trim()) + '</strong></div>';
-      continue;
-    }
-
-    if (!inActions) {
-      html += '<div style="font-size:.7rem;color:var(--text2)">' + escHtml(trimmed) + '</div>';
+    if (ev.event === 'alert') {
+      if (!cur) {
+        cur = { start: ev.time, reason: ev.reason, severity: ev.severity, suppressed: 0, end: null };
+        incidents.push(cur);
+      } else {
+        cur.suppressed++;
+      }
+    } else if (ev.event === 'suppressed') {
+      if (cur) cur.suppressed++;
+    } else if (ev.event === 'recovered') {
+      if (cur) { cur.end = ev.time; cur = null; }
     }
   }
-
-  return html;
-}
-
-function wdWindowLabel(mins) {
-  const m = Number(mins);
-  if (!Number.isFinite(m) || m <= 0) return tt('recent period', '最近一段时间');
-  if (m < 60) return tt(`last ${m} min`, `最近 ${m} 分钟`);
-  if (m % 60 === 0) return tt(`last ${m / 60} hour${m === 60 ? '' : 's'}`, `最近 ${m / 60} 小时`);
-  return tt(`last ${m} min`, `最近 ${m} 分钟`);
+  return { incidents: incidents.slice(-7).reverse(), sysEvents };
 }
 
 function wdFmtDuration(seconds) {
@@ -1385,189 +1301,158 @@ function wdReasonZh(reason) {
   return map[r] || String(reason || tt('unknown', '未知'));
 }
 
-function renderWatchdogTimeline(timeline, watchdog) {
-  const el = document.getElementById('watchdogTimeline');
-  if (!el) return;
-  const rawPoints = Array.isArray(timeline?.points) ? timeline.points : [];
-  const points = rawPoints
-    .map(p => ({ ...p, _ms: wdParseMs(p?.ts) }))
-    .filter(p => Number.isFinite(p._ms));
-  const windowMinutes = timeline?.windowMinutes || _watchdogWindowMins;
-  if (!points.length) {
-    el.innerHTML = '<div class="ops-ch-meta">No timeline data.</div>';
+function renderWatchdogUptimeBar(tl, containerEl) {
+  if (!containerEl) return;
+  const pts = Array.isArray(tl?.points) ? tl.points : [];
+  if (!pts.length) {
+    containerEl.innerHTML = `<div class="ops-ch-meta">${tt('No timeline data.', '无时间线数据。')}</div>`;
     return;
   }
-  const totalBars = points.length || 1;
-  const stateByIndex = points.map((p) => {
-    const s = String(p.status || '').toLowerCase();
-    if (s === 'down') return 'critical';
-    if (s === 'degraded') return 'normal_error';
-    return 'healthy';
-  });
-  const criticalCount = stateByIndex.filter(s => s === 'critical').length;
-  const normalErrorCount = stateByIndex.filter(s => s === 'normal_error').length;
-  const healthyCount = totalBars - criticalCount - normalErrorCount;
-  const pct = (n) => `${Math.round((n / totalBars) * 100)}%`;
-  const firstMs = points[0]._ms;
-  const lastMs = points[points.length - 1]._ms;
-  const gradientStops = [];
-  for (let i = 0; i < totalBars; i++) {
-    const color = stateByIndex[i] === 'critical'
-      ? 'var(--red)'
-      : (stateByIndex[i] === 'normal_error' ? 'var(--yellow)' : 'var(--green)');
-    const startPct = (i / totalBars) * 100;
-    const endPct = ((i + 1) / totalBars) * 100;
-    gradientStops.push(`${color} ${startPct.toFixed(3)}% ${endPct.toFixed(3)}%`);
-  }
-
-  let latestOutageLine = `<span style="color:var(--text2)">${tt('No error segment in the selected window.', '当前窗口内未发现错误时段。')}</span>`;
-  let latestErrorStart = -1;
-  let latestErrorEnd = -1;
-  for (let i = totalBars - 1; i >= 0; i--) {
-    if (stateByIndex[i] === 'critical' || stateByIndex[i] === 'normal_error') {
-      latestErrorEnd = i;
-      let j = i;
-      while (j >= 0 && (stateByIndex[j] === 'critical' || stateByIndex[j] === 'normal_error')) j--;
-      latestErrorStart = j + 1;
-      break;
-    }
-  }
-  if (latestErrorStart >= 0) {
-    const startTs = points[latestErrorStart]._ms;
-    const endTs = points[latestErrorEnd]._ms;
-    const errSec = Math.max(0, Math.floor((endTs - startTs) / 1000));
-    const latestLevel = stateByIndex[latestErrorEnd] === 'critical' ? 'Critical' : tt('Normal error', '普通错误');
-    latestOutageLine = `<span style="color:#ffb4b4">${tt('Latest error segment in window:', '窗口内最近错误时段：')}</span> ${wdFmtClock(startTs)} → ${wdFmtClock(endTs)} (${wdFmtDuration(errSec)}, ${tt('level', '级别')}: ${latestLevel})`;
-  }
-
-  const stateRecoveredMs = Number.isFinite(Number(watchdog?.last_recovered_at))
-    ? Number(watchdog.last_recovered_at) * 1000
-    : NaN;
-  const stateAlertMs = Number.isFinite(Number(watchdog?.last_alert_at))
-    ? Number(watchdog.last_alert_at) * 1000
-    : NaN;
-  let outsideWindowHint = '';
-  if (Number.isFinite(stateRecoveredMs) && stateRecoveredMs < firstMs) {
-    outsideWindowHint = tt(
-      `Last recovery happened before ${wdWindowLabel(windowMinutes)} (${wdFmtDateTime(stateRecoveredMs)}, America/Los_Angeles).`,
-      `最近一次恢复发生在当前${wdWindowLabel(windowMinutes)}窗口之外（${wdFmtDateTime(stateRecoveredMs)}，洛杉矶时区）。`
-    );
-  } else if (Number.isFinite(stateAlertMs) && stateAlertMs < firstMs && !lastDownSeg) {
-    outsideWindowHint = tt(
-      `Last outage started before ${wdWindowLabel(windowMinutes)} (${wdFmtDateTime(stateAlertMs)}, America/Los_Angeles).`,
-      `最近一次断连开始于当前${wdWindowLabel(windowMinutes)}窗口之外（${wdFmtDateTime(stateAlertMs)}，洛杉矶时区）。`
-    );
-  }
-
-  el.innerHTML = `
-    <div class="ops-ch-meta" style="margin-bottom:8px">
-      <strong>${tt('Status timeline', '状态时间线')}</strong> (${wdWindowLabel(windowMinutes)}) · ${wdFmtClock(firstMs)} → ${wdFmtClock(lastMs)} (${tt('America/Los_Angeles', '洛杉矶时区')})
+  const total = pts.length;
+  const downCount  = pts.filter(p => p.status === 'down').length;
+  const degraded   = pts.filter(p => p.status === 'degraded').length;
+  const healthy    = total - downCount - degraded;
+  const uptimePct  = ((healthy / total) * 100).toFixed(1);
+  const COLOR = { healthy: '#3fb950', degraded: '#d29922', down: '#f85149', null: '#30363d' };
+  const bars = pts.map(p => {
+    const c = COLOR[p.status] || COLOR.null;
+    const label = (p.ts ? wdFmtClock(Date.parse(p.ts)) + ' · ' : '') + (p.status || '?');
+    return `<div title="${escHtml(label)}" style="flex:1;min-width:3px;height:20px;background:${c};border-radius:2px"></div>`;
+  }).join('');
+  containerEl.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px">
+      <span style="font-size:.72rem;color:var(--text2)">${tt('24h uptime', '24小时可用率')}</span>
+      <span style="font-size:.8rem;font-weight:600;color:${downCount > 0 ? 'var(--yellow)' : 'var(--green)'}">${uptimePct}%</span>
     </div>
-    <div title="${tt('Green=healthy, yellow=normal error, red=critical', '绿色=正常，黄色=普通错误，红色=Critical')}" style="height:18px;width:100%;border-radius:999px;border:1px solid rgba(255,255,255,0.16);background:linear-gradient(to right, ${gradientStops.join(',')});box-shadow:inset 0 1px 2px rgba(0,0,0,.28)"></div>
-    <div class="ops-ch-meta" style="margin-top:8px">
-      ${tt('Healthy', '正常')}=${healthyCount} (${pct(healthyCount)}) ·
-      ${tt('Normal error', '普通错误')}=${normalErrorCount} (${pct(normalErrorCount)}) ·
-      Critical=${criticalCount}（${pct(criticalCount)}）
-    </div>
-    <div class="ops-ch-meta" style="margin-top:6px">${latestOutageLine}</div>
-    ${outsideWindowHint ? `<div class="ops-ch-meta" style="margin-top:4px;color:#caa46b">${outsideWindowHint}</div>` : ''}
-  `;
+    <div style="display:flex;gap:2px;width:100%">${bars}</div>
+    <div style="display:flex;justify-content:space-between;margin-top:3px;font-size:.62rem;color:var(--text2)">
+      <span>24h ago</span>
+      <span style="color:${downCount?'var(--red)':degraded?'var(--yellow)':'var(--text2)'}">
+        ${downCount ? `${downCount} down · ` : ''}${degraded ? `${degraded} degraded · ` : ''}${healthy} healthy
+      </span>
+      <span>now</span>
+    </div>`;
 }
 
 function renderWatchdogStatus(data) {
-  const statusEl = document.getElementById('watchdogStatusText');
-  const metaEl = document.getElementById('watchdogStatusMeta');
-  const eventsEl = document.getElementById('watchdogEventsList');
+  const statusEl  = document.getElementById('watchdogStatusText');
+  const metaEl    = document.getElementById('watchdogStatusMeta');
+  const eventsEl  = document.getElementById('watchdogEventsList');
+  const tlEl      = document.getElementById('watchdogTimeline');
   const globalAlert = document.getElementById('watchdogGlobalAlert');
-  const globalText = document.getElementById('watchdogGlobalText');
-  if (!statusEl || !metaEl || !eventsEl || !globalAlert || !globalText) return;
+  const globalText  = document.getElementById('watchdogGlobalText');
+  if (!statusEl) return;
 
-  const effective = data?.effectiveStatus || 'unknown';
-  const runtimeRunning = !!data?.runtime?.running;
-  const wd = data?.watchdog || {};
-  const cfg = data?.configGuard || {};
-  const failures = wd?.consecutive_failures ?? '—';
-  const reason = wd?.last_reason || 'unknown';
-  const updatedAt = wd?.updated_at || data?.runtime?.checkedAt || '';
-  const configGuardStatus = cfg?.status || 'unknown';
-  const configDriftDetected = !!cfg?.driftDetected;
-  const suspectedConfigDrift = !!cfg?.suspectedConfigDrift;
-  const recent = Array.isArray(data?.recentEvents) ? data.recentEvents : [];
-  const timeline = data?.timeline || { points: [] };
-  const nowMs = Date.now();
-  const lastAlertMs = Number.isFinite(Number(wd?.last_alert_at)) ? Number(wd.last_alert_at) * 1000 : NaN;
-  const lastRecoveredMs = Number.isFinite(Number(wd?.last_recovered_at)) ? Number(wd.last_recovered_at) * 1000 : NaN;
-  const hasOngoingOutage = Number.isFinite(lastAlertMs) && (!Number.isFinite(lastRecoveredMs) || lastAlertMs > lastRecoveredMs);
+  const effective  = data?.effectiveStatus || 'unknown';
+  const running    = !!data?.runtime?.running;
+  const wd         = data?.watchdog || {};
+  const cfg        = data?.configGuard || {};
+  const failures   = wd?.consecutive_failures ?? 0;
+  const reason     = wd?.last_reason || 'none';
+  const lastAlertMs    = Number.isFinite(Number(wd?.last_alert_at))    ? Number(wd.last_alert_at)    * 1000 : NaN;
+  const lastRecovMs    = Number.isFinite(Number(wd?.last_recovered_at)) ? Number(wd.last_recovered_at) * 1000 : NaN;
+  const checkedAt      = data?.runtime?.checkedAt || wd?.updated_at || '';
+  const events     = Array.isArray(data?.recentEvents) ? data.recentEvents : [];
+  const tl         = data?.timeline || { points: [] };
 
-  if (effective === 'down' || !runtimeRunning || hasOngoingOutage) {
-    const driftMsg = suspectedConfigDrift
-      ? tt(' Suspected root cause: config drift (`openclaw.json` differs from `.good`).', ' 可能根因：配置漂移（`openclaw.json` 与 `.good` 不一致）。')
-      : '';
-    const startMs = Number.isFinite(lastAlertMs) ? lastAlertMs : nowMs;
-    const downFor = wdFmtDuration(Math.floor((nowMs - startMs) / 1000));
-    statusEl.innerHTML = `<span style="color:var(--red)">${tt('Runtime disconnected', '运行时已断连')}</span> · ${tt('for', '已持续')} <strong>${downFor}</strong>. ${tt('Reason', '原因')}: <strong>${escHtml(wdReasonZh(reason))}</strong>.${driftMsg}`;
-    statusEl.dataset.liveRendered = '1';
-    globalAlert.style.display = 'block';
-    globalText.textContent = tt(
-      `OpenClaw down ${downFor} · reason=${wdReasonZh(reason)} · consecutive failures=${failures}${suspectedConfigDrift ? ' · config drift=yes' : ''}`,
-      `OpenClaw 已断连 ${downFor} · 原因=${wdReasonZh(reason)} · 连续失败=${failures}${suspectedConfigDrift ? ' · 配置漂移=是' : ''}`
-    );
-  } else if (effective === 'healthy') {
-    let recoveryLine = '';
-    if (Number.isFinite(lastAlertMs) && Number.isFinite(lastRecoveredMs) && lastRecoveredMs >= lastAlertMs) {
-      const outageSec = Math.floor((lastRecoveredMs - lastAlertMs) / 1000);
-      recoveryLine = tt(
-        ` Last outage: <strong>${wdFmtDuration(outageSec)}</strong> (recovered ${wdFmtAgo(lastRecoveredMs)}).`,
-        ` 上次断连：<strong>${wdFmtDuration(outageSec)}</strong>（${wdFmtAgo(lastRecoveredMs)}恢复）。`
-      );
+  // ── Global down banner ──
+  const isDown = effective === 'down' || !running;
+  if (globalAlert) {
+    if (isDown) {
+      const downFor = Number.isFinite(lastAlertMs) ? wdFmtDuration(Math.floor((Date.now() - lastAlertMs) / 1000)) : '?';
+      globalAlert.style.display = 'block';
+      if (globalText) globalText.textContent = `OpenClaw 已断连 ${downFor} · 原因: ${wdReasonZh(reason)}`;
+    } else {
+      globalAlert.style.display = 'none';
     }
-    statusEl.innerHTML = `<span style="color:var(--green)">${tt('Runtime healthy', '运行时健康')}</span> · ${tt('all checks passed', '检查全部通过')}。${recoveryLine}`;
-    statusEl.dataset.liveRendered = '1';
-    globalAlert.style.display = 'none';
-  } else {
-    const driftMsg = configDriftDetected
-      ? tt(' Config drift detected, fix it before the next incident.', ' 检测到配置漂移，建议在下次事故前尽快处理。')
-      : '';
-    statusEl.innerHTML = `<span style="color:var(--yellow)">${tt('Watchdog degraded / uncertain state', '看门狗降级 / 状态不确定')}</span> · ${tt('runtime may be unstable', '运行时可能不稳定')}。${tt('Recent reason', '最近原因')}: <strong>${escHtml(wdReasonZh(reason))}</strong>.${driftMsg}`;
-    statusEl.dataset.liveRendered = '1';
-    globalAlert.style.display = 'block';
-    globalText.textContent = tt(
-      `Watchdog alert · reason=${wdReasonZh(reason)} · consecutive failures=${failures}${configDriftDetected ? ' · config drift=yes' : ''}`,
-      `看门狗告警 · 原因=${wdReasonZh(reason)} · 连续失败=${failures}${configDriftDetected ? ' · 配置漂移=是' : ''}`
-    );
   }
 
-  metaEl.innerHTML = `
-    ${tt('Runtime', '运行时')}=<strong>${runtimeRunning ? tt('running', '运行中') : tt('stopped', '已停止')}</strong> ·
-    ${tt('Watchdog', '看门狗状态')}=<strong>${wdStatusZh(wd.status || 'unknown')}</strong> ·
-    ${tt('Consecutive failures', '连续失败')}=<strong>${escHtml(String(failures))}</strong> ·
-    ${tt('Recent reason', '最近原因')}=<strong>${escHtml(wdReasonZh(reason))}</strong><br>
-    ${tt('Config guard', '配置守护')}=<strong>${escHtml(configGuardStatus)}</strong> ·
-    ${tt('Config drift', '配置漂移')}=<strong>${configDriftDetected ? tt('yes', '是') : tt('no', '否')}</strong> ·
-    ${tt('Updated at', '更新时间')}=<strong>${updatedAt ? wdFmtDateTime(wdParseMs(updatedAt)) : '—'}</strong> ·
-    ${tt('Event filter', '事件过滤')}=<strong>${_watchdogCriticalOnly ? tt('Critical only', '仅 Critical') : tt('All', '全部')}</strong>
-  `;
-  renderWatchdogTimeline(timeline, wd);
+  // ── Status line ──
+  const DOT  = { healthy: '🟢', down: '🔴', degraded: '🟡' };
+  const COL  = { healthy: 'var(--green)', down: 'var(--red)', degraded: 'var(--yellow)' };
+  const dot  = DOT[effective] || '⚪';
+  const col  = COL[effective] || 'var(--text2)';
 
-  if (!recent.length) {
-    eventsEl.innerHTML = `<div class="ops-ch-meta">${tt(
-      `No watchdog events matched current filters in ${wdWindowLabel(_watchdogWindowMins)}.`,
-      `在${wdWindowLabel(_watchdogWindowMins)}内，没有命中当前过滤条件的看门狗事件。`
-    )}</div>`;
+  let lastIncident = '';
+  if (Number.isFinite(lastAlertMs) && Number.isFinite(lastRecovMs) && lastRecovMs >= lastAlertMs) {
+    const outageSec = Math.floor((lastRecovMs - lastAlertMs) / 1000);
+    lastIncident = ` · <span style="font-size:.72rem;color:var(--text2)">上次断连 <strong>${wdFmtDuration(outageSec)}</strong>，${wdFmtAgo(lastRecovMs)}恢复</span>`;
+  } else if (Number.isFinite(lastAlertMs) && isDown) {
+    const downFor = wdFmtDuration(Math.floor((Date.now() - lastAlertMs) / 1000));
+    lastIncident = ` · <span style="color:var(--red);font-size:.72rem">已断连 <strong>${downFor}</strong></span>`;
+  }
+
+  statusEl.innerHTML = `<span style="color:${col};font-size:.88rem"><strong>${dot} ${wdStatusZh(effective)}</strong></span>`
+    + (failures > 0 ? ` · <span style="color:var(--red);font-size:.72rem">连续失败 ${failures}</span>` : '')
+    + lastIncident
+    + (checkedAt ? ` · <span style="font-size:.68rem;color:var(--text2)">检查于 ${wdFmtAgo(Date.parse(checkedAt))}</span>` : '');
+  statusEl.dataset.liveRendered = '1';
+
+  // ── Config guard meta ──
+  if (metaEl) {
+    const drift = cfg.driftDetected;
+    const driftBadge = drift
+      ? `<span style="color:var(--yellow)">⚠️ 配置漂移</span>`
+      : `<span style="color:var(--green)">✓ 配置一致</span>`;
+    metaEl.innerHTML = `${driftBadge} · <span style="color:var(--text2);font-size:.7rem">来源: ${escHtml(wd.source || '—')} · 原因: ${escHtml(wdReasonZh(reason))}</span>`;
+  }
+
+  // ── 24h uptime bar ──
+  renderWatchdogUptimeBar(tl, tlEl);
+
+  // ── Incidents ──
+  if (!eventsEl) return;
+  const { incidents, sysEvents } = wdGroupIncidents(events);
+
+  if (!incidents.length && !sysEvents.length) {
+    eventsEl.innerHTML = `<div class="ops-ch-meta" style="padding:8px 0">${tt('No events in the past 24 hours — system has been quiet.', '过去 24 小时无事件，系统运行平稳。')}</div>`;
     return;
   }
-  eventsEl.innerHTML = recent.map(ev => {
-    const sev = ev.severity || 'info';
-    const color = sev === 'critical' ? 'var(--red)' : (sev === 'warning' ? 'var(--yellow)' : 'var(--green)');
-    const detailsHtml = renderEventDetails(ev.details);
-    return `<div class="ops-channel-card" style="padding:8px 10px">
-      <div class="ops-ch-left">
-        <div class="ops-ch-name" style="font-size:.8rem;color:${color}">${escHtml(ev.event || 'event')} · ${escHtml(wdReasonZh(ev.reason || 'unknown'))}</div>
-        <div class="ops-ch-meta">${detailsHtml}</div>
-      </div>
-      <div class="ops-ch-right"><div class="ops-ch-cost">${wdFmtClock(wdParseMs(ev.time || Date.now()))}</div></div>
+
+  let html = '';
+
+  if (incidents.length) {
+    html += `<div style="font-size:.7rem;font-weight:600;color:var(--text2);margin-bottom:6px;text-transform:uppercase;letter-spacing:.05em">Incidents</div>`;
+    for (const inc of incidents) {
+      const startMs  = Date.parse(inc.start);
+      const endMs    = inc.end ? Date.parse(inc.end) : null;
+      const resolved = endMs !== null;
+      const duration = resolved ? wdFmtDuration(Math.floor((endMs - startMs) / 1000)) : null;
+      const sev      = inc.severity || 'critical';
+      const sevCol   = sev === 'critical' ? 'var(--red)' : 'var(--yellow)';
+      const badge    = resolved
+        ? `<span style="background:rgba(63,185,80,.15);color:var(--green);font-size:.65rem;padding:2px 6px;border-radius:4px">✓ resolved</span>`
+        : `<span style="background:rgba(248,81,73,.15);color:var(--red);font-size:.65rem;padding:2px 6px;border-radius:4px;animation:pulse 2s infinite">⚠ ongoing</span>`;
+
+      html += `<div class="ops-channel-card" style="padding:10px 14px;margin-bottom:6px;border-left:3px solid ${sevCol}">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+          <div style="min-width:0">
+            <span style="color:${sevCol};font-size:.8rem;font-weight:600">${escHtml(wdReasonZh(inc.reason))}</span>
+            <span style="color:var(--text2);font-size:.68rem;margin-left:8px">${wdFmtDateTime(startMs)}</span>
+          </div>
+          ${badge}
+        </div>
+        <div style="margin-top:5px;font-size:.7rem;color:var(--text2);display:flex;flex-wrap:wrap;gap:12px">
+          ${duration ? `<span>时长 <strong style="color:var(--text1)">${duration}</strong></span>` : '<span style="color:var(--red)">未恢复</span>'}
+          <span>严重性 <strong style="color:${sevCol}">${sev}</strong></span>
+          ${inc.suppressed > 0 ? `<span style="opacity:.6">${inc.suppressed} 条已抑制</span>` : ''}
+        </div>
+      </div>`;
+    }
+  }
+
+  // System health events summary (baseline_updated / baseline_promotion_pending)
+  if (sysEvents.length) {
+    const baselineUpdates = sysEvents.filter(e => e.event === 'baseline_updated').length;
+    const pending         = sysEvents.filter(e => e.event === 'baseline_promotion_pending').length;
+    html += `<div style="margin-top:8px;padding:7px 10px;border:1px solid var(--border);border-radius:6px;background:rgba(255,255,255,.025);font-size:.7rem;color:var(--text2)">
+      🛡️ 系统健康
+      ${baselineUpdates > 0 ? `<span style="color:var(--green);margin-left:8px">基线已更新 ×${baselineUpdates}</span>` : ''}
+      ${pending > 0 ? `<span style="margin-left:8px">晋级候选 ×${pending}</span>` : ''}
     </div>`;
-  }).join('');
+  }
+
+  eventsEl.innerHTML = html;
 }
 
 function loadOperationsStatus() {
@@ -2649,8 +2534,8 @@ const MODEL_OPTIONS = [
   { value: 'default', label: '', full: null, isDefault: true },
   { value: 'opus',   label: 'Claude Opus 4',   full: 'claude-opus-4-6' },
   { value: 'sonnet', label: 'Claude Sonnet 4', full: 'claude-sonnet-4-6' },
-  { value: 'flash',  label: 'Gemini 3.0 Flash',  full: 'gemini-3.0-flash' },
-  { value: 'pro',    label: 'Gemini 3.1 Pro',    full: 'gemini-3.1-pro' },
+  { value: 'flash',  label: 'Gemini 3 Flash',  full: 'gemini-3-flash-preview' },
+  { value: 'pro',    label: 'Gemini 3 Pro',     full: 'gemini-3-pro-preview' },
   { value: 'codex',  label: 'GPT-5.3 Codex',   full: 'gpt-5.3-codex' },
 ];
 
