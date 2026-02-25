@@ -70,6 +70,14 @@ const BACKUP_REMOTE = process.env.OPENCLAW_BACKUP_REMOTE || 'origin';
 const BACKUP_BRANCH = process.env.OPENCLAW_BACKUP_BRANCH || '';
 const ENABLE_SYSTEMCTL_RESTART = process.env.OPENCLAW_ENABLE_SYSTEMCTL_RESTART === '1';
 const ENABLE_MUTATING_OPS = process.env.OPENCLAW_ENABLE_MUTATING_OPS === '1';
+const MODEL_CHANGE_LOG = path.join(process.env.HOME || '', '.openclaw', 'model-change-log.jsonl');
+
+function logModelChange(entry) {
+  try {
+    const line = JSON.stringify({ ts: new Date().toISOString(), ...entry }) + '\n';
+    fs.appendFileSync(MODEL_CHANGE_LOG, line, 'utf8');
+  } catch {}
+}
 // Load keys from keys.env if not in env
 function loadKeysEnv() {
   try {
@@ -2566,8 +2574,10 @@ function handleOpsSessionModel(req, res, method) {
     // Clear sessions cache so next fetch picks up new model
     _sessionsCache = null;
 
-    // Audit notification
+    // Audit notification + changelog
+    const prevModel = Object.values(sessions).find(s => s.channelId === channelId)?.model || 'unknown';
     const displayModel = model === 'default' ? '默认' : fullModel.split('/').pop();
+    logModelChange({ type: 'session', id: channelId, from: prevModel, to: model === 'default' ? '(default)' : fullModel, via: 'dashboard' });
     sendAuditNotification(`🔄 **模型切换** | 频道 <#${channelId}> → \`${displayModel}\`（via Dashboard）`);
 
     return jsonReply(res, 200, {
@@ -2599,6 +2609,7 @@ function handleOpsCronModel(req, res, method) {
     if (!job) return errorReply(res, 404, 'Job not found');
 
     if (!job.payload) job.payload = {};
+    const prevCronModel = job.payload.model || '(default)';
     if (model === 'default') {
       delete job.payload.model;
     } else {
@@ -2614,6 +2625,7 @@ function handleOpsCronModel(req, res, method) {
 
     // Audit notification
     const displayModel = model === 'default' ? '默认' : fullModel.split('/').pop();
+    logModelChange({ type: 'cron', id: jobId, name: job.name, from: prevCronModel, to: model === 'default' ? '(default)' : fullModel, via: 'dashboard' });
     sendAuditNotification(`🔄 **模型切换** | Cron \`${job.name}\` → \`${displayModel}\`（via Dashboard）`);
 
     return jsonReply(res, 200, {
@@ -2747,6 +2759,14 @@ button:active{opacity:.8}
     if (root === 'ops' && segments[1] === 'models') return handleOpsModels(req, res, method);
     if (root === 'ops' && segments[1] === 'alltime') return handleOpsAlltime(req, res, method);
     if (root === 'ops' && segments[1] === 'audit') return handleOpsAudit(req, res, method);
+    if (root === 'ops' && segments[1] === 'model-changelog') {
+      if (method !== 'GET') return errorReply(res, 405, 'GET only');
+      try {
+        const raw = fs.readFileSync(MODEL_CHANGE_LOG, 'utf8').trim();
+        const entries = raw ? raw.split('\n').map(l => JSON.parse(l)).reverse().slice(0, 100) : [];
+        return jsonReply(res, 200, { entries });
+      } catch { return jsonReply(res, 200, { entries: [] }); }
+    }
     if (root === 'ops' && segments[1] === 'sessions') {
       return handleOpsSessions(req, res, method).catch(e => errorReply(res, 500, e.message));
     }
