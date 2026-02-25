@@ -2576,9 +2576,11 @@ const MODEL_DISPLAY_NAMES = [
   ['claude-opus-4-6', 'Claude Opus 4'],
   ['claude-sonnet-4-6', 'Claude Sonnet 4'],
   ['claude-haiku-4-5', 'Claude Haiku 4'],
-  ['gemini-3.1-pro', 'Gemini 3 Pro'],
+  ['gemini-3.1-pro', 'Gemini 3.1 Pro'],
+  ['gemini-3-pro-preview', 'Gemini 3 Pro'],
   ['gemini-3-pro', 'Gemini 3 Pro'],
-  ['gemini-3.0-flash', 'Gemini 3 Flash'],
+  ['gemini-3.0-flash', 'Gemini 3.0 Flash'],
+  ['gemini-3-flash-preview', 'Gemini 3 Flash'],
   ['gemini-3-flash', 'Gemini 3 Flash'],
   ['gpt-5.3-codex', 'GPT-5 Codex'],
   ['gpt-5.2-codex', 'GPT-5 Codex'],
@@ -2591,8 +2593,8 @@ const MODEL_OPTIONS = [
   { value: 'default', label: tt('Default', '默认'), short: 'default' },
   { value: 'opus',   label: 'Claude Opus 4',   full: 'claude-opus-4-6' },
   { value: 'sonnet', label: 'Claude Sonnet 4', full: 'claude-sonnet-4-6' },
-  { value: 'flash',  label: 'Gemini 3 Flash',  full: 'gemini-3.0-flash' },
-  { value: 'pro',    label: 'Gemini 3 Pro',    full: 'gemini-3.1-pro' },
+  { value: 'flash',  label: 'Gemini 3.0 Flash',  full: 'gemini-3.0-flash' },
+  { value: 'pro',    label: 'Gemini 3.1 Pro',    full: 'gemini-3.1-pro' },
   { value: 'codex',  label: 'GPT-5 Codex',     full: 'gpt-5.3-codex' },
 ];
 
@@ -3095,7 +3097,7 @@ async function loadCronEnhanced() {
 const MODEL_COLORS = {
   'claude-opus-4-6': '#c084fc', 'claude-sonnet-4-6': '#818cf8', 'claude-haiku-4-5': '#a5b4fc',
   'gpt-5.2-codex': '#34d399', 'gpt-5.3-codex': '#34d399', 'gpt-5.2': '#6ee7b7', 'gpt-5.3': '#6ee7b7',
-  'gemini-3.1-pro': '#fbbf24', 'gemini-3-pro': '#fbbf24', 'gemini-3.0-flash': '#fcd34d', 'gemini-3-flash': '#fcd34d',
+  'gemini-3.1-pro': '#fbbf24', 'gemini-3-pro-preview': '#fbbf24', 'gemini-3-pro': '#fbbf24', 'gemini-3.0-flash': '#fcd34d', 'gemini-3-flash-preview': '#fcd34d', 'gemini-3-flash': '#fcd34d',
 };
 
 function getModelColor(model) {
