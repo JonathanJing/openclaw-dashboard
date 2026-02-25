@@ -1,0 +1,10 @@
+#!/bin/bash
+set -euo pipefail
+
+export OPENCLAW_AUTH_TOKEN="your_gateway_token_here"
+# Optional:
+# export OPENCLAW_HOOK_TOKEN="your_hook_token_here"
+# export OPENCLAW_WORKSPACE="$HOME/.openclaw/workspace"
+# export DASHBOARD_PORT="18791"
+
+node api-server.js
