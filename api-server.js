@@ -6,6 +6,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const url = require('url');
+const readline = require('readline');
 
 // Load .env from script dir and/or cwd (for private deployments; e.g. LaunchAgent may use different cwd)
 function loadEnvFile(dir) {
@@ -1187,7 +1188,7 @@ function handleCronToday(req, res, method) {
     const outputTokens = runUsageParts ? runUsageParts.output : 0;
     const totalTokens = runUsageParts ? runUsageParts.totalTokens : null;
     const runModel = lastRun?.model || job?.payload?.model || null;
-    const costUsd = runUsage ? estimateCost(runModel, totalTokens || 0, inputTokens, outputTokens, runUsage.cost, runUsage) : null;
+    const costUsd = runUsage ? estimateCost(runModel, totalTokens || 0, inputTokens, outputTokens, runUsage.cost, runUsage, run?.cost) : null;
 
     const nextRun = job.state?.nextRunAtMs || lastRun?.nextRunAtMs || computeNextRun(job.schedule, lastStarted);
 
@@ -1294,7 +1295,7 @@ async function notionCount(dbId, startIso, endIso) {
 // Per 1M tokens: [input_cost, output_cost]
 // Anthropic cache multipliers: cache_read = input × 0.1, cache_write_5m = input × 1.25
 const MODEL_COSTS_IO = {
-  'claude-opus-4-6': [15, 75],
+  'claude-opus-4-6': [5, 25],
   'claude-sonnet-4-6': [3, 15],
   'claude-haiku-4-5': [0.80, 4.00],
   'gpt-5.3-codex': [2.5, 10], 'gpt-5.3': [2.5, 10],
@@ -1328,11 +1329,20 @@ function usageBreakdown(u = {}) {
   return { inputNoCache, cacheRead, cacheWrite5m, cacheWrite1h, cacheWrite, inputTotal, output, totalTokens };
 }
 
+function resolveProviderTotalCost(...costCandidates) {
+  for (const c of costCandidates) {
+    const v = Number(c?.total);
+    if (Number.isFinite(v)) return v;
+  }
+  return null;
+}
+
 // estimateCost: prefer provider-reported cost.total, then cache-aware split, then fallback
 // usageObj shape: { input, output, cacheRead, cacheWrite, totalTokens, cost: { total, ... } }
-function estimateCost(model, totalTokens, inputTokens, outputTokens, costObj, usageObj) {
-  // If provider gives us a cost object with total, use it directly
-  if (costObj && typeof costObj.total === 'number') return costObj.total;
+function estimateCost(model, totalTokens, inputTokens, outputTokens, costObj, usageObj, entryCostObj) {
+  // Prefer entry-level provider total cost when available.
+  const providerTotal = resolveProviderTotalCost(entryCostObj, costObj, usageObj?.cost);
+  if (providerTotal !== null) return providerTotal;
 
   const normalizedModel = normalizeModelForPricing(model);
   const key = Object.keys(MODEL_COSTS_IO).find(k => normalizedModel.includes(k));
@@ -1377,40 +1387,48 @@ function getTodayPstStartIso() {
   return new Date(todayPst + 'T00:00:00' + tz).toISOString();
 }
 
-function scanSessionUsageToday(sessionFile, todayStartIso) {
+async function forEachJsonlEntry(sessionFile, onEntry) {
+  const stream = fs.createReadStream(sessionFile, { encoding: 'utf8' });
+  const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
+  try {
+    for await (const line of rl) {
+      if (!line) continue;
+      let entry;
+      try {
+        entry = JSON.parse(line);
+      } catch {
+        continue;
+      }
+      await onEntry(entry, line);
+    }
+  } finally {
+    rl.close();
+  }
+}
+
+async function scanSessionUsageToday(sessionFile, todayStartIso) {
   const result = { input: 0, output: 0, totalTokens: 0, cost: 0, models: {}, messages: 0 };
   try {
-    const stat = fs.statSync(sessionFile);
-    // Read last 500KB max (should cover today's messages)
-    const readSize = Math.min(500_000, stat.size);
-    const buf = Buffer.alloc(readSize);
-    const fd = fs.openSync(sessionFile, 'r');
-    fs.readSync(fd, buf, 0, readSize, Math.max(0, stat.size - readSize));
-    fs.closeSync(fd);
-    const lines = buf.toString('utf8').split('\n').filter(Boolean);
-    for (const line of lines) {
-      try {
-        const j = JSON.parse(line);
-        if (j.type !== 'message' || !j.message?.usage) continue;
-        if (j.timestamp < todayStartIso) continue;
-        const u = j.message.usage;
-        const usage = usageBreakdown(u);
-        const inp = usage.inputTotal;
-        const out = usage.output;
-        result.input += inp;
-        result.output += out;
-        result.totalTokens += usage.totalTokens;
-        const m = j.message.model || 'unknown';
-        result.cost += estimateCost(m, usage.totalTokens, inp, out, u.cost, u);
-        result.models[m] = (result.models[m] || 0) + usage.totalTokens;
-        result.messages++;
-      } catch {}
-    }
+    await forEachJsonlEntry(sessionFile, async (j) => {
+      if (j.type !== 'message' || !j.message?.usage || !j.timestamp) return;
+      if (j.timestamp < todayStartIso) return;
+      const u = j.message.usage;
+      const usage = usageBreakdown(u);
+      const inp = usage.inputTotal;
+      const out = usage.output;
+      result.input += inp;
+      result.output += out;
+      result.totalTokens += usage.totalTokens;
+      const m = j.message.model || 'unknown';
+      result.cost += estimateCost(m, usage.totalTokens, inp, out, u.cost, u, j.cost || j.message?.cost);
+      result.models[m] = (result.models[m] || 0) + usage.totalTokens;
+      result.messages++;
+    });
   } catch {}
   return result;
 }
 
-function handleOpsChannels(req, res, method) {
+async function handleOpsChannels(req, res, method) {
   if (method !== 'GET') return errorReply(res, 405, 'Method not allowed');
 
   const now = Date.now();
@@ -1438,7 +1456,7 @@ function handleOpsChannels(req, res, method) {
     const sessionFile = sess.sessionFile;
     if (!sessionFile) continue;
 
-    const usage = scanSessionUsageToday(sessionFile, todayStartIso);
+    const usage = await scanSessionUsageToday(sessionFile, todayStartIso);
     if (usage.messages === 0) continue; // skip sessions with no today activity
 
     const chKey = displayName;
@@ -1527,7 +1545,7 @@ function handleOpsAlltime(req, res, method) {
           const tokens = usage.totalTokens;
           const input = usage.inputTotal;
           const output = usage.output;
-          const cost = estimateCost(m, tokens, input, output, u.cost, u);
+          const cost = estimateCost(m, tokens, input, output, u.cost, u, j.cost || j.message?.cost);
 
           totalTokens += tokens;
           totalInput += input;
@@ -1572,7 +1590,7 @@ function handleOpsAlltime(req, res, method) {
             const cronUsage = usageBreakdown(j.usage || {});
             const tokens = cronUsage.totalTokens;
             if (tokens === 0) continue;
-            let cost = estimateCost(m, tokens, cronUsage.inputTotal, cronUsage.output, j.usage.cost, j.usage);
+            let cost = estimateCost(m, tokens, cronUsage.inputTotal, cronUsage.output, j.usage.cost, j.usage, j.cost);
             totalTokens += tokens;
             totalInput += cronUsage.inputTotal;
             totalOutput += cronUsage.output;
@@ -1584,8 +1602,8 @@ function handleOpsAlltime(req, res, method) {
             models[m].output += cronUsage.output;
             models[m].cost += cost;
             models[m].messages++;
-            if (j.ts) {
-              const d = new Date(j.ts);
+            if (j.timestamp || j.ts) {
+              const d = new Date(j.timestamp || j.ts);
               const pstStr = d.toLocaleString("en-CA", { timeZone: "America/Los_Angeles" });
               const day = pstStr.slice(0, 10);
               if (!daily[day]) daily[day] = { tokens: 0, cost: 0, models: {}, modelCosts: {} };
@@ -1963,7 +1981,7 @@ let _sessionsCache = null;
 let _sessionsCacheAt = 0;
 const SESSIONS_CACHE_TTL = 60_000;
 
-function handleOpsSessions(req, res, method) {
+async function handleOpsSessions(req, res, method) {
   if (method !== 'GET') return errorReply(res, 405, 'Method not allowed');
   const now = Date.now();
   if (_sessionsCache && (now - _sessionsCacheAt) < SESSIONS_CACHE_TTL) {
@@ -2054,46 +2072,34 @@ function handleOpsSessions(req, res, method) {
     let recentTopics = [];
 
     try {
-      const stat = fs.statSync(sessionFile);
-      const readSize = Math.min(500_000, stat.size);
-      const buf = Buffer.alloc(readSize);
-      const fd = fs.openSync(sessionFile, 'r');
-      fs.readSync(fd, buf, 0, readSize, Math.max(0, stat.size - readSize));
-      fs.closeSync(fd);
-      const lines = buf.toString('utf8').split('\n').filter(Boolean);
+      await forEachJsonlEntry(sessionFile, async (j) => {
+        if (j.type !== 'message' || !j.timestamp || !j.message) return;
+        if (j.timestamp < todayStartIso) return;
 
-      for (const line of lines) {
-        if (!line.includes('"message"')) continue;
-        try {
-          const j = JSON.parse(line);
-          if (j.type !== 'message') continue;
-          if (j.timestamp < todayStartIso) continue;
+        const role = j.message.role;
+        const text = j.message.content;
+        const textStr = typeof text === 'string' ? text : (Array.isArray(text) ? text.filter(c => c.type === 'text').map(c => c.text).join(' ') : '');
 
-          const role = j.message?.role;
-          const text = j.message?.content;
-          const textStr = typeof text === 'string' ? text : (Array.isArray(text) ? text.filter(c => c.type === 'text').map(c => c.text).join(' ') : '');
-
-          if (role === 'assistant') {
-            const u = j.message?.usage;
-            if (u) {
-              const usage = usageBreakdown(u);
-              today.input += usage.inputTotal;
-              today.output += usage.output;
-              today.totalTokens += usage.totalTokens;
-              const m = j.message.model || 'unknown';
-              const cost = estimateCost(m, usage.totalTokens, usage.inputTotal, usage.output, u.cost, u);
-              today.cost += cost;
-              today.models[m] = (today.models[m] || 0) + usage.totalTokens;
-            }
-            today.messages++;
-            if (textStr.trim() === 'NO_REPLY') today.noReply++;
-            if (textStr.trim() === 'HEARTBEAT_OK') today.heartbeat++;
-            lastMsgTime = j.timestamp;
-          } else if (role === 'user' && textStr.length > 10 && textStr.length < 200) {
-            recentTopics.push(textStr.slice(0, 80));
+        if (role === 'assistant') {
+          const u = j.message.usage;
+          if (u) {
+            const usage = usageBreakdown(u);
+            today.input += usage.inputTotal;
+            today.output += usage.output;
+            today.totalTokens += usage.totalTokens;
+            const m = j.message.model || 'unknown';
+            const cost = estimateCost(m, usage.totalTokens, usage.inputTotal, usage.output, u.cost, u, j.cost || j.message?.cost);
+            today.cost += cost;
+            today.models[m] = (today.models[m] || 0) + usage.totalTokens;
           }
-        } catch {}
-      }
+          today.messages++;
+          if (textStr.trim() === 'NO_REPLY') today.noReply++;
+          if (textStr.trim() === 'HEARTBEAT_OK') today.heartbeat++;
+          lastMsgTime = j.timestamp;
+        } else if (role === 'user' && textStr.length > 10 && textStr.length < 200) {
+          recentTopics.push(textStr.slice(0, 80));
+        }
+      });
     } catch {}
 
     // Skip totally inactive sessions (no messages ever and no recent update)
@@ -2548,8 +2554,8 @@ function handleOpsCronCosts(req, res, method) {
           continue;
         }
         cronReview.runsWithUsage++;
-        const runCost = estimateCost(j.model || meta.model, totalTokens, inp, out, u.cost, u);
-        const ts = j.startedAt || j.ts || j.runAtMs || Date.now();
+        const runCost = estimateCost(j.model || meta.model, totalTokens, inp, out, u.cost, u, j.cost);
+        const ts = j.startedAt || j.timestamp || j.ts || j.runAtMs || Date.now();
         const day = dayKeyPst(ts);
         if (!day) continue;
 
@@ -2632,7 +2638,7 @@ function handleOpsCronCosts(req, res, method) {
             }
             interactiveReview.messagesWithNonZeroTokens++;
             const day = new Date(j.timestamp).toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
-            const cost = estimateCost(j.message.model, totalTokens, inp, out, u.cost, u);
+            const cost = estimateCost(j.message.model, totalTokens, inp, out, u.cost, u, j.cost || j.message?.cost);
             if (!interactiveByDay[day]) {
               interactiveByDay[day] = { interactiveCost: 0, interactiveTokens: 0, interactiveInputTokens: 0, interactiveOutputTokens: 0 };
             }
@@ -3179,11 +3185,15 @@ button:active{opacity:.8}
     if (root === 'cron' && segments[1] === 'today') return handleCronToday(req, res, method);
     if (root === 'cron') return handleCron(req, res, parsed, segments, method);
     if (root === 'vision' && segments[1] === 'stats') return handleVisionStats(req, res, method);
-    if (root === 'ops' && segments[1] === 'channels') return handleOpsChannels(req, res, method);
+    if (root === 'ops' && segments[1] === 'channels') {
+      return handleOpsChannels(req, res, method).catch(e => errorReply(res, 500, e.message));
+    }
     if (root === 'ops' && segments[1] === 'alltime') return handleOpsAlltime(req, res, method);
     if (root === 'ops' && segments[1] === 'audit') return handleOpsAudit(req, res, method);
     if (root === 'ops' && segments[1] === 'secaudit') return handleOpsSecAudit(req, res, method);
-    if (root === 'ops' && segments[1] === 'sessions') return handleOpsSessions(req, res, method);
+    if (root === 'ops' && segments[1] === 'sessions') {
+      return handleOpsSessions(req, res, method).catch(e => errorReply(res, 500, e.message));
+    }
     if (root === 'ops' && segments[1] === 'config') return handleOpsConfig(req, res, method);
     if (root === 'ops' && segments[1] === 'cron') return handleOpsCron(req, res, method);
     if (root === 'ops' && segments[1] === 'cron-costs') return handleOpsCronCosts(req, res, method);
