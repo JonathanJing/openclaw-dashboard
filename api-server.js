@@ -35,18 +35,6 @@ const MEMORY_DIR = path.join(WORKSPACE, 'memory');
 const SESSIONS_FILE = process.env.OPENCLAW_SESSIONS_FILE || path.join(HOME_DIR, '.openclaw', 'agents', 'main', 'sessions', 'sessions.json');
 const SUBAGENT_RUNS_FILE = process.env.OPENCLAW_SUBAGENT_RUNS || path.join(HOME_DIR, '.openclaw', 'subagents', 'runs.json');
 const MAX_BODY = 1 * 1024 * 1024; // 1 MB
-const MAX_UPLOAD = 20 * 1024 * 1024; // 20 MB for file uploads
-const ATTACHMENTS_DIR = path.join(__dirname, 'attachments');
-
-// Vision ingestion (Notion)
-const NOTION_API_KEY = process.env.NOTION_API_KEY || '';
-const VISION_DB = {
-  NETWORKING: process.env.VISION_DB_NETWORKING || '',
-  WINE: process.env.VISION_DB_WINE || '',
-  CIGAR: process.env.VISION_DB_CIGAR || '',
-  TEA: process.env.VISION_DB_TEA || '',
-};
-
 // --- Cron Config ---
 const CRON_STORE_PATH = path.join(HOME_DIR, '.openclaw', 'cron', 'jobs.json');
 const CRON_RUNS_DIR = path.join(HOME_DIR, '.openclaw', 'cron', 'runs');
@@ -80,7 +68,6 @@ function getOpenClawModelConfig() {
 }
 const BACKUP_REMOTE = process.env.OPENCLAW_BACKUP_REMOTE || 'origin';
 const BACKUP_BRANCH = process.env.OPENCLAW_BACKUP_BRANCH || '';
-const ALLOW_ATTACHMENT_FILEPATH_COPY = process.env.OPENCLAW_ALLOW_ATTACHMENT_FILEPATH_COPY === '1';
 const ENABLE_SYSTEMCTL_RESTART = process.env.OPENCLAW_ENABLE_SYSTEMCTL_RESTART === '1';
 const ENABLE_MUTATING_OPS = process.env.OPENCLAW_ENABLE_MUTATING_OPS === '1';
 // Load keys from keys.env if not in env
@@ -103,62 +90,19 @@ const HOOK_URL = 'http://127.0.0.1:18789/hooks/agent';
 const HOOK_TOKEN = process.env.OPENCLAW_HOOK_TOKEN || '';
 
 function triggerTaskExecution(task) {
-  // Check for user-uploaded attachments
-  const taskAttDir = path.join(ATTACHMENTS_DIR, task.id);
-  let attachmentInfo = '';
-  try {
-    if (fs.existsSync(taskAttDir)) {
-      const files = fs.readdirSync(taskAttDir).filter(f => !f.startsWith('.'));
-      if (files.length > 0) {
-        const imageExts = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.bmp'];
-        const fileDetails = files.map(f => {
-          const ext = path.extname(f).toLowerCase();
-          const isImage = imageExts.includes(ext);
-          const fullPath = path.join(taskAttDir, f);
-          const stat = fs.statSync(fullPath);
-          return { name: f, path: fullPath, isImage, size: stat.size };
-        });
-        const images = fileDetails.filter(f => f.isImage);
-        const others = fileDetails.filter(f => !f.isImage);
-
-        attachmentInfo = `\n📎 **User-Uploaded Attachments (${files.length} file${files.length > 1 ? 's' : ''}):**\n`;
-        for (const f of fileDetails) {
-          attachmentInfo += `   - ${f.isImage ? '🖼️' : '📄'} ${f.name} → \`${f.path}\` (${formatFileSize(f.size)})\n`;
-        }
-        if (images.length > 0) {
-          attachmentInfo += `\n⚠️ **IMPORTANT:** The user attached ${images.length} image(s) to this task. You MUST:\n`;
-          attachmentInfo += `   1. Use the \`image\` tool to analyze each attached image to understand what the user wants\n`;
-          attachmentInfo += `   2. If the task involves remaking/editing images, use the attached image as the \`--input\` source for Nano Banana Pro:\n`;
-          attachmentInfo += `      python3 skills/google-imagen/scripts/generate_image.py "edit instruction" --input "${images[0].path}" --output /tmp/output.png\n`;
-          attachmentInfo += `   3. Reference the attached files by their full paths listed above\n`;
-        }
-      }
-    }
-  } catch (e) {
-    console.error(`[webhook] Error scanning attachments for task ${task.id}:`, e.message);
-  }
-
-  const attachmentStep = ALLOW_ATTACHMENT_FILEPATH_COPY
-    ? `3. **IMPORTANT — File Attachments:** If you generate ANY files (images, documents, PDFs, etc.) as part of this task, attach them to the task using this command for EACH file:
-   curl -s -X POST 'http://localhost:18790/tasks/${task.id}/attachments?token=${AUTH_TOKEN}' -H 'Content-Type: application/json' -d '{"filePath":"/absolute/path/to/file.ext","source":"agent"}'
-   The filePath must be an absolute path to the generated file on the server. This lets the dashboard display the file.`
-    : `3. **IMPORTANT — File Attachments:** Server-side filePath upload is disabled in this deployment.
-   If you need to return generated files, provide the absolute output path in your result note so operators can attach files manually.`;
-
   const message = `Execute this dashboard task immediately.
 
 Task ID: ${task.id}
 Title: ${task.title}
 Description: ${task.description || '(no description)'}
-Priority: ${task.priority || 'medium'}${attachmentInfo}
+Priority: ${task.priority || 'medium'}
 
 Steps:
 1. Update status to in-progress: curl -s -X PATCH 'http://localhost:18790/tasks/${task.id}?token=${AUTH_TOKEN}' -H 'Content-Type: application/json' -d '{"status":"in-progress"}'
 2. Execute the task (do what the title/description says)
-${attachmentStep}
-4. Add result as a note: curl -s -X POST 'http://localhost:18790/tasks/${task.id}/notes?token=${AUTH_TOKEN}' -H 'Content-Type: application/json' -d '{"text":"<YOUR_RESULT>"}'
-5. Mark done: curl -s -X PATCH 'http://localhost:18790/tasks/${task.id}?token=${AUTH_TOKEN}' -H 'Content-Type: application/json' -d '{"status":"done"}'
-6. If it fails, mark failed with error in note.`;
+3. Add result as a note: curl -s -X POST 'http://localhost:18790/tasks/${task.id}/notes?token=${AUTH_TOKEN}' -H 'Content-Type: application/json' -d '{"text":"<YOUR_RESULT>"}'
+4. Mark done: curl -s -X PATCH 'http://localhost:18790/tasks/${task.id}?token=${AUTH_TOKEN}' -H 'Content-Type: application/json' -d '{"status":"done"}'
+5. If it fails, mark failed with error in note.`;
 
   // Use /hooks/agent with unique session key per task
   const payload = JSON.stringify({
@@ -380,36 +324,6 @@ function handleTasks(req, res, parsed, segments, method) {
     }).catch((e) => errorReply(res, 400, e.message));
   }
 
-  // POST /tasks/spawn-batch  (MUST be before /tasks/:id/notes check)
-  if (method === 'POST' && segments.length === 2 && segments[1] === 'spawn-batch') {
-    return readJsonBody(req).then((body) => {
-      if (!Array.isArray(body.taskIds) || body.taskIds.length === 0) {
-        return errorReply(res, 400, 'taskIds array is required');
-      }
-      const tasks = readTasks();
-      const spawned = [];
-      const skipped = [];
-      for (const id of body.taskIds) {
-        const task = tasks.find(t => t.id === id);
-        if (!task) { skipped.push({ id, reason: 'not found' }); continue; }
-        if (task.status === 'in-progress') { skipped.push({ id, reason: 'already running' }); continue; }
-        task.notes.push({
-          text: `⚡ Spawned as part of parallel batch (${body.taskIds.length} tasks)`,
-          timestamp: new Date().toISOString(),
-        });
-        if (task.status === 'done' || task.status === 'failed') {
-          task.status = 'new';
-          task.notes.push({ text: `Status changed from "${task.status}" to "new"`, timestamp: new Date().toISOString() });
-        }
-        task.updatedAt = new Date().toISOString();
-        triggerTaskExecution(task);
-        spawned.push(task);
-      }
-      writeTasks(tasks);
-      return jsonReply(res, 200, { spawned: spawned.length, skipped, tasks: spawned });
-    }).catch((e) => errorReply(res, 400, e.message));
-  }
-
   // POST /tasks/:id/spawn
   if (method === 'POST' && segments.length === 3 && segments[2] === 'spawn') {
     const id = segments[1];
@@ -536,115 +450,6 @@ function handleFiles(req, res, parsed, method) {
   return errorReply(res, 405, 'Method not allowed');
 }
 
-// --- Route: Skills ---
-function handleSkills(req, res, method) {
-  if (method !== 'GET') return errorReply(res, 405, 'Method not allowed');
-
-  const skills = [];
-
-  function scanDir(dir) {
-    let entries;
-    try {
-      entries = fs.readdirSync(dir, { withFileTypes: true });
-    } catch {
-      return;
-    }
-    for (const entry of entries) {
-      const full = path.join(dir, entry.name);
-      if (entry.isDirectory()) {
-        scanDir(full);
-      } else if (entry.name === 'SKILL.md') {
-        try {
-          const raw = fs.readFileSync(full, 'utf8');
-          const skill = parseSkillFrontmatter(raw, full);
-          if (skill) skills.push(skill);
-        } catch { /* skip */ }
-      }
-    }
-  }
-
-  // Scan workspace custom skills
-  scanDir(SKILLS_DIR);
-  // Scan system-installed skills
-  const SYSTEM_SKILLS_DIR = process.env.OPENCLAW_SYSTEM_SKILLS || '/opt/homebrew/lib/node_modules/openclaw/skills';
-  scanDir(SYSTEM_SKILLS_DIR);
-  // Deduplicate by name
-  const seen = new Set();
-  const unique = skills.filter(s => {
-    if (seen.has(s.name)) return false;
-    seen.add(s.name);
-    return true;
-  });
-  jsonReply(res, 200, unique);
-}
-
-function parseSkillFrontmatter(content, filePath) {
-  const match = content.match(/^---\n([\s\S]*?)\n---/);
-  if (!match) {
-    // Try to get name from first heading
-    const heading = content.match(/^#\s+(.+)/m);
-    return {
-      name: heading ? heading[1].trim() : path.basename(path.dirname(filePath)),
-      description: '',
-      path: path.relative(WORKSPACE, filePath),
-    };
-  }
-  const yaml = match[1];
-  const name = (yaml.match(/^name:\s*(.+)$/m) || [])[1] || path.basename(path.dirname(filePath));
-  const desc = (yaml.match(/^description:\s*(.+)$/m) || [])[1] || '';
-  return {
-    name: name.replace(/^["']|["']$/g, '').trim(),
-    description: desc.replace(/^["']|["']$/g, '').trim(),
-    path: path.relative(WORKSPACE, filePath),
-  };
-}
-
-// --- Route: Logs ---
-function handleLogs(req, res, parsed, segments, method) {
-  if (method !== 'GET') return errorReply(res, 405, 'Method not allowed');
-
-  // GET /logs/tasks
-  if (segments.length === 2 && segments[1] === 'tasks') {
-    const tasks = readTasks();
-    const history = tasks
-      .filter((t) => t.notes && t.notes.length > 0)
-      .map((t) => ({
-        id: t.id,
-        title: t.title,
-        status: t.status,
-        notes: t.notes.filter((n) => n.text.includes('Status changed') || true),
-      }));
-    return jsonReply(res, 200, history);
-  }
-
-  // GET /logs
-  if (segments.length === 1) {
-    let files;
-    try {
-      files = fs.readdirSync(MEMORY_DIR).filter((f) => f.endsWith('.md'));
-    } catch {
-      return jsonReply(res, 200, []);
-    }
-
-    // Sort by filename descending (YYYY-MM-DD.md)
-    files.sort((a, b) => b.localeCompare(a));
-
-    const logs = files.map((f) => {
-      const content = fs.readFileSync(path.join(MEMORY_DIR, f), 'utf8');
-      const dateMatch = f.match(/^(\d{4}-\d{2}-\d{2})/);
-      return {
-        date: dateMatch ? dateMatch[1] : f.replace('.md', ''),
-        filename: f,
-        content,
-      };
-    });
-
-    return jsonReply(res, 200, logs);
-  }
-
-  return errorReply(res, 404, 'Not found');
-}
-
 // --- Route: Agents (live session monitoring) ---
 function handleAgents(req, res, parsed, segments, method) {
   if (method !== 'GET') return errorReply(res, 405, 'Method not allowed');
@@ -768,180 +573,6 @@ function handleAgents(req, res, parsed, segments, method) {
   };
 
   return jsonReply(res, 200, summary);
-}
-
-// --- Route: Attachments ---
-function handleAttachments(req, res, parsed, segments, method) {
-  // Segments: ['tasks', taskId, 'attachments', ...rest]
-  const taskId = segments[1];
-  if (!taskId) return errorReply(res, 400, 'Task ID required');
-
-  const taskDir = path.join(ATTACHMENTS_DIR, taskId);
-
-  // GET /tasks/:id/attachments — list files
-  if (method === 'GET' && segments.length === 3) {
-    try {
-      fs.mkdirSync(taskDir, { recursive: true });
-      const files = fs.readdirSync(taskDir).map(name => {
-        const stat = fs.statSync(path.join(taskDir, name));
-        const ext = path.extname(name).toLowerCase();
-        const isImage = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.bmp'].includes(ext);
-        return { name, size: stat.size, isImage, createdAt: stat.birthtime.toISOString(), ext };
-      });
-      files.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-      return jsonReply(res, 200, files);
-    } catch (e) {
-      return jsonReply(res, 200, []);
-    }
-  }
-
-  // GET /tasks/:id/attachments/:filename — serve file
-  if (method === 'GET' && segments.length === 4) {
-    const filename = decodeURIComponent(segments[3]);
-    if (filename.includes('..') || filename.includes('/')) return errorReply(res, 400, 'Invalid filename');
-    const filePath = path.join(taskDir, filename);
-    try {
-      if (!fs.existsSync(filePath)) return errorReply(res, 404, 'File not found');
-      const stat = fs.statSync(filePath);
-      const ext = path.extname(filename).toLowerCase();
-      const mimeTypes = {
-        '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
-        '.gif': 'image/gif', '.webp': 'image/webp', '.svg': 'image/svg+xml',
-        '.bmp': 'image/bmp', '.pdf': 'application/pdf',
-        '.txt': 'text/plain', '.md': 'text/markdown',
-        '.json': 'application/json', '.csv': 'text/csv',
-        '.zip': 'application/zip', '.doc': 'application/msword',
-        '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        '.xls': 'application/vnd.ms-excel',
-        '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-        '.html': 'text/html', '.htm': 'text/html',
-      };
-      const mime = mimeTypes[ext] || 'application/octet-stream';
-      const data = fs.readFileSync(filePath);
-      res.writeHead(200, {
-        'Content-Type': mime,
-        'Content-Length': data.length,
-        'Cache-Control': 'public, max-age=3600',
-        ...(parsed.query.download === '1' ? { 'Content-Disposition': `attachment; filename="${filename}"` } : {}),
-      });
-      res.end(data);
-    } catch (e) {
-      return errorReply(res, 500, 'Failed to serve file: ' + e.message);
-    }
-    return;
-  }
-
-  // POST /tasks/:id/attachments — upload file (base64 JSON body OR filePath for server-side copy)
-  if (method === 'POST' && segments.length === 3) {
-    return readBody(req, MAX_UPLOAD * 1.4).then(buf => { // base64 is ~1.33x larger
-      const text = buf.toString('utf8');
-      let body;
-      try { body = JSON.parse(text); } catch { throw new Error('Invalid JSON'); }
-
-      let fileData;
-      let filename;
-
-      // Option 1: Server-side file copy (for agent-generated files)
-      if (body.filePath && typeof body.filePath === 'string') {
-        if (!ALLOW_ATTACHMENT_FILEPATH_COPY) {
-          throw new Error('filePath upload disabled (set OPENCLAW_ALLOW_ATTACHMENT_FILEPATH_COPY=1 to enable)');
-        }
-
-        const srcPath = path.resolve(body.filePath);
-        // Security: only allow files from /tmp, workspace, or user home
-        const homeDir = process.env.HOME || '';
-        const allowedPrefixes = ['/tmp/', WORKSPACE + '/', homeDir + '/openclaw/'];
-        const isAllowed = allowedPrefixes.some(p => srcPath.startsWith(p));
-        if (!isAllowed) throw new Error('filePath not in allowed directory');
-        if (!fs.existsSync(srcPath)) throw new Error('Source file not found: ' + srcPath);
-        const stat = fs.statSync(srcPath);
-        if (stat.size > MAX_UPLOAD) throw new Error('File too large (max 20MB)');
-        fileData = fs.readFileSync(srcPath);
-        filename = (body.filename || path.basename(srcPath)).replace(/[^a-zA-Z0-9._-]/g, '_').substring(0, 200);
-      }
-      // Option 2: Base64 upload (for browser/external clients)
-      else {
-        if (!body.filename || typeof body.filename !== 'string') throw new Error('filename required');
-        if (!body.data) throw new Error('data (base64) or filePath required');
-
-        filename = body.filename.replace(/[^a-zA-Z0-9._-]/g, '_').substring(0, 200);
-        if (!filename) throw new Error('Invalid filename');
-
-        // Decode base64 data (strip data URL prefix if present)
-        let base64 = body.data;
-        if (base64.includes(',')) base64 = base64.split(',')[1];
-        fileData = Buffer.from(base64, 'base64');
-
-        if (fileData.length > MAX_UPLOAD) throw new Error('File too large (max 20MB)');
-      }
-
-      fs.mkdirSync(taskDir, { recursive: true });
-      const destPath = path.join(taskDir, filename);
-      // Avoid overwriting — append timestamp if exists
-      let finalName = filename;
-      if (fs.existsSync(destPath)) {
-        const ext = path.extname(filename);
-        const base = path.basename(filename, ext);
-        finalName = `${base}_${Date.now()}${ext}`;
-      }
-      fs.writeFileSync(path.join(taskDir, finalName), fileData);
-
-      const stat = fs.statSync(path.join(taskDir, finalName));
-      const ext = path.extname(finalName).toLowerCase();
-      const isImage = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.bmp'].includes(ext);
-
-      // Add a note about the attachment
-      const tasks = readTasks();
-      const task = tasks.find(t => t.id === taskId);
-      if (task) {
-        const uploadedBy = body.source || 'user';
-        task.notes.push({
-          text: `📎 ${uploadedBy === 'agent' ? 'Agent' : 'User'} attached: ${finalName} (${formatFileSize(stat.size)})`,
-          timestamp: new Date().toISOString(),
-        });
-        task.updatedAt = new Date().toISOString();
-        writeTasks(tasks);
-      }
-
-      return jsonReply(res, 201, { name: finalName, size: stat.size, isImage, createdAt: stat.birthtime.toISOString(), ext });
-    }).catch(e => errorReply(res, 400, e.message));
-  }
-
-  // DELETE /tasks/:id/attachments/:filename
-  if (method === 'DELETE' && segments.length === 4) {
-    const filename = decodeURIComponent(segments[3]);
-    if (filename.includes('..') || filename.includes('/')) return errorReply(res, 400, 'Invalid filename');
-    const filePath = path.join(taskDir, filename);
-    try {
-      if (!fs.existsSync(filePath)) return errorReply(res, 404, 'File not found');
-      fs.unlinkSync(filePath);
-
-      // Add a note about deletion
-      const tasks = readTasks();
-      const task = tasks.find(t => t.id === taskId);
-      if (task) {
-        task.notes.push({
-          text: `🗑️ Attachment removed: ${filename}`,
-          timestamp: new Date().toISOString(),
-        });
-        task.updatedAt = new Date().toISOString();
-        writeTasks(tasks);
-      }
-
-      return jsonReply(res, 200, { deleted: filename });
-    } catch (e) {
-      return errorReply(res, 500, 'Delete failed: ' + e.message);
-    }
-  }
-
-  return errorReply(res, 405, 'Method not allowed');
-}
-
-function formatFileSize(bytes) {
-  if (bytes < 1024) return bytes + ' B';
-  if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
-  return (bytes / 1048576).toFixed(1) + ' MB';
 }
 
 // --- Cron Helpers ---
@@ -1209,7 +840,7 @@ function handleCronToday(req, res, method) {
     const outputTokens = runUsageParts ? runUsageParts.output : 0;
     const totalTokens = runUsageParts ? runUsageParts.totalTokens : null;
     const runModel = lastRun?.model || job?.payload?.model || null;
-    const costUsd = runUsage ? estimateCost(runModel, totalTokens || 0, inputTokens, outputTokens, runUsage.cost, runUsage, run?.cost) : null;
+    const costUsd = runUsage ? estimateCost(runModel, totalTokens || 0, inputTokens, outputTokens, runUsage.cost, runUsage, lastRun?.cost) : null;
 
     const nextRun = job.state?.nextRunAtMs || lastRun?.nextRunAtMs || computeNextRun(job.schedule, lastStarted);
 
@@ -1248,68 +879,6 @@ function handleCronToday(req, res, method) {
   });
 
   return jsonReply(res, 200, { todayJobs, stats });
-}
-
-// --- Vision Ingestion Stats (Notion) ---
-async function handleVisionStats(req, res, method) {
-  if (method !== 'GET') return errorReply(res, 405, 'Method not allowed');
-  const start = new Date(startOfTodayMs()).toISOString();
-  const end = new Date(endOfTodayMs()).toISOString();
-
-  const categories = {
-    NETWORKING: { db: VISION_DB.NETWORKING },
-    WINE: { db: VISION_DB.WINE },
-    CIGAR: { db: VISION_DB.CIGAR },
-    TEA: { db: VISION_DB.TEA },
-  };
-
-  if (!NOTION_API_KEY || !Object.values(categories).some(c => c.db)) {
-    Object.keys(categories).forEach(k => categories[k].count = 0);
-    return jsonReply(res, 200, { status: 'not_configured', categories });
-  }
-
-  try {
-    for (const [k, v] of Object.entries(categories)) {
-      if (!v.db) { v.count = 0; continue; }
-      v.count = await notionCount(v.db, start, end);
-    }
-    return jsonReply(res, 200, { status: 'ok', categories });
-  } catch (e) {
-    Object.keys(categories).forEach(k => categories[k].count = 0);
-    return jsonReply(res, 200, { status: 'error', message: e.message, categories });
-  }
-}
-
-async function notionCount(dbId, startIso, endIso) {
-  let total = 0;
-  let cursor = undefined;
-  do {
-    const body = {
-      page_size: 100,
-      filter: {
-        and: [
-          { timestamp: 'created_time', created_time: { on_or_after: startIso } },
-          { timestamp: 'created_time', created_time: { before: endIso } }
-        ]
-      }
-    };
-    if (cursor) body.start_cursor = cursor;
-
-    const resp = await fetch(`https://api.notion.com/v1/databases/${dbId}/query`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${NOTION_API_KEY}`,
-        'Notion-Version': '2022-06-28',
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(body)
-    });
-    const data = await resp.json();
-    if (!resp.ok) throw new Error(data?.message || 'Notion API error');
-    total += (data.results || []).length;
-    cursor = data.has_more ? data.next_cursor : undefined;
-  } while (cursor);
-  return total;
 }
 
 // --- Ops: Channel Usage (today, PST) ---
@@ -1890,40 +1459,6 @@ async function handleBackup(req, res, method, segments) {
     push: result.push,
     timestamp: new Date().toISOString(),
   });
-}
-
-// ─── GET /memory?file=<filename> ───
-async function handleMemory(req, res, method, parsed) {
-  if (method !== 'GET') return errorReply(res, 405, 'Method not allowed');
-  const file = parsed.query?.file || '';
-  if (!file || file.includes('/') || file.includes('..')) return errorReply(res, 400, 'Invalid file param');
-  const filePath = path.join(MEMORY_DIR, file);
-  try {
-    const content = fs.readFileSync(filePath, 'utf8');
-    return jsonReply(res, 200, JSON.parse(content));
-  } catch (e) {
-    return errorReply(res, 404, `Cannot read memory file: ${e.message}`);
-  }
-}
-
-// ─── GET /ops/secaudit ───
-async function handleOpsSecAudit(req, res, method) {
-  if (method !== 'GET') return errorReply(res, 405, 'Method not allowed');
-  try {
-    let cronJobs = 0;
-    let sessions = 0;
-    try {
-      const cron = JSON.parse(fs.readFileSync(CRON_STORE_PATH, 'utf8'));
-      cronJobs = Array.isArray(cron) ? cron.length : Object.keys(cron).length;
-    } catch {}
-    try {
-      const sess = JSON.parse(fs.readFileSync(SESSIONS_JSON, 'utf8'));
-      sessions = Array.isArray(sess) ? sess.length : Object.keys(sess).length;
-    } catch {}
-    return jsonReply(res, 200, { cronJobs, sessions, timestamp: new Date().toISOString() });
-  } catch (e) {
-    return errorReply(res, 500, e.message);
-  }
 }
 
 async function handleOpsAudit(req, res, method) {
@@ -3104,31 +2639,6 @@ const server = http.createServer((req, res) => {
     return jsonReply(res, 200, { status: 'ok', uptime: process.uptime() });
   }
 
-  // PWA assets (no auth required)
-  if ((pathname === '/icon.svg' || pathname === '/icon-180.png') && method === 'GET') {
-    const file = pathname.slice(1);
-    const ct = file.endsWith('.svg') ? 'image/svg+xml' : 'image/png';
-    try {
-      const data = fs.readFileSync(path.join(__dirname, file));
-      setCors(res, req);
-      res.writeHead(200, { 'Content-Type': ct, 'Cache-Control': 'public, max-age=86400' });
-      return res.end(data);
-    } catch { return errorReply(res, 404, 'Not found'); }
-  }
-  if (pathname === '/manifest.json' && method === 'GET') {
-    setCors(res, req);
-    res.writeHead(200, { 'Content-Type': 'application/manifest+json' });
-    return res.end(JSON.stringify({
-      name: "Jony's OpenClaw Dashboard",
-      short_name: 'Dashboard',
-      start_url: '/',
-      display: 'standalone',
-      background_color: '#0d1117',
-      theme_color: '#0d1117',
-      icons: [{ src: '/icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any maskable' }]
-    }));
-  }
-
   // Login page (no auth required)
   if (pathname === '/login') {
     if (method === 'GET') {
@@ -3219,23 +2729,18 @@ button:active{opacity:.8}
   try {
     // Route /tasks/:id/attachments to attachments handler
     if (root === 'tasks' && segments.length >= 3 && segments[2] === 'attachments') {
-      return handleAttachments(req, res, parsed, segments, method);
     }
     if (root === 'tasks') return handleTasks(req, res, parsed, segments, method);
     if (root === 'files') return handleFiles(req, res, parsed, method);
-    if (root === 'skills') return handleSkills(req, res, method);
-    if (root === 'logs') return handleLogs(req, res, parsed, segments, method);
     if (root === 'agents') return handleAgents(req, res, parsed, segments, method);
     if (root === 'cron' && segments[1] === 'today') return handleCronToday(req, res, method);
     if (root === 'cron') return handleCron(req, res, parsed, segments, method);
-    if (root === 'vision' && segments[1] === 'stats') return handleVisionStats(req, res, method);
     if (root === 'ops' && segments[1] === 'channels') {
       return handleOpsChannels(req, res, method).catch(e => errorReply(res, 500, e.message));
     }
     if (root === 'ops' && segments[1] === 'models') return handleOpsModels(req, res, method);
     if (root === 'ops' && segments[1] === 'alltime') return handleOpsAlltime(req, res, method);
     if (root === 'ops' && segments[1] === 'audit') return handleOpsAudit(req, res, method);
-    if (root === 'ops' && segments[1] === 'secaudit') return handleOpsSecAudit(req, res, method);
     if (root === 'ops' && segments[1] === 'sessions') {
       return handleOpsSessions(req, res, method).catch(e => errorReply(res, 500, e.message));
     }
