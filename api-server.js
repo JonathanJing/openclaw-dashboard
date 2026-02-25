@@ -57,6 +57,27 @@ const WATCHDOG_STATE_FILE = path.join(WATCHDOG_DIR, 'state.json');
 const WATCHDOG_EVENTS_FILE = path.join(WATCHDOG_DIR, 'events.jsonl');
 const OPENCLAW_CONFIG_FILE = process.env.OPENCLAW_CONFIG_FILE || path.join(HOME_DIR, '.openclaw', 'openclaw.json');
 const OPENCLAW_CONFIG_BASELINE_FILE = process.env.OPENCLAW_CONFIG_BASELINE_FILE || path.join(HOME_DIR, '.openclaw', 'openclaw.json.good');
+
+// Read active model configuration from openclaw.json
+function getOpenClawModelConfig() {
+  try {
+    const config = JSON.parse(fs.readFileSync(OPENCLAW_CONFIG_FILE, 'utf8'));
+    const primary = config?.agents?.defaults?.model?.primary || null;
+    // Extract all model references from config
+    const models = { primary };
+    // Check channel overrides if any
+    const channels = config?.channels || {};
+    for (const [chName, chConf] of Object.entries(channels)) {
+      if (chConf?.model) models[`channel:${chName}`] = chConf.model;
+    }
+    // Session model defaults file
+    try {
+      const sessDefaults = JSON.parse(fs.readFileSync(path.join(__dirname, 'ops-session-model-defaults.json'), 'utf8'));
+      models.sessionDefaults = sessDefaults;
+    } catch {}
+    return models;
+  } catch { return { primary: null }; }
+}
 const BACKUP_REMOTE = process.env.OPENCLAW_BACKUP_REMOTE || 'origin';
 const BACKUP_BRANCH = process.env.OPENCLAW_BACKUP_BRANCH || '';
 const ALLOW_ATTACHMENT_FILEPATH_COPY = process.env.OPENCLAW_ALLOW_ATTACHMENT_FILEPATH_COPY === '1';
@@ -1294,14 +1315,21 @@ async function notionCount(dbId, startIso, endIso) {
 // --- Ops: Channel Usage (today, PST) ---
 // Per 1M tokens: [input_cost, output_cost]
 // Anthropic cache multipliers: cache_read = input × 0.1, cache_write_5m = input × 1.25
+// Per 1M tokens: [input, output, cacheReadMultiplier, cacheWriteMultiplier]
+// Defaults: cacheRead = input × 0.1, cacheWrite = input × 1.25 (Anthropic)
 const MODEL_COSTS_IO = {
-  'claude-opus-4-6': [5, 25],
-  'claude-sonnet-4-6': [3, 15],
-  'claude-haiku-4-5': [0.80, 4.00],
-  'gpt-5.3-codex': [2.5, 10], 'gpt-5.3': [2.5, 10],
-  'gpt-5.2-codex': [2.5, 10], 'gpt-5.2': [2.5, 10],
-  'gemini-3.1-pro': [2, 12], 'gemini-3-pro-preview': [2, 12],
-  'gemini-3.0-flash': [0.5, 3], 'gemini-3-flash-preview': [0.5, 3],
+  // Anthropic — cache: read 10%, write 125%
+  'claude-opus-4-6': [5, 25, 0.10, 1.25],
+  'claude-sonnet-4-6': [3, 15, 0.10, 1.25],
+  'claude-haiku-4-5': [0.80, 4.00, 0.10, 1.25],
+  // OpenAI — cache: read 50% (auto), write 100% (no extra charge)
+  'gpt-5.3-codex': [2.5, 10, 0.50, 1.00], 'gpt-5.3': [2.5, 10, 0.50, 1.00],
+  'gpt-5.2-codex': [2.5, 10, 0.50, 1.00], 'gpt-5.2': [2.5, 10, 0.50, 1.00],
+  // Google — cache: read 10%, write 100%
+  'gemini-3.1-pro': [2, 12, 0.10, 1.00], 'gemini-3-pro-preview': [2, 12, 0.10, 1.00],
+  'gemini-3.0-flash': [0.5, 3, 0.10, 1.00], 'gemini-3-flash-preview': [0.5, 3, 0.10, 1.00],
+  // Volcengine — cache: read 50%, write 100%
+  'doubao-pro-2.0': [0.12, 0.24, 0.50, 1.00],
 };
 
 function n(v) {
@@ -1347,17 +1375,20 @@ function estimateCost(model, totalTokens, inputTokens, outputTokens, costObj, us
   const normalizedModel = normalizeModelForPricing(model);
   const key = Object.keys(MODEL_COSTS_IO).find(k => normalizedModel.includes(k));
   if (!key) return 0;
-  const [inCost, outCost] = MODEL_COSTS_IO[key];
+  const costs = MODEL_COSTS_IO[key];
+  const [inCost, outCost] = costs;
 
   // Cache-aware calculation when breakdown is available
   if (usageObj) {
     const b = usageBreakdown(usageObj);
     if (b.inputNoCache || b.cacheRead || b.cacheWrite || b.output || b.totalTokens) {
+      const cacheReadMul = costs[2] ?? 0.10;
+      const cacheWriteMul = costs[3] ?? 1.25;
       const uncached = (b.inputNoCache / 1_000_000) * inCost;
-      const cacheRead = (b.cacheRead / 1_000_000) * (inCost * 0.1);
-      const cacheWrite5m = (b.cacheWrite5m / 1_000_000) * (inCost * 1.25);
-      const cacheWrite1h = (b.cacheWrite1h / 1_000_000) * (inCost * 1.25);
-      const cacheWriteFallback = (b.cacheWrite5m || b.cacheWrite1h) ? 0 : (b.cacheWrite / 1_000_000) * (inCost * 1.25);
+      const cacheRead = (b.cacheRead / 1_000_000) * (inCost * cacheReadMul);
+      const cacheWrite5m = (b.cacheWrite5m / 1_000_000) * (inCost * cacheWriteMul);
+      const cacheWrite1h = (b.cacheWrite1h / 1_000_000) * (inCost * cacheWriteMul);
+      const cacheWriteFallback = (b.cacheWrite5m || b.cacheWrite1h) ? 0 : (b.cacheWrite / 1_000_000) * (inCost * cacheWriteMul);
       const output = (b.output / 1_000_000) * outCost;
       return uncached + cacheRead + cacheWrite5m + cacheWrite1h + cacheWriteFallback + output;
     }
@@ -2222,6 +2253,8 @@ function handleOpsSystem(req, res, method) {
     nodeVersion: process.version,
     clawVersion,
     dashboardUptime: Math.floor(dashboardUptime),
+    models: getOpenClawModelConfig(),
+    pricing: MODEL_COSTS_IO,
   });
 }
 
@@ -2784,6 +2817,17 @@ function handleOpsCronCosts(req, res, method) {
   });
 }
 
+
+function handleOpsModels(req, res, method) {
+  if (method !== 'GET') return errorReply(res, 405, 'Method not allowed');
+  const models = getOpenClawModelConfig();
+  return jsonReply(res, 200, {
+    activeModels: models,
+    pricing: MODEL_COSTS_IO,
+    updatedAt: new Date().toISOString(),
+  });
+}
+
 function handleOpsCron(req, res, method) {
   if (method !== 'GET') return errorReply(res, 405, 'Method not allowed');
 
@@ -3188,6 +3232,7 @@ button:active{opacity:.8}
     if (root === 'ops' && segments[1] === 'channels') {
       return handleOpsChannels(req, res, method).catch(e => errorReply(res, 500, e.message));
     }
+    if (root === 'ops' && segments[1] === 'models') return handleOpsModels(req, res, method);
     if (root === 'ops' && segments[1] === 'alltime') return handleOpsAlltime(req, res, method);
     if (root === 'ops' && segments[1] === 'audit') return handleOpsAudit(req, res, method);
     if (root === 'ops' && segments[1] === 'secaudit') return handleOpsSecAudit(req, res, method);
