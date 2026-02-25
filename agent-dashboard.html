@@ -1216,7 +1216,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
 });
 
 let _watchdogCache = null;
-let _watchdogWindowMins = 15;
+let _watchdogWindowMins = 120;
 let _watchdogCriticalOnly = false;
 
 function focusHealthTab() {
@@ -1237,7 +1237,7 @@ function setWatchdogCriticalOnly(checked) {
 
 async function pollWatchdogStatus() {
   try {
-    const data = await apiFetch(`/ops/watchdog?limit=12&windowMinutes=${_watchdogWindowMins}&criticalOnly=${_watchdogCriticalOnly ? '1' : '0'}`);
+    const data = await apiFetch(`/ops/watchdog?limit=50&windowMinutes=${_watchdogWindowMins}&criticalOnly=${_watchdogCriticalOnly ? '1' : '0'}`);
     _watchdogCache = data;
     renderWatchdogStatus(data);
   } catch (e) {
@@ -1274,6 +1274,57 @@ function wdFmtDateTime(tsMs) {
     second: '2-digit',
     hour12: false,
   });
+}
+
+function renderEventDetails(details) {
+  if (!details) return '';
+  const text = String(details);
+  const lines = text.split('\n');
+  let html = '';
+  let inActions = false;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+
+    if (trimmed.startsWith('自动自愈:') || trimmed.startsWith('Auto-remediation:')) {
+      html += '<div style="margin-top:6px;font-weight:600;color:var(--blue);font-size:.72rem">⚙️ 自动自愈</div>';
+      inActions = true;
+      continue;
+    }
+
+    const actionMatch = trimmed.match(/^-\s+([^:]+):\s+(ok|exit=\d+|skipped)\s*\|?\s*(.*)$/);
+    if (actionMatch) {
+      const [, name, status, output] = actionMatch;
+      const isOk = status === 'ok';
+      const isSkipped = status === 'skipped';
+      const color = isOk ? 'var(--green)' : isSkipped ? 'var(--text2)' : 'var(--red)';
+      const icon = isOk ? '✓' : isSkipped ? '○' : '✗';
+      const shortOutput = output.length > 80 ? output.slice(0, 80) + '…' : output;
+      html += '<div style="display:flex;gap:6px;align-items:baseline;margin-top:3px;font-size:.7rem">'
+        + '<span style="color:' + color + ';font-weight:700;flex-shrink:0">' + icon + '</span>'
+        + '<span style="color:var(--text2);flex-shrink:0">' + escHtml(name.trim()) + '</span>'
+        + '<span style="color:' + color + ';font-size:.65rem">' + escHtml(status) + '</span>'
+        + (shortOutput ? '<span style="color:var(--text2);font-size:.65rem;opacity:.7">' + escHtml(shortOutput) + '</span>' : '')
+        + '</div>';
+      continue;
+    }
+
+    const kvMatch = trimmed.match(/^([^:：]+)[：:]\s*(.+)$/);
+    if (kvMatch && !trimmed.startsWith('-')) {
+      const [, key, val] = kvMatch;
+      const isOutage = key.includes('断连') || key.includes('outage') || key.includes('时长');
+      html += '<div style="font-size:.7rem;color:' + (isOutage ? 'var(--yellow)' : 'var(--text2)') + '">'
+        + escHtml(key.trim()) + ': <strong>' + escHtml(val.trim()) + '</strong></div>';
+      continue;
+    }
+
+    if (!inActions) {
+      html += '<div style="font-size:.7rem;color:var(--text2)">' + escHtml(trimmed) + '</div>';
+    }
+  }
+
+  return html;
 }
 
 function wdWindowLabel(mins) {
@@ -1508,7 +1559,7 @@ function renderWatchdogStatus(data) {
   eventsEl.innerHTML = recent.map(ev => {
     const sev = ev.severity || 'info';
     const color = sev === 'critical' ? 'var(--red)' : (sev === 'warning' ? 'var(--yellow)' : 'var(--green)');
-    const detailsHtml = escHtml(ev.details || '').replace(/\n/g, '<br>');
+    const detailsHtml = renderEventDetails(ev.details);
     return `<div class="ops-channel-card" style="padding:8px 10px">
       <div class="ops-ch-left">
         <div class="ops-ch-name" style="font-size:.8rem;color:${color}">${escHtml(ev.event || 'event')} · ${escHtml(wdReasonZh(ev.reason || 'unknown'))}</div>
