@@ -2912,8 +2912,12 @@ async function loadAudit() {
   const el = document.getElementById('auditContent2');
   if (!el) return;
   try {
-    const data = await apiFetch('/ops/sessions');
+    const [data, changelog] = await Promise.all([
+      apiFetch('/ops/sessions'),
+      apiFetch('/ops/model-changelog').catch(() => ({ entries: [] })),
+    ]);
     const sessions = (data.sessions || []).filter(s => s.today.messages > 0);
+    const changeEntries = Array.isArray(changelog?.entries) ? changelog.entries.slice(0, 20) : [];
 
     const recommendations = [];
     for (const s of sessions) {
@@ -2995,6 +2999,51 @@ async function loadAudit() {
         </div>
       </div>`;
     } catch {}
+
+    const fmtChangeTs = (ts) => {
+      const ms = Date.parse(ts || '');
+      if (!Number.isFinite(ms)) return '—';
+      const d = new Date(ms);
+      const mm = String(d.getMonth() + 1).padStart(2, '0');
+      const dd = String(d.getDate()).padStart(2, '0');
+      const hh = String(d.getHours()).padStart(2, '0');
+      const mi = String(d.getMinutes()).padStart(2, '0');
+      return `${mm}/${dd} ${hh}:${mi}`;
+    };
+    const shortId = (id) => {
+      const raw = String(id || '');
+      if (!raw) return '—';
+      if (raw.length <= 14) return raw;
+      return `${raw.slice(0, 6)}...${raw.slice(-4)}`;
+    };
+
+    html += `<div class="glass-card" style="padding:16px;margin-top:12px">
+      <div class="card-title">🔄 ${tt('Model Change History', '模型变更历史')}</div>`;
+    if (!changeEntries.length) {
+      html += `<div class="empty-state" style="padding:10px 4px 2px"><p>${tt('No model changes yet', '暂无变更记录')}</p></div>`;
+    } else {
+      html += '<div style="margin-top:8px">';
+      for (const item of changeEntries) {
+        const isCron = item?.type === 'cron';
+        const typeLabel = isCron ? 'CRON' : 'SESSION';
+        const typeColor = isCron ? 'var(--yellow)' : 'var(--blue)';
+        const displayName = isCron ? (item?.name || item?.id || '—') : shortId(item?.id);
+        const fromModel = shortModel(item?.from || 'unknown');
+        const toModel = shortModel(item?.to || 'unknown');
+        const via = item?.via || 'dashboard';
+        html += `<div style="display:grid;grid-template-columns:82px 74px 1fr;gap:8px;align-items:center;padding:7px 2px;border-bottom:1px solid var(--border);font-size:.76rem">
+          <span style="font-family:var(--mono);color:var(--text2)">${fmtChangeTs(item?.ts)}</span>
+          <span style="display:inline-flex;align-items:center;justify-content:center;padding:2px 8px;border-radius:999px;font-size:.66rem;font-weight:700;letter-spacing:.5px;background:${typeColor}1f;color:${typeColor};border:1px solid ${typeColor}4d">${typeLabel}</span>
+          <div style="min-width:0;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <span style="color:var(--text);font-family:var(--mono);font-size:.72rem">${escHtml(displayName)}</span>
+            <span style="color:var(--text2)">${escHtml(fromModel)} → ${escHtml(toModel)}</span>
+            <span style="display:inline-flex;align-items:center;padding:1px 7px;border-radius:999px;border:1px solid var(--border);color:var(--text2);font-size:.64rem;text-transform:lowercase">${escHtml(via)}</span>
+          </div>
+        </div>`;
+      }
+      html += '</div>';
+    }
+    html += '</div>';
 
     el.innerHTML = html;
   } catch (e) { el.innerHTML = `<p>${e.message}</p>`; }
