@@ -2916,6 +2916,7 @@ async function loadAudit() {
       apiFetch('/ops/sessions'),
       apiFetch('/ops/model-changelog').catch(() => ({ entries: [] })),
     ]);
+    const channelMap = new Map((data.sessions || []).map(s => [String(s.channelId), s.displayName || s.channelId]));
     const sessions = (data.sessions || []).filter(s => s.today.messages > 0);
     const changeEntries = Array.isArray(changelog?.entries) ? changelog.entries.slice(0, 20) : [];
 
@@ -3027,7 +3028,7 @@ async function loadAudit() {
         const isCron = item?.type === 'cron';
         const typeLabel = isCron ? 'CRON' : 'SESSION';
         const typeColor = isCron ? 'var(--yellow)' : 'var(--blue)';
-        const displayName = isCron ? (item?.name || item?.id || '—') : shortId(item?.id);
+        const displayName = isCron ? (item?.name || item?.id || '—') : (channelMap.get(String(item?.id)) || shortId(item?.id));
         const fromModel = shortModel(item?.from || 'unknown');
         const toModel = shortModel(item?.to || 'unknown');
         const via = item?.via || 'dashboard';
