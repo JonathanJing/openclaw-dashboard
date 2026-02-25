@@ -1341,7 +1341,15 @@ async function apiFetch(path, opts = {}) {
     ...opts,
     headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) }
   });
-  if (!res.ok) throw new Error(`API ${res.status}: ${res.statusText}`);
+  if (!res.ok) {
+    const ct = res.headers.get('content-type') || '';
+    if (ct.includes('json')) {
+      const data = await res.json().catch(() => ({}));
+      const msg = data?.error || data?.message || res.statusText;
+      throw new Error(msg);
+    }
+    throw new Error(`API ${res.status}: ${res.statusText}`);
+  }
   const ct = res.headers.get('content-type') || '';
   if (ct.includes('json')) return res.json();
   return res.text();
@@ -1359,6 +1367,10 @@ function applyCapabilitiesUI() {
     const el = document.getElementById(id);
     if (!el) return;
     el.style.display = mutatingEnabled ? '' : 'none';
+  });
+  document.querySelectorAll('.model-select').forEach((el) => {
+    el.disabled = !mutatingEnabled;
+    el.title = mutatingEnabled ? '' : 'Model changes disabled by server policy';
   });
 }
 
@@ -2888,10 +2900,10 @@ const CONNECTED_APIS = [
     icon: '🧠',
     iconClass: 'anthropic',
     status: 'connected',
-    description: tt('Primary LLM engine. Claude Sonnet 4.6 / Opus 4.6 for reasoning, code generation, and chat.', '主 LLM 引擎。Claude Sonnet 4.6 / Opus 4.6，用于推理、代码生成和对话。'),
+    description: tt('Primary LLM engine. Claude Sonnet 4 / Claude Opus 4 for reasoning, code generation, and chat.', '主 LLM 引擎。Claude Sonnet 4 / Claude Opus 4，用于推理、代码生成和对话。'),
     capabilities: [
-      { label: 'Claude Sonnet 4.6', type: 'ai' },
-      { label: 'Claude Opus 4.6', type: 'ai' },
+      { label: 'Claude Sonnet 4', type: 'ai' },
+      { label: 'Claude Opus 4', type: 'ai' },
       { label: 'Reasoning', type: 'ai' },
       { label: 'Code Gen', type: 'ai' }
     ]
@@ -2932,10 +2944,10 @@ const CONNECTED_APIS = [
     icon: '⚡',
     iconClass: 'openai',
     status: 'connected',
-    description: tt('GPT-5.2 / Codex for code completion, content generation, and multimodal tasks.', 'GPT-5.2 / Codex，用于代码补全、内容生成和多模态任务。'),
+    description: tt('GPT-5 / GPT-5 Codex for code completion, content generation, and multimodal tasks.', 'GPT-5 / GPT-5 Codex，用于代码补全、内容生成和多模态任务。'),
     capabilities: [
       { label: 'GPT-5.2', type: 'ai' },
-      { label: 'Codex', type: 'ai' },
+      { label: 'GPT-5 Codex', type: 'ai' },
       { label: 'Code Completion', type: 'ai' },
       { label: 'Multimodal', type: 'ai' }
     ]
@@ -2950,7 +2962,7 @@ const CONNECTED_APIS = [
     description: tt('Gemini 3 Pro / Flash for multimodal reasoning, image understanding, and long context.', 'Gemini 3 Pro / Flash，用于多模态推理、图像理解和长上下文任务。'),
     capabilities: [
       { label: 'Gemini 3 Pro', type: 'ai' },
-      { label: 'Gemini Flash', type: 'ai' },
+      { label: 'Gemini 3 Flash', type: 'ai' },
       { label: 'Image Understanding', type: 'ai' },
       { label: 'Long Context', type: 'ai' }
     ]
@@ -3006,8 +3018,8 @@ const API_DESC_BY_ID = {
     zh: '主消息频道，用于接收指令、发送报告和互动。支持 Components v2 组件交互。',
   },
   anthropic: {
-    en: 'Primary LLM engine. Claude Sonnet 4.6 / Opus 4.6 for reasoning, code generation, and chat.',
-    zh: '主 LLM 引擎。Claude Sonnet 4.6 / Opus 4.6，用于推理、代码生成和对话。',
+    en: 'Primary LLM engine. Claude Sonnet 4 / Claude Opus 4 for reasoning, code generation, and chat.',
+    zh: '主 LLM 引擎。Claude Sonnet 4 / Claude Opus 4，用于推理、代码生成和对话。',
   },
   'brave-search': {
     en: 'Real-time web search API for retrieval and fresh information.',
@@ -3018,8 +3030,8 @@ const API_DESC_BY_ID = {
     zh: '数据库读写，用于任务管理、项目跟踪和知识库存储。',
   },
   openai: {
-    en: 'GPT-5.2 / Codex for code completion, content generation, and multimodal tasks.',
-    zh: 'GPT-5.2 / Codex，用于代码补全、内容生成和多模态任务。',
+    en: 'GPT-5 / GPT-5 Codex for code completion, content generation, and multimodal tasks.',
+    zh: 'GPT-5 / GPT-5 Codex，用于代码补全、内容生成和多模态任务。',
   },
   gemini: {
     en: 'Gemini 3 Pro / Flash for multimodal reasoning, image understanding, and long context.',
@@ -3466,14 +3478,29 @@ loadTasks = async function() {
 };
 
 // ─── Sessions Panel ───
+// ─── Model names (single source of truth for display) ───
+const MODEL_DISPLAY_NAMES = [
+  ['claude-opus-4-6', 'Claude Opus 4'],
+  ['claude-sonnet-4-6', 'Claude Sonnet 4'],
+  ['claude-haiku-4-5', 'Claude Haiku 4'],
+  ['gemini-3.1-pro', 'Gemini 3 Pro'],
+  ['gemini-3-pro', 'Gemini 3 Pro'],
+  ['gemini-3.0-flash', 'Gemini 3 Flash'],
+  ['gemini-3-flash', 'Gemini 3 Flash'],
+  ['gpt-5.3-codex', 'GPT-5 Codex'],
+  ['gpt-5.2-codex', 'GPT-5 Codex'],
+  ['gpt-5.3', 'GPT-5'],
+  ['gpt-5.2', 'GPT-5'],
+];
+
 // ─── Model Selector ───
 const MODEL_OPTIONS = [
   { value: 'default', label: tt('Default', '默认'), short: 'default' },
-  { value: 'opus',   label: 'Opus',   full: 'claude-opus-4-6' },
-  { value: 'sonnet', label: 'Sonnet', full: 'claude-sonnet-4-6' },
-  { value: 'flash',  label: 'Flash',  full: 'gemini-3.0-flash' },
-  { value: 'pro',    label: 'Pro',    full: 'gemini-3.1-pro' },
-  { value: 'codex',  label: 'Codex',  full: 'gpt-5.3-codex' },
+  { value: 'opus',   label: 'Claude Opus 4',   full: 'claude-opus-4-6' },
+  { value: 'sonnet', label: 'Claude Sonnet 4', full: 'claude-sonnet-4-6' },
+  { value: 'flash',  label: 'Gemini 3 Flash',  full: 'gemini-3.0-flash' },
+  { value: 'pro',    label: 'Gemini 3 Pro',    full: 'gemini-3.1-pro' },
+  { value: 'codex',  label: 'GPT-5 Codex',     full: 'gpt-5.3-codex' },
 ];
 
 function buildModelSelect(currentModel, id, type) {
@@ -3785,11 +3812,11 @@ async function loadAudit() {
     for (const s of sessions) {
       // Expensive model with high idle rate
       if (s.model?.includes('opus') && s.today.noReplyRate > 40 && s.today.messages > 3) {
-        recommendations.push({ severity: 'high', session: s.displayName, msg: `Using Opus but ${s.today.noReplyRate}% idle → switch to Sonnet (save ~$${(s.today.cost * 0.8).toFixed(0)}/day)`, model: s.model });
+        recommendations.push({ severity: 'high', session: s.displayName, msg: `Using Claude Opus 4 but ${s.today.noReplyRate}% idle → switch to Claude Sonnet 4 (save ~$${(s.today.cost * 0.8).toFixed(0)}/day)`, model: s.model });
       }
       // Opus for simple channel
       if (s.model?.includes('opus') && s.today.effectiveMessages < 5 && s.today.cost > 1) {
-        recommendations.push({ severity: 'medium', session: s.displayName, msg: `Opus overkill — only ${s.today.effectiveMessages} effective msgs, costing $${s.today.cost.toFixed(2)}`, model: s.model });
+        recommendations.push({ severity: 'medium', session: s.displayName, msg: `Claude Opus 4 overkill — only ${s.today.effectiveMessages} effective msgs, costing $${s.today.cost.toFixed(2)}`, model: s.model });
       }
       // No thinking level set
       if (s.thinkingLevel === '—' && s.today.messages > 0) {
@@ -3975,10 +4002,9 @@ async function loadCronEnhanced() {
 
 // ─── Ops Channel Usage Panel ───
 const MODEL_COLORS = {
-  'claude-opus-4-6': '#c084fc', 'claude-sonnet-4-6': '#818cf8',
-  'gpt-5.2-codex': '#34d399', 'gpt-5.2': '#6ee7b7',
-  'gemini-3-pro': '#fbbf24', 'gemini-3-flash': '#fcd34d',
-  'gemini-3-pro-preview': '#fbbf24', 'gemini-3-flash-preview': '#fcd34d',
+  'claude-opus-4-6': '#c084fc', 'claude-sonnet-4-6': '#818cf8', 'claude-haiku-4-5': '#a5b4fc',
+  'gpt-5.2-codex': '#34d399', 'gpt-5.3-codex': '#34d399', 'gpt-5.2': '#6ee7b7', 'gpt-5.3': '#6ee7b7',
+  'gemini-3.1-pro': '#fbbf24', 'gemini-3-pro': '#fbbf24', 'gemini-3.0-flash': '#fcd34d', 'gemini-3-flash': '#fcd34d',
 };
 
 function getModelColor(model) {
@@ -3987,13 +4013,10 @@ function getModelColor(model) {
 }
 
 function shortModel(m) {
-  return (m || 'unknown')
-    .replace(/-preview$/, '')
-    .replace('claude-', '')
-    .replace('gemini-3-pro', 'Gemini-3-Pro')
-    .replace('gemini-3-flash', 'Gemini-3-Flash')
-    .replace('gpt-5.3-', 'gpt-')
-    .replace('gpt-5.2-', 'gpt-');
+  const raw = (m || '').replace(/-preview$/, '');
+  if (!raw || raw === 'unknown') return 'unknown';
+  const pair = MODEL_DISPLAY_NAMES.find(([pattern]) => raw.includes(pattern));
+  return pair ? pair[1] : raw.replace(/^[^/]+\//, '').replace(/-/g, ' '); // fallback: strip provider prefix, dashes to spaces
 }
 
 function fmtTokens(n) {
@@ -4824,8 +4847,10 @@ document.addEventListener('keydown', e => {
 // ═══ INIT ═══
 applyLanguageUI();
 checkConnection();
-refreshCapabilities();
-loadSessions(); // Load sessions tab (default)
+(async () => {
+  await refreshCapabilities();
+  loadSessions(); // Load sessions tab (default) after caps so model selects render enabled when allowed
+})();
 loadAgentMonitor();
 pollWatchdogStatus();
 startLivePolling(); // Auto-poll tasks every 3s for live updates
