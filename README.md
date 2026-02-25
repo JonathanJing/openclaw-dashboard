@@ -1,52 +1,96 @@
 # OpenClaw Dashboard
 
-OpenClaw Dashboard is a unified administrative interface for monitoring and managing your OpenClaw ecosystem. It provides a real-time, bilingual (EN/ZH) control plane for costs, sessions, automation, and system reliability.
+A single-file, zero-dependency web dashboard for monitoring and managing your [OpenClaw](https://github.com/openclaw/openclaw) personal AI agent.
 
-## Overview & Tabs
+Built as one HTML file + one Node.js API server. No build step. No frameworks. Just open and go.
 
-The dashboard is organized into five primary functional areas:
+## Features
 
-### 1. Overview
-The command center for your OpenClaw instance.
-- **Summary Cards**: Real-time snapshots of Today's Cost, Token Usage, Active Cron Jobs, and Active Sessions.
-- **Model Mix**: Visual distribution of model usage (Opus/Sonnet/Flash) across your workspace.
-- **System Stats**: Live hardware telemetry including CPU Load, RAM utilization, Disk usage, and Node.js versioning.
-- **Session Matrix**: Detailed breakdown of active channels, assigned tasks, and "Fit" scores (Model alignment with task complexity).
+### 📊 Overview
+Real-time session monitoring across all channels. See token usage, cost, model allocation, and "Fit" scores that flag model/task mismatches. Inline model selectors let you switch models per-channel without touching config files.
 
-### 2. Cost Analysis
-Deep-dive into financial metrics and token economics.
-- **Usage Breakdown**: Detailed tables showing messages, tokens, and estimated costs per channel and model.
-- **Historical Trends**: 14-day rolling charts for daily token volume and model-specific cost distribution.
-- **Cost Heatmap**: A Model × Day matrix to identify high-cost peaks and optimization opportunities.
-- **All-Time Metrics**: Cumulative stats for long-term budget tracking.
+![Overview](screenshots/overview.png)
 
-### 3. Cron Monitoring
-The central hub for OpenClaw's 18+ automated tasks.
-- **Task Timeline**: A visual log of today's cron runs with success/failure status and execution duration.
-- **Management Suite**: Enable/Disable tasks, trigger manual runs, and inspect specific cron configurations.
-- **Cost Profiling**: Analysis of Fixed vs. Variable costs for automated background intelligence.
+### 💰 Cost
+Today's per-channel breakdown with model distribution bars. All-time usage with daily token/cost trend charts and a cost heatmap for anomaly detection. Per-provider cache-aware pricing with automatic cost estimation.
 
-### 4. Health & Operations
-Infrastructure monitoring and platform maintenance.
-- **Watchdog Status**: Integration with the OpenClaw Watchdog system, showing runtime health, outages, and recovery logs.
-- **System Management**: Direct access to restart the OpenClaw gateway and perform system-wide updates.
-- **Audit Logs**: Access to operational logs and quality assessment reports (identifying cost-inefficient model use).
+![Cost](screenshots/ops.png)
 
-### 5. Configuration & Files
-Direct management of the OpenClaw personality and system settings.
-- **Config Viewer**: Inspect `openclaw.json`, `keys.env`, and other core system files.
-- **Personality Management**: View and edit the primary agent files (SOUL, IDENTITY, AGENTS.md, MEMORY.md, TOOLS.md).
-- **Workspace Explorer**: Browse and edit local workspace files directly through the web interface.
+### ⏰ Cron
+Manage 20+ cron jobs from one panel. See status, schedule, model, last run time. Inline model selectors for cost optimization. Cron Cost Analysis breaks down per-job costs with fixed vs. variable trend charts.
 
-## Tech Stack
-- **Backend**: Node.js (`api-server.js`) with native module dependencies.
-- **Frontend**: Single-file Vanilla JS + Tailwind CSS + Canvas (Chart.js-like visualizations).
-- **Security**: Bearer Token authentication with secure session persistence.
+![Cron](screenshots/tasks.png)
 
-## Installation & Usage
-1. Run `./start.sh` to initialize the dashboard server.
-2. Visit `http://127.0.0.1:18793` in your browser.
-3. Authenticate using your provided `AUTH_TOKEN`.
+### 🏥 Health
+Three sub-panels in one tab:
+- **Watchdog** — Gateway uptime timeline with gradient visualization, event filtering, and critical-only mode
+- **Quality** — Per-channel silence rates (NO_REPLY + HEARTBEAT_OK) to identify wasteful model assignments
+- **Audit** — Model-channel optimization suggestions and system information
 
----
-*Last Updated: 2026-02-25 (Post-Refactor Pipeline v2)*
+![Health](screenshots/health.png)
+
+### ⚙️ Config
+- **Configuration viewer** — Browse openclaw.json, keys.env, SOUL.md with key masking
+- **Document editor** — View and edit workspace files with Markdown preview
+
+![Config](screenshots/config.png)
+
+## Quick Start
+
+```bash
+# Clone
+git clone https://github.com/JonathanJing/openclaw-dashboard.git
+cd openclaw-dashboard
+
+# Configure
+cp .env.example .env  # Edit with your OpenClaw auth token
+
+# Run
+node api-server.js
+# → http://localhost:18791
+```
+
+### Environment Variables
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `OPENCLAW_AUTH_TOKEN` | Yes | Your OpenClaw gateway auth token |
+| `DASHBOARD_PORT` | No | Port (default: 18791) |
+| `OPENCLAW_WORKSPACE` | No | Workspace path (default: `~/.openclaw/workspace`) |
+| `OPENCLAW_ENABLE_MUTATING_OPS` | No | Enable restart/backup/update buttons |
+
+## Architecture
+
+```
+agent-dashboard.html  ← Single-file frontend (~3800 lines, inline CSS/JS)
+api-server.js         ← Node.js HTTP server (~2700 lines, zero dependencies)
+```
+
+- **Zero dependencies** — Uses only Node.js built-in modules (`http`, `fs`, `child_process`)
+- **Security** — Token auth, CORS loopback-only, `execFileSync` (no shell injection), mutating ops guard
+- **i18n** — Full English/Chinese toggle with `localStorage` persistence
+- **Single-file philosophy** — No build step, no bundler, no framework. Copy two files and run.
+
+## API Endpoints
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /health` | Health check (no auth) |
+| `GET /ops/sessions` | Channel session details with token/cost |
+| `GET /ops/channels` | Today's per-channel usage |
+| `GET /ops/alltime` | Historical usage trends |
+| `GET /ops/cron-costs` | Per-cron cost analysis |
+| `GET /ops/watchdog` | Gateway watchdog status |
+| `GET /ops/models` | Model config and pricing |
+| `GET /ops/config` | Configuration files (masked) |
+| `GET /ops/system` | System info (hardware, disk, memory) |
+| `POST /ops/session-model` | Change channel model |
+| `POST /ops/cron-model` | Change cron job model |
+| `GET /cron` | Cron job management |
+| `GET /agents` | Active session monitor |
+| `GET /files` | Workspace file browser |
+| `POST /backup` | Git backup + push |
+
+## License
+
+MIT
