@@ -2414,8 +2414,16 @@ function handleOpsCronCosts(req, res, method) {
 function handleOpsModels(req, res, method) {
   if (method !== 'GET') return errorReply(res, 405, 'Method not allowed');
   const models = getOpenClawModelConfig();
+  // Load full registry for frontend (alias → {id, label})
+  let registry = {};
+  try {
+    const raw = fs.readFileSync(MODELS_REGISTRY_PATH, 'utf8');
+    registry = JSON.parse(raw);
+  } catch {}
   return jsonReply(res, 200, {
     activeModels: models,
+    aliases: AVAILABLE_MODELS,      // alias → full id (e.g. flash → google/gemini-3-flash-preview)
+    registry,                        // alias → {id, label} (for frontend dropdowns)
     pricing: MODEL_COSTS_IO,
     updatedAt: new Date().toISOString(),
   });
@@ -2514,14 +2522,48 @@ function handleOpsCron(req, res, method) {
   });
 }
 
+// ─── Model Registry ─── single source of truth: models-registry.json
+// To add/rename a model: edit models-registry.json only — no code changes needed.
+const MODELS_REGISTRY_PATH = path.join(__dirname, 'models-registry.json');
+const MODEL_ID_RE = /^[a-zA-Z0-9_-]+\/[a-zA-Z0-9._:+/-]+$/; // must be provider/model
+
+function loadModelsRegistry() {
+  try {
+    const raw = fs.readFileSync(MODELS_REGISTRY_PATH, 'utf8');
+    const reg = JSON.parse(raw);
+    const out = {};
+    for (const [alias, entry] of Object.entries(reg)) {
+      const id = typeof entry === 'string' ? entry : entry?.id;
+      if (!id) { console.warn(`[models-registry] alias "${alias}" has no id — skipped`); continue; }
+      if (!MODEL_ID_RE.test(id)) {
+        console.warn(`[models-registry] alias "${alias}" id "${id}" is not provider/model format — skipped`);
+        continue;
+      }
+      out[alias] = id;
+    }
+    return out;
+  } catch (e) {
+    console.warn('[models-registry] failed to load models-registry.json:', e.message, '— using built-in fallback');
+    return {
+      opus:   'anthropic/claude-opus-4-6',
+      sonnet: 'anthropic/claude-sonnet-4-6',
+      flash:  'google/gemini-3-flash-preview',
+      pro:    'google/gemini-3-pro-preview',
+      codex:  'openai/gpt-5.3-codex',
+    };
+  }
+}
+
+// Validate that a model identifier is safe to write to cron/session store.
+function validateModelId(id) {
+  if (!id || typeof id !== 'string') return { ok: false, reason: 'empty model id' };
+  if (!MODEL_ID_RE.test(id)) return { ok: false, reason: `"${id}" is not provider/model format (e.g. anthropic/claude-sonnet-4-6)` };
+  return { ok: true };
+}
+
+const AVAILABLE_MODELS = loadModelsRegistry();
+
 // ─── POST /ops/session-model ─── Set per-channel model on active sessions
-const AVAILABLE_MODELS = {
-  'opus':    'anthropic/claude-opus-4-6',
-  'sonnet':  'anthropic/claude-sonnet-4-6',
-  'flash':   'google/gemini-3-flash-preview',
-  'pro':     'google/gemini-3-pro-preview',
-  'codex':   'openai/gpt-5.3-codex',
-};
 const SESSION_MODEL_DEFAULTS_PATH = path.join(__dirname, 'ops-session-model-defaults.json');
 
 function loadSessionModelDefaults() {
@@ -2576,7 +2618,11 @@ function handleOpsSessionModel(req, res, method) {
     if (!channelId) return errorReply(res, 400, 'channelId required');
     if (!model) return errorReply(res, 400, 'model required');
 
-    const fullModel = AVAILABLE_MODELS[model] || model;
+    const fullModel = model === 'default' ? 'default' : (AVAILABLE_MODELS[model] || model);
+    if (fullModel !== 'default') {
+      const v = validateModelId(fullModel);
+      if (!v.ok) return errorReply(res, 400, `Invalid model: ${v.reason}`);
+    }
 
     // Persist per-channel defaults in dashboard-owned file (not openclaw.json).
     let defaults;
@@ -2643,7 +2689,11 @@ function handleOpsCronModel(req, res, method) {
     if (!jobId) return errorReply(res, 400, 'jobId required');
     if (!model) return errorReply(res, 400, 'model required');
 
-    const fullModel = AVAILABLE_MODELS[model] || model;
+    const fullModel = model === 'default' ? 'default' : (AVAILABLE_MODELS[model] || model);
+    if (fullModel !== 'default') {
+      const v = validateModelId(fullModel);
+      if (!v.ok) return errorReply(res, 400, `Invalid model: ${v.reason}`);
+    }
 
     let store;
     try { store = JSON.parse(fs.readFileSync(CRON_STORE_PATH, 'utf8')); }
@@ -2835,6 +2885,56 @@ server.on('error', (e) => {
   console.error('Server error:', e);
   process.exit(1);
 });
+
+// ─── Startup: model registry validation + stale-alias migration ───
+(function startupModelCheck() {
+  // 1. Validate registry on load
+  const aliases = Object.entries(AVAILABLE_MODELS);
+  let bad = 0;
+  for (const [alias, id] of aliases) {
+    if (!MODEL_ID_RE.test(id)) {
+      console.warn(`[startup] WARN model alias "${alias}" → "${id}" is not provider/model format`);
+      bad++;
+    }
+  }
+  if (bad === 0) console.log(`[startup] models-registry OK: ${aliases.length} aliases loaded`);
+
+  // 2. Build reverse map: old wrong id → canonical id
+  // Covers known migration: gemini-3.0-flash → gemini-3-flash-preview
+  const LEGACY_IDS = {
+    'google/gemini-3.0-flash':  'google/gemini-3-flash-preview',
+    'google/gemini-3.1-pro':    'google/gemini-3-pro-preview',
+  };
+
+  // 3. Fix stale session defaults
+  try {
+    const defaults = loadSessionModelDefaults();
+    let changed = 0;
+    for (const [ch, id] of Object.entries(defaults)) {
+      if (LEGACY_IDS[id]) {
+        defaults[ch] = LEGACY_IDS[id];
+        changed++;
+        console.log(`[startup] migrated session default [${ch}]: ${id} → ${LEGACY_IDS[id]}`);
+      }
+    }
+    if (changed > 0) saveSessionModelDefaults(defaults);
+  } catch {}
+
+  // 4. Fix stale cron job models
+  try {
+    const store = JSON.parse(fs.readFileSync(CRON_STORE_PATH, 'utf8'));
+    let changed = 0;
+    for (const job of (store.jobs || [])) {
+      const m = job?.payload?.model;
+      if (m && LEGACY_IDS[m]) {
+        console.log(`[startup] migrated cron [${job.name}] model: ${m} → ${LEGACY_IDS[m]}`);
+        job.payload.model = LEGACY_IDS[m];
+        changed++;
+      }
+    }
+    if (changed > 0) fs.writeFileSync(CRON_STORE_PATH, JSON.stringify(store, null, 2), 'utf8');
+  } catch {}
+})();
 
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`Agent Dashboard API server listening on port ${PORT}`);
