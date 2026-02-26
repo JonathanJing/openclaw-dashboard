@@ -2321,6 +2321,11 @@ async function loadAgentMonitor() {
 }
 
 function loadSystemInfo() {
+  // Refresh model options from server registry (models-registry.json)
+  apiFetch('/ops/models').then(data => {
+    if (data.registry) refreshModelOptions(data.registry);
+  }).catch(() => {});
+
   apiFetch('/ops/system').then(sys => {
     // Update global default model from live config
     if (sys.models?.primary) {
@@ -2530,7 +2535,9 @@ const MODEL_DISPLAY_NAMES = [
 // ─── Model Selector ───
 let globalDefaultModel = 'claude-sonnet-4-6'; // updated dynamically from /ops/system
 
-const MODEL_OPTIONS = [
+// Starts with hardcoded defaults; refreshed from /ops/models on load.
+// To update model names/ids: edit models-registry.json on the server — no code change needed.
+let MODEL_OPTIONS = [
   { value: 'default', label: '', full: null, isDefault: true },
   { value: 'opus',   label: 'Claude Opus 4',   full: 'claude-opus-4-6' },
   { value: 'sonnet', label: 'Claude Sonnet 4', full: 'claude-sonnet-4-6' },
@@ -2538,6 +2545,17 @@ const MODEL_OPTIONS = [
   { value: 'pro',    label: 'Gemini 3 Pro',     full: 'gemini-3-pro-preview' },
   { value: 'codex',  label: 'GPT-5.3 Codex',   full: 'gpt-5.3-codex' },
 ];
+
+function refreshModelOptions(registry) {
+  if (!registry || typeof registry !== 'object') return;
+  const opts = [{ value: 'default', label: '', full: null, isDefault: true }];
+  for (const [alias, entry] of Object.entries(registry)) {
+    const id = typeof entry === 'string' ? entry : entry?.id;
+    const label = (typeof entry === 'object' && entry?.label) ? entry.label : alias;
+    if (id) opts.push({ value: alias, label, full: id.includes('/') ? id.split('/').pop() : id });
+  }
+  MODEL_OPTIONS = opts;
+}
 
 function getDefaultModelLabel() {
   // Show actual model name instead of "默认"
