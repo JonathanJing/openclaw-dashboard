@@ -9,8 +9,8 @@
 <meta property="og:title" content="OpenClaw Server Monitor">
 <meta property="og:description" content="Real-time server monitoring dashboard for OpenClaw with CPU, memory, disk, and network metrics.">
 <meta property="og:type" content="website">
-<meta property="og:url" content="https://github.com/karem505/openclaw-agent-dashboard">
-<meta property="og:image" content="https://raw.githubusercontent.com/karem505/openclaw-agent-dashboard/main/screenshots/server-monitor.png">
+<meta property="og:url" content="https://github.com/JonathanJing/openclaw-dashboard">
+<meta property="og:image" content="https://raw.githubusercontent.com/JonathanJing/openclaw-dashboard/main/screenshots/tasks-kanban.png">
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Space+Mono:wght@400;700&display=swap');
   *{margin:0;padding:0;box-sizing:border-box}
@@ -165,16 +165,25 @@
 
 <script>
 const TOKEN = new URLSearchParams(location.search).get('token') || localStorage.getItem('openclaw_token') || '';
-if (TOKEN) localStorage.setItem('openclaw_token', TOKEN);
+if (TOKEN) {
+  localStorage.setItem('openclaw_token', TOKEN);
+  try {
+    const clean = `${location.origin}${location.pathname}${location.hash || ''}`;
+    history.replaceState(null, '', clean);
+  } catch {}
+}
 const API = (location.port === '18789' || location.port === '18790')
-  ? `${location.protocol}//${location.hostname}:18790/metrics?token=${TOKEN}`
-  : `/metrics?token=${TOKEN}`;
+  ? `${location.protocol}//${location.hostname}:18790/metrics`
+  : `/metrics`;
 
 let cpuHistory = [], memHistory = [];
 
 async function fetchMetrics() {
   try {
-    const r = await fetch(API);
+    const r = await fetch(API, {
+      credentials: 'same-origin',
+      headers: TOKEN ? { Authorization: `Bearer ${TOKEN}` } : {}
+    });
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const d = await r.json();
     update(d);
@@ -314,8 +323,8 @@ fetchMetrics();
 setInterval(fetchMetrics, 5000);
 </script>
 <footer style="text-align:center;padding:24px 0 16px;color:#8b949e;font-size:0.85rem;font-family:'Outfit',sans-serif;">
-  Built by <a href="https://abo-elmakarem.netlify.app" target="_blank" style="color:#7c5cfc;text-decoration:none;">Abo-Elmakarem Shohoud</a> ·
-  <a href="https://github.com/karem505/openclaw-agent-dashboard" target="_blank" style="color:#8b949e;text-decoration:none;">GitHub</a>
+  Built for OpenClaw Dashboard ·
+  <a href="https://github.com/JonathanJing/openclaw-dashboard" target="_blank" style="color:#8b949e;text-decoration:none;">GitHub</a>
 </footer>
 </body>
 </html>

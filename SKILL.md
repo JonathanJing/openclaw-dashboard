@@ -1,7 +1,7 @@
 ---
 name: openclaw-dashboard
 description: Builds and maintains the public OpenClaw dashboard repository with sanitization-first rules. Use when adding features, adjusting `api-server.js` routes, changing `agent-dashboard.html`, or preparing public-safe docs and configuration.
-version: "1.0.9"
+version: "1.0.5"
 metadata:
   {
     "openclaw":
@@ -39,46 +39,7 @@ metadata:
   }
 ---
 
-# OpenClaw Dashboard
-
-A mobile-friendly operational dashboard for OpenClaw agents.
-
-## Quick Start (ClawHub Install)
-
-1. Install: `clawhub install openclaw-dashboard`
-2. Navigate: `cd ~/.openclaw/workspace/skills/openclaw-dashboard`
-3. Copy config: `cp .env.example .env` (edit as needed)
-4. Start: `node api-server.js`
-5. Open: http://localhost:18791
-
-## Configuration
-
-| Env Variable | Default | Description |
-|---|---|---|
-| `OPENCLAW_AUTH_TOKEN` | (none) | Access token. If unset, open on localhost |
-| `DASHBOARD_PORT` | 18791 | Server port |
-| `DASHBOARD_HOST` | 127.0.0.1 | Bind address |
-| `DASHBOARD_TITLE` | OpenClaw Dashboard | Browser tab title |
-
-## Authentication
-
-- **No token set**: Dashboard is accessible without auth on localhost
-- **Token set**: Access via `http://localhost:18791/login` or append `?token=yourtoken`
-
-## Verify It Works
-
-```bash
-curl http://localhost:18791/health
-```
-
-## Prerequisites
-
-- Node.js 20+
-- OpenClaw running on the same machine
-
----
-
-## For Contributors
+# OpenClaw Dashboard Skill
 
 ## Mission
 

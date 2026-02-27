@@ -3,9 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>OpenClaw Dashboard</title>
+<title>Jony's OpenClaw Dashboard</title>
 <link rel="icon" href="/icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" sizes="180x180" href="/icon-180.png">
+<link rel="manifest" href="/manifest.json">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -48,11 +49,9 @@ header{display:flex;align-items:center;justify-content:space-between;padding:16p
 @keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(45,212,160,0.4)}50%{box-shadow:0 0 0 6px rgba(45,212,160,0)}}
 @keyframes pulse-red{0%,100%{box-shadow:0 0 0 0 rgba(248,81,73,0.4)}50%{box-shadow:0 0 0 6px rgba(248,81,73,0)}}
 .header-right{display:flex;align-items:center;gap:12px;font-size:.85rem;color:var(--text2)}
-.back-link,.refresh-btn,.lang-btn{color:var(--accent);text-decoration:none;font-size:.85rem;border:1px solid var(--border);padding:6px 14px;border-radius:999px;transition:all .2s;background:transparent;cursor:pointer;font-family:var(--font)}
-.back-link:hover,.refresh-btn:hover,.lang-btn:hover{background:var(--glow);border-color:var(--accent)}
+.back-link,.refresh-btn{color:var(--accent);text-decoration:none;font-size:.85rem;border:1px solid var(--border);padding:6px 14px;border-radius:999px;transition:all .2s;background:transparent;cursor:pointer;font-family:var(--font)}
+.back-link:hover,.refresh-btn:hover{background:var(--glow);border-color:var(--accent)}
 .refresh-btn svg{vertical-align:middle}
-.lang-btn{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;color:var(--text2)}
-.lang-btn.active{color:var(--accent);border-color:var(--accent)}
 
 /* ─── Tab Bar ─── */
 .tab-bar{display:flex;gap:4px;background:var(--glass);backdrop-filter:blur(16px);border:1px solid var(--border);border-radius:14px;padding:4px;margin-bottom:24px;width:fit-content}
@@ -338,6 +337,11 @@ header{display:flex;align-items:center;justify-content:space-between;padding:16p
 .timeline-dot.fail{background:var(--red)}
 .timeline-dot.run{background:var(--yellow)}
 .timeline-right{font-size:.78rem;color:var(--text2);text-align:right;white-space:nowrap}
+.vision-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+.vision-card{padding:12px;border:1px solid var(--border);border-radius:12px;background:var(--card)}
+.vision-label{font-size:.78rem;color:var(--text2);margin-bottom:6px}
+.vision-count{font-size:1.4rem;font-weight:700}
+.vision-sub{font-size:.72rem;color:var(--text2);margin-top:4px}
 
 /* ─── Ops Channel Usage ─── */
 .ops-channel-list{display:flex;flex-direction:column;gap:8px}
@@ -431,6 +435,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:16p
 @media(max-width:768px){
   .ops-mgmt-grid{grid-template-columns:1fr}
   .ops-grid{grid-template-columns:1fr}
+  .vision-grid{grid-template-columns:1fr 1fr}
 
   body{padding-bottom:calc(64px + env(safe-area-inset-bottom))}
   header{flex-direction:column;gap:8px;text-align:center;padding:calc(12px + env(safe-area-inset-top)) 0 16px}
@@ -521,6 +526,43 @@ header{display:flex;align-items:center;justify-content:space-between;padding:16p
 .detail-actions{display:flex;gap:8px;padding:16px 28px;border-top:1px solid var(--border);background:var(--bg2);flex-wrap:wrap}
 .detail-actions .action-btn{padding:8px 18px;font-size:.82rem}
 
+/* ─── Connected APIs Grid ─── */
+.apis-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px;margin-top:12px}
+.api-card{padding:20px;cursor:default;transition:all .3s}
+.api-card::before{background:linear-gradient(180deg,var(--accent),var(--green))}
+.api-card:hover{transform:translateY(-3px);box-shadow:0 12px 40px rgba(124,92,252,0.12)}
+.api-card-header{display:flex;align-items:center;gap:14px;margin-bottom:14px}
+.api-icon{width:48px;height:48px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:1.5rem;flex-shrink:0;border:1px solid var(--border);background:var(--bg)}
+.api-icon.telegram{background:linear-gradient(135deg,#2AABEE,#229ED9);border:none;color:#fff}
+.api-icon.google{background:linear-gradient(135deg,#4285F4,#34A853);border:none;color:#fff}
+.api-icon.notion{background:#000;border:none;color:#fff}
+.api-icon.brevo{background:linear-gradient(135deg,#0092FF,#004DFF);border:none;color:#fff}
+.api-icon.email{background:linear-gradient(135deg,#EA4335,#FBBC05);border:none;color:#fff}
+.api-icon.whisper{background:linear-gradient(135deg,#10a37f,#1a7f64);border:none;color:#fff}
+.api-icon.tavily{background:linear-gradient(135deg,#6366F1,#8B5CF6);border:none;color:#fff}
+.api-icon.brave{background:linear-gradient(135deg,#FB542B,#FF7654);border:none;color:#fff}
+.api-icon.imagen{background:linear-gradient(135deg,#4285F4,#DB4437,#F4B400,#0F9D58);border:none;color:#fff}
+.api-icon.meta{background:linear-gradient(135deg,#0081FB,#0064E0,#0082FB);border:none;color:#fff}
+.api-icon.openclaw{background:linear-gradient(135deg,var(--accent),var(--accent2));border:none;color:#fff}
+.api-card-info{flex:1;min-width:0}
+.api-card-name{font-weight:700;font-size:1rem;margin-bottom:2px;display:flex;align-items:center;gap:8px}
+.api-card-name .api-status{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.api-card-name .api-status.connected{background:var(--green);box-shadow:0 0 6px rgba(45,212,160,0.4)}
+.api-card-name .api-status.disconnected{background:var(--red);box-shadow:0 0 6px rgba(248,81,73,0.4)}
+.api-card-name .api-status.partial{background:var(--yellow);box-shadow:0 0 6px rgba(245,166,35,0.4)}
+.api-card-provider{font-size:.78rem;color:var(--text2)}
+.api-card-desc{font-size:.82rem;color:var(--text2);line-height:1.5;margin-bottom:14px}
+.api-capabilities{display:flex;flex-wrap:wrap;gap:6px}
+.api-cap{display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border-radius:8px;font-size:.7rem;font-weight:500;background:rgba(124,92,252,0.08);color:var(--accent2);border:1px solid rgba(124,92,252,0.12);letter-spacing:.3px}
+.api-cap svg{width:12px;height:12px;opacity:.7}
+.api-cap.messaging{background:rgba(88,166,255,0.08);color:var(--blue);border-color:rgba(88,166,255,0.15)}
+.api-cap.data{background:rgba(45,212,160,0.08);color:var(--green);border-color:rgba(45,212,160,0.15)}
+.api-cap.ai{background:rgba(167,139,250,0.08);color:var(--accent2);border-color:rgba(167,139,250,0.15)}
+.api-cap.search{background:rgba(248,166,35,0.08);color:var(--yellow);border-color:rgba(248,166,35,0.15)}
+.apis-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:20px}
+.api-stat-card{background:var(--glass);backdrop-filter:blur(16px);border:1px solid var(--border);border-radius:14px;padding:16px 20px;text-align:center}
+.api-stat-value{font-size:1.8rem;font-weight:800;background:linear-gradient(135deg,var(--accent),var(--green));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.api-stat-label{font-size:.75rem;color:var(--text2);text-transform:uppercase;letter-spacing:1px;margin-top:4px}
 
 /* ─── Agent Monitor Bar ─── */
 .agent-monitor{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:24px}
@@ -578,7 +620,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:16p
   .agent-stat-value{font-size:1.6rem}
   .agent-stat{padding:12px 14px}
   .agent-session-tokens,.agent-session-label{display:none}
-  /* Mobile: hide 任务(2), Tokens(5); keep 频道/模型/消息/花费/$/条/匹配 */
+  /* Mobile: hide Task col(2), Tokens(5); keep Channel/Model/Messages/Cost/$/Msg/Fit */
   .sessions-table th:nth-child(2),.sessions-table td:nth-child(2),
   .sessions-table th:nth-child(5),.sessions-table td:nth-child(5){display:none}
   .sessions-table{font-size:.72rem}
@@ -670,9 +712,96 @@ header{display:flex;align-items:center;justify-content:space-between;padding:16p
 .detail-content-empty{text-align:center;padding:30px 20px;color:var(--text2);font-size:.84rem}
 .detail-content-empty svg{width:40px;height:40px;opacity:.3;margin-bottom:8px;display:block;margin:0 auto 8px}
 
+/* ─── Parallel Execution Panel ─── */
+.parallel-panel{background:var(--glass);backdrop-filter:blur(16px);border:1px solid rgba(124,92,252,0.25);border-radius:16px;margin-bottom:20px;overflow:hidden;animation:fadeIn .3s ease}
+.parallel-header{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid var(--border)}
+.parallel-title{font-size:.85rem;font-weight:700;display:flex;align-items:center;gap:8px;background:linear-gradient(135deg,var(--accent),var(--blue));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.parallel-count{font-size:.72rem;font-family:var(--mono);color:var(--green);background:rgba(45,212,160,0.1);padding:3px 10px;border-radius:999px;border:1px solid rgba(45,212,160,0.2)}
+.parallel-tasks{padding:8px;max-height:300px;overflow-y:auto}
+.parallel-task-row{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;transition:background .2s;font-size:.82rem}
+.parallel-task-row:hover{background:rgba(124,92,252,0.04)}
+.parallel-spinner{width:16px;height:16px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .6s linear infinite;flex-shrink:0}
+.parallel-done-icon{width:16px;height:16px;display:flex;align-items:center;justify-content:center;border-radius:50%;background:var(--green);color:#000;font-size:.6rem;font-weight:700;flex-shrink:0}
+.parallel-fail-icon{width:16px;height:16px;display:flex;align-items:center;justify-content:center;border-radius:50%;background:var(--red);color:#fff;font-size:.6rem;font-weight:700;flex-shrink:0}
+.parallel-task-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text)}
+.parallel-task-time{font-family:var(--mono);font-size:.7rem;color:var(--text2);white-space:nowrap}
+.parallel-task-status{padding:2px 8px;border-radius:999px;font-size:.65rem;font-weight:600;text-transform:uppercase;letter-spacing:.5px}
+.parallel-task-status.running{background:rgba(88,166,255,0.15);color:var(--blue);border:1px solid rgba(88,166,255,0.25)}
+.parallel-task-status.done{background:rgba(45,212,160,0.15);color:var(--green);border:1px solid rgba(45,212,160,0.25)}
+.parallel-task-status.failed{background:rgba(248,81,73,0.15);color:var(--red);border:1px solid rgba(248,81,73,0.25)}
+.parallel-actions{display:flex;gap:8px;padding:10px 18px;border-top:1px solid var(--border)}
+.parallel-clear-btn{padding:5px 14px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text2);font-family:var(--font);font-size:.75rem;cursor:pointer;transition:all .2s}
+.parallel-clear-btn:hover{border-color:var(--accent);color:var(--text)}
+
+/* ─── Task Selection ─── */
+.task-checkbox{width:18px;height:18px;border-radius:6px;border:2px solid var(--border);background:transparent;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .2s;flex-shrink:0;margin-right:4px}
+.task-checkbox:hover{border-color:var(--accent)}
+.task-checkbox.checked{background:var(--accent);border-color:var(--accent)}
+.task-checkbox.checked::after{content:'✓';color:#fff;font-size:.7rem;font-weight:700}
+.batch-bar{display:flex;align-items:center;gap:12px;padding:10px 16px;background:rgba(124,92,252,0.08);border:1px solid rgba(124,92,252,0.2);border-radius:12px;margin-bottom:16px;animation:fadeIn .2s ease}
+.batch-bar-count{font-size:.85rem;font-weight:600;color:var(--accent2)}
+.batch-run-btn{padding:7px 18px;border-radius:8px;border:none;background:linear-gradient(135deg,var(--accent),var(--blue));color:#fff;font-family:var(--font);font-size:.82rem;font-weight:600;cursor:pointer;transition:all .25s;display:flex;align-items:center;gap:6px}
+.batch-run-btn:hover{transform:translateY(-1px);box-shadow:0 4px 16px rgba(124,92,252,0.3)}
+.batch-deselect-btn{padding:6px 14px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text2);font-family:var(--font);font-size:.78rem;cursor:pointer;transition:all .2s}
+.batch-deselect-btn:hover{border-color:var(--accent);color:var(--text)}
+
 /* ─── Spawn button in task actions ─── */
 .spawn-btn{padding:6px 14px;border-radius:8px;border:1px solid rgba(124,92,252,0.3);background:rgba(124,92,252,0.06);color:var(--accent2);font-family:var(--font);font-size:.78rem;cursor:pointer;transition:all .2s;display:flex;align-items:center;gap:4px}
 .spawn-btn:hover{background:rgba(124,92,252,0.15);border-color:var(--accent);transform:translateY(-1px)}
+
+/* ─── Attachments Section ─── */
+.attachments-section{margin-top:20px}
+.attachments-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;margin-top:10px}
+.attachment-card{background:var(--bg);border:1px solid var(--border);border-radius:12px;overflow:hidden;transition:all .2s;position:relative;cursor:pointer}
+.attachment-card:hover{border-color:rgba(124,92,252,0.3);transform:translateY(-2px);box-shadow:0 4px 16px rgba(0,0,0,0.2)}
+.attachment-card .att-preview{width:100%;height:110px;display:flex;align-items:center;justify-content:center;background:var(--bg2);overflow:hidden;position:relative}
+.attachment-card .att-preview img{width:100%;height:100%;object-fit:cover;transition:transform .3s}
+.attachment-card:hover .att-preview img{transform:scale(1.05)}
+.attachment-card .att-preview .att-icon{font-size:2.2rem;opacity:.5}
+.attachment-card .att-info{padding:8px 10px}
+.attachment-card .att-name{font-size:.72rem;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;line-height:1.3}
+.attachment-card .att-size{font-size:.65rem;color:var(--text2);font-family:var(--mono);margin-top:2px}
+.attachment-card .att-delete{position:absolute;top:6px;right:6px;width:22px;height:22px;border-radius:50%;background:rgba(248,81,73,0.85);color:#fff;border:none;font-size:.65rem;cursor:pointer;display:none;align-items:center;justify-content:center;transition:all .15s;z-index:2;line-height:1}
+.attachment-card:hover .att-delete{display:flex}
+.attachment-card .att-delete:hover{background:var(--red);transform:scale(1.1)}
+
+.att-drop-zone{border:2px dashed var(--border);border-radius:14px;padding:24px;text-align:center;cursor:pointer;transition:all .25s;margin-top:12px;position:relative}
+.att-drop-zone:hover,.att-drop-zone.drag-over{border-color:var(--accent);background:rgba(124,92,252,0.04)}
+.att-drop-zone.drag-over{box-shadow:0 0 16px rgba(124,92,252,0.12)}
+.att-drop-zone-icon{font-size:2rem;opacity:.4;margin-bottom:6px}
+.att-drop-zone-text{font-size:.82rem;color:var(--text2)}
+.att-drop-zone-hint{font-size:.7rem;color:var(--text2);opacity:.5;margin-top:4px}
+.att-drop-zone input[type="file"]{position:absolute;inset:0;opacity:0;cursor:pointer}
+.att-upload-progress{margin-top:8px;display:none}
+.att-upload-bar{height:4px;background:var(--border);border-radius:2px;overflow:hidden}
+.att-upload-bar-fill{height:100%;background:linear-gradient(90deg,var(--accent),var(--green));border-radius:2px;transition:width .3s;width:0%}
+.att-upload-status{font-size:.72rem;color:var(--text2);margin-top:4px;text-align:center}
+/* Create modal attachments */
+.create-att-drop-zone{border:2px dashed var(--border);border-radius:14px;padding:18px;text-align:center;cursor:pointer;transition:all .25s;position:relative}
+.create-att-drop-zone:hover,.create-att-drop-zone.drag-over{border-color:var(--accent);background:rgba(124,92,252,0.04)}
+.create-att-drop-zone.drag-over{box-shadow:0 0 16px rgba(124,92,252,0.12)}
+.create-att-drop-zone input[type="file"]{position:absolute;inset:0;opacity:0;cursor:pointer}
+.create-att-queue{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.create-att-item{display:flex;align-items:center;gap:6px;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:6px 10px;font-size:.75rem;max-width:100%;transition:all .2s}
+.create-att-item:hover{border-color:rgba(124,92,252,0.3)}
+.create-att-item .cai-icon{font-size:1rem;flex-shrink:0}
+.create-att-item .cai-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text);font-weight:500}
+.create-att-item .cai-size{color:var(--text2);font-family:var(--mono);flex-shrink:0;font-size:.68rem}
+.create-att-item .cai-remove{background:none;border:none;color:var(--text2);cursor:pointer;font-size:.9rem;padding:0 2px;border-radius:4px;transition:color .15s;flex-shrink:0;line-height:1}
+.create-att-item .cai-remove:hover{color:var(--red)}
+.create-att-item .cai-thumb{width:32px;height:32px;border-radius:6px;object-fit:cover;flex-shrink:0}
+
+/* ─── Image Lightbox ─── */
+.lightbox-overlay{position:fixed;inset:0;z-index:2000;background:rgba(6,8,14,0.92);backdrop-filter:blur(12px);display:none;align-items:center;justify-content:center;cursor:zoom-out;animation:fadeIn .2s ease}
+.lightbox-overlay.show{display:flex}
+.lightbox-img{max-width:90%;max-height:85vh;border-radius:12px;box-shadow:0 16px 64px rgba(0,0,0,0.6);animation:modalSlideIn .3s ease forwards}
+.lightbox-close{position:fixed;top:20px;right:24px;width:40px;height:40px;border-radius:50%;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.15);color:#fff;font-size:1.2rem;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .2s;z-index:2001}
+.lightbox-close:hover{background:rgba(255,255,255,0.2);transform:scale(1.1)}
+.lightbox-info{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);color:var(--text2);font-size:.82rem;display:flex;align-items:center;gap:12px;background:var(--glass);backdrop-filter:blur(16px);border:1px solid var(--border);border-radius:12px;padding:8px 18px;z-index:2001}
+.lightbox-download{padding:5px 14px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--accent2);font-family:var(--font);font-size:.78rem;cursor:pointer;transition:all .2s;text-decoration:none}
+.lightbox-download:hover{border-color:var(--accent);background:var(--glow);color:var(--text)}
+.att-empty{text-align:center;padding:20px;color:var(--text2);font-size:.82rem;opacity:.6}
+.att-empty svg{width:36px;height:36px;opacity:.25;margin-bottom:6px;display:block;margin:0 auto 6px}
 </style>
 </head>
 <body>
@@ -681,20 +810,16 @@ header{display:flex;align-items:center;justify-content:space-between;padding:16p
   <!-- Header -->
   <header>
     <div>
-      <div class="logo">🦞 OpenClaw Dashboard</div>
+      <div class="logo">🦞 Jony's OpenClaw Dashboard</div>
       <div class="logo-sub">24/7 Online</div>
     </div>
     <div class="header-right">
       <span class="status-dot ok" id="statusDot"></span>
       <span id="statusText">Connecting…</span>
-      <button class="live-indicator active" id="liveIndicator" onclick="toggleLivePolling()" title="Toggle live updates">
+      <button class="live-indicator active" id="liveIndicator" onclick="toggleLivePolling()" title="Auto-refresh every 15s — click to toggle">
         <span class="live-dot"></span> LIVE
       </button>
-      <button class="lang-btn" id="langToggleBtn" onclick="toggleLanguage()" title="Switch language">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
-        <span id="langToggleLabel">EN</span>
-      </button>
-      <button class="refresh-btn" onclick="refreshCurrentTab()" title="Refresh">
+      <button class="refresh-btn" onclick="refreshCurrentTab()" title="Refresh all panels now">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
       </button>
       <a href="/" class="back-link">← Control UI</a>
@@ -745,7 +870,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:16p
         <span class="agent-stat-badge idle" id="totalBadge">—</span>
       </div>
       <div class="agent-stat-value val-purple" id="totalValue">—</div>
-      <div class="agent-stat-label">Model Mix</div>
+      <div class="agent-stat-label">Model Mix (Today)</div>
       <div id="modelMixBars" style="margin-top:8px"></div>
     </div>
   </div>
@@ -757,8 +882,8 @@ header{display:flex;align-items:center;justify-content:space-between;padding:16p
 
   <div id="watchdogGlobalAlert" class="glass-card" style="padding:10px 14px;margin-bottom:12px;border-color:var(--red);display:none">
     <div style="display:flex;justify-content:space-between;gap:10px;align-items:center">
-      <div style="font-size:.8rem;color:#ffb4b4" id="watchdogGlobalText">OpenClaw Watchdog alert</div>
-      <button class="btn-secondary" id="openOpsBtn" style="padding:6px 10px;font-size:.72rem" onclick="focusHealthTab()">Open Health</button>
+      <div style="font-size:.8rem;color:#ffb4b4" id="watchdogGlobalText">OpenClaw watchdog alert</div>
+      <button class="btn-secondary" style="padding:6px 10px;font-size:.72rem" onclick="focusOperationsTab()">Open Operations</button>
     </div>
   </div>
 
@@ -767,7 +892,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:16p
     <div class="agent-sessions-header" onclick="this.classList.toggle('collapsed');this.nextElementSibling.style.maxHeight=this.classList.contains('collapsed')?'0':'400px'">
       <div class="agent-sessions-title">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
-        <span id="cronRunsTitleText">Today's Cron Runs</span>
+        Today's Cron Runs
       </div>
       <span class="agent-sessions-count" id="cronRunsCount">0</span>
     </div>
@@ -776,27 +901,20 @@ header{display:flex;align-items:center;justify-content:space-between;padding:16p
 
   <!-- Tab Bar -->
   <div class="tab-bar">
-    <button class="tab-btn active" data-tab="overview"><span id="tabOverviewLabel">Overview</span></button>
-    <button class="tab-btn" data-tab="ops"><span id="tabCostLabel">Cost</span></button>
-    <button class="tab-btn" data-tab="tasks"><span id="tabCronLabel">Cron</span></button>
-    <button class="tab-btn" data-tab="health"><span id="tabHealthLabel">Health</span></button>
-    <button class="tab-btn" data-tab="config"><span id="tabConfigLabel">Config</span></button>
+    <button class="tab-btn active" data-tab="sessions">Sessions</button>
+    <button class="tab-btn" data-tab="ops">Cost</button>
+    <button class="tab-btn" data-tab="operations">Operations</button>
+    <button class="tab-btn" data-tab="tasks">Cron<span class="badge-count" id="taskCount">0</span></button>
+    <button class="tab-btn" data-tab="quality">Quality</button>
+    <button class="tab-btn" data-tab="audit">Audit</button>
+    <button class="tab-btn" data-tab="config">Config</button>
   </div>
 
-  <!-- ═══ Overview Panel ═══ -->
-  <div class="tab-panel active" id="panel-overview">
+  <!-- ═══ Sessions Panel ═══ -->
+  <div class="tab-panel active" id="panel-sessions">
     <div id="sessionsAlerts" style="margin-bottom:12px"></div>
     <div id="sessionsTable" class="sessions-table-wrap">
       <div class="skeleton skeleton-card"></div>
-    </div>
-    <div class="glass-card" style="padding:16px;margin-top:16px">
-      <div class="card-title">Tasks</div>
-      <div class="card-sub" style="margin-bottom:10px">Basic list view</div>
-      <input type="text" class="search-input" id="taskSearch" placeholder="Search tasks…" style="width:100%;max-width:none;margin-bottom:12px">
-      <div id="taskList" class="task-list">
-        <div class="skeleton skeleton-card"></div>
-        <div class="skeleton skeleton-card"></div>
-      </div>
     </div>
   </div>
 
@@ -845,22 +963,8 @@ header{display:flex;align-items:center;justify-content:space-between;padding:16p
 
   </div>
 
-  <!-- ═══ Health Panel ═══ -->
-  <div class="tab-panel" id="panel-health">
-    <div class="glass-card" style="padding:16px;margin-bottom:16px">
-      <div class="card-title" style="margin-bottom:4px">System Health</div>
-      <div class="card-sub">Watchdog, runtime state, quality and audit</div>
-    </div>
-    <div class="glass-card" style="padding:16px;margin-bottom:16px">
-      <div class="card-title" style="margin-bottom:4px">Quality</div>
-      <div class="card-sub" style="margin-bottom:10px">Session quality and silence ratios</div>
-      <div id="qualityContent"><div class="skeleton skeleton-card"></div></div>
-    </div>
-    <div class="glass-card" style="padding:16px;margin-bottom:16px">
-      <div class="card-title" style="margin-bottom:4px">Audit</div>
-      <div class="card-sub" style="margin-bottom:10px">Model fit suggestions and configuration checks</div>
-      <div id="auditContent2"><div class="skeleton skeleton-card"></div></div>
-    </div>
+  <!-- ═══ Operations Panel ═══ -->
+  <div class="tab-panel" id="panel-operations">
     <div class="glass-card" style="padding:16px">
       <div class="card-title" style="margin-bottom:4px">⚙️ Operations Management</div>
       <div class="card-sub" style="margin-bottom:16px">Backup/restore, restart and safe OpenClaw update workflow</div>
@@ -892,127 +996,77 @@ header{display:flex;align-items:center;justify-content:space-between;padding:16p
     </div>
     <div class="glass-card" style="padding:16px;margin-top:16px">
       <div class="card-title" style="margin-bottom:4px">🐶 Watchdog</div>
-      <div class="card-sub" id="watchdogStatusText">Loading watchdog status...</div>
+      <div class="card-sub" id="watchdogStatusText">Loading watchdog status…</div>
       <div class="ops-ch-meta" id="watchdogStatusMeta" style="margin-top:8px"></div>
-      <div style="margin-top:6px;font-size:.7rem;color:var(--text2)" id="watchdogWindowLabel">Showing last 24h · auto-refresh every 10s</div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px">
+        <select id="watchdogWindowSelect" class="form-input" style="max-width:180px;padding:6px 10px;font-size:.75rem" onchange="setWatchdogWindow(this.value)">
+          <option value="5">Last 5 min</option>
+          <option value="10">Last 10 min</option>
+          <option value="15" selected>Last 15 min</option>
+        </select>
+        <label style="display:flex;align-items:center;gap:6px;font-size:.75rem;color:var(--text2);cursor:pointer">
+          <input type="checkbox" id="watchdogCriticalOnly" onchange="setWatchdogCriticalOnly(this.checked)">
+          Only critical events
+        </label>
+      </div>
       <div id="watchdogTimeline" style="margin-top:10px"></div>
       <div id="watchdogEventsList" class="ops-channel-list" style="margin-top:10px"></div>
     </div>
   </div>
 
+  <!-- ═══ Cron Panel ═══ -->
+  <!-- ═══ Quality Panel ═══ -->
+  <div class="tab-panel" id="panel-quality">
+    <div id="qualityContent"><div class="skeleton skeleton-card"></div></div>
+  </div>
+
+  <!-- ═══ Audit Panel ═══ -->
+  <div class="tab-panel" id="panel-audit">
+    <div id="auditContent2"><div class="skeleton skeleton-card"></div></div>
+  </div>
+
   <!-- ═══ Config Panel ═══ -->
   <div class="tab-panel" id="panel-config">
-    <div class="glass-card" style="padding:16px;margin-bottom:16px">
-      <div class="card-title" style="margin-bottom:4px">Config</div>
-      <div class="card-sub" style="margin-bottom:10px">Server capabilities and loaded configuration files</div>
-      <div id="configContent"><div class="skeleton skeleton-card"></div></div>
-    </div>
-    <div class="glass-card" style="padding:16px">
-      <div class="card-title" style="margin-bottom:4px">Documents</div>
-      <div class="card-sub" style="margin-bottom:12px">Workspace file viewer/editor</div>
-      <div class="docs-layout">
-        <div class="glass-card" style="padding:12px">
-          <div class="file-sidebar-header">Workspace Files</div>
-          <div class="file-sidebar" id="fileSidebar"></div>
-        </div>
-        <div class="editor-area" id="editorArea">
-          <div class="editor-toolbar">
-            <div class="editor-filename" id="editorFilename">Select a file<span>to begin editing</span></div>
-            <button class="edit-toggle-btn" id="editToggleBtn" onclick="toggleEditMode()" style="display:none">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-              <span id="editToggleLabel">Edit</span>
-            </button>
-            <button class="save-btn" id="saveBtn" onclick="saveFile()" disabled style="display:none">Save</button>
-          </div>
-          <div class="md-preview" id="mdPreview">
-            <div class="md-empty-hint">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-              <p>Select a file from the sidebar to view its contents</p>
-            </div>
-          </div>
-          <textarea class="editor-textarea" id="editorTextarea" placeholder="Select a file from the sidebar to view and edit its contents…" disabled style="display:none"></textarea>
-        </div>
-      </div>
-    </div>
+    <div id="configContent"><div class="skeleton skeleton-card"></div></div>
   </div>
 
   <!-- ═══ Cron Panel ═══ -->
   <div class="tab-panel" id="panel-tasks">
+    <div class="ops-grid">
+      <div class="glass-card" style="padding:16px">
+        <div class="card-header">
+          <div>
+            <div class="card-title">Vision Ingestion</div>
+            <div class="card-sub" id="visionStatus">Notion source</div>
+          </div>
+        </div>
+        <div id="visionGrid" class="vision-grid">
+          <div class="skeleton skeleton-card" style="height:80px"></div>
+          <div class="skeleton skeleton-card" style="height:80px"></div>
+          <div class="skeleton skeleton-card" style="height:80px"></div>
+          <div class="skeleton skeleton-card" style="height:80px"></div>
+        </div>
+      </div>
+    </div>
+
     <!-- Cron Cost Analysis -->
     <div class="glass-card" style="padding:16px;margin-top:16px">
-      <div class="card-title" id="cronCostTitle">💰 Cron Cost Analysis</div>
+      <div class="card-title">💰 Cron Cost Analysis</div>
       <div class="card-sub" id="cronCostSummary">Loading...</div>
       <div id="cronCostContent" style="margin-top:12px"></div>
     </div>
 
     <!-- Fixed vs Variable Trend -->
     <div class="glass-card" style="padding:16px;margin-top:12px">
-      <div class="card-title" id="cronTrendTitle">📈 Fixed vs Variable Cost Trend</div>
-      <div class="card-sub" id="cronTrendSub">Cron (fixed) = scheduled jobs · Interactive (variable) = manually triggered chats</div>
+      <div class="card-title">📈 Fixed vs Variable Cost Trend</div>
+      <div class="card-sub">Cron (fixed) = daily automated jobs · Interactive (variable) = human-triggered conversations</div>
       <canvas id="cronTrendChart" height="160" style="width:100%;margin-top:8px"></canvas>
       <div id="cronTrendLegend" style="margin-top:6px;font-size:.72rem;display:flex;gap:16px"></div>
     </div>
   </div>
-</div>
 
-<!-- Task Detail Modal -->
-<div class="modal-overlay detail-modal" id="detailModal">
-  <div class="modal" style="position:relative">
-    <button class="modal-close" onclick="closeDetailModal()">✕</button>
-    <div class="detail-header">
-      <div class="detail-status-row" id="detailStatusRow"></div>
-      <div class="detail-title" id="detailTitle"></div>
-      <div class="detail-meta" id="detailMeta"></div>
-    </div>
-    <div class="detail-body" id="detailBody"></div>
-    <div class="detail-actions" id="detailActions"></div>
-  </div>
-</div>
 
-<!-- Create Task Modal -->
-<div class="modal-overlay" id="createModal">
-  <div class="modal" style="position:relative">
-    <button class="modal-close" onclick="closeCreateModal()">✕</button>
-    <h2>Create Task</h2>
-    <div class="form-group">
-      <label class="form-label">Title</label>
-      <input type="text" class="form-input" id="newTitle" placeholder="Task title…">
-    </div>
-    <div class="form-group">
-      <label class="form-label">Description</label>
-      <textarea class="form-textarea" id="newDesc" placeholder="Short task description…" style="min-height:60px"></textarea>
-    </div>
-    <div class="form-group">
-      <label class="form-label">📝 Content <span style="font-weight:400;text-transform:none;letter-spacing:0;font-size:.72rem;color:var(--text2)">(Markdown supported — use headers, lists, code blocks, tables…)</span></label>
-      <textarea class="form-textarea" id="newContent" placeholder="# Detailed content here…&#10;&#10;Supports **bold**, *italic*, `code`, lists, tables, and more.&#10;&#10;```js&#10;const example = 'code block';&#10;```" style="min-height:160px"></textarea>
-    </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-      <div class="form-group">
-        <label class="form-label">Priority</label>
-        <select class="form-select" id="newPriority">
-          <option value="medium">Medium</option>
-          <option value="high">High</option>
-          <option value="low">Low</option>
-        </select>
-      </div>
-      <div class="form-group">
-        <label class="form-label">Assignee</label>
-        <select class="form-select" id="newAssignee">
-          <option value="main">Main Agent</option>
-          <option value="sub-agent">Sub-Agent</option>
-        </select>
-      </div>
-    </div>
-    <div class="form-group">
-      <label class="form-label">Due Date</label>
-      <input type="date" class="form-input" id="newDueDate">
-    </div>
-    <div class="modal-actions">
-      <button class="action-btn" onclick="closeCreateModal()">Cancel</button>
-      <button class="action-btn primary" id="createTaskBtn" onclick="createTask()">Create Task</button>
-    </div>
-  </div>
-</div>
+
 
 <!-- Toast Container -->
 <div class="toast-container" id="toastContainer"></div>
@@ -1025,7 +1079,13 @@ header{display:flex;align-items:center;justify-content:space-between;padding:16p
 // ─── Auth ───
 function getToken() {
   const p = new URLSearchParams(location.search).get('token');
-  if (p) return p;
+  if (p) {
+    try {
+      const clean = `${location.origin}${location.pathname}${location.hash || ''}`;
+      history.replaceState(null, '', clean);
+    } catch {}
+    return p;
+  }
   try { const s = JSON.parse(localStorage.getItem('openclaw.control.settings.v1') || '{}'); if (s.token) return s.token; } catch(e) {}
   return localStorage.getItem('openclaw_token') || '';
 }
@@ -1033,121 +1093,19 @@ const TOKEN = getToken();
 const API = (location.port === '18789' || location.port === '18790')
   ? `${location.protocol}//${location.hostname}:18790`
   : '';
-const LANG_KEY = 'openclaw.dashboard.lang';
-let currentLang = localStorage.getItem(LANG_KEY) || 'en';
-if (currentLang !== 'en' && currentLang !== 'zh') currentLang = 'en';
-
-function isZh() { return currentLang === 'zh'; }
-function tt(en, zh) { return isZh() ? zh : en; }
-function currentLocale() { return isZh() ? 'zh-CN' : 'en-US'; }
-
-function applyLanguageUI() {
-  const html = document.documentElement;
-  if (html) html.lang = isZh() ? 'zh' : 'en';
-
-  const btn = document.getElementById('langToggleBtn');
-  const label = document.getElementById('langToggleLabel');
-  if (btn) {
-    btn.classList.add('active');
-    btn.title = tt('Switch language', '切换语言');
-  }
-  if (label) label.textContent = isZh() ? '中文' : 'EN';
-
-  const openOpsBtn = document.getElementById('openOpsBtn');
-  if (openOpsBtn) openOpsBtn.textContent = tt('Open Health', '打开健康面板');
-
-  const tabOverviewLabel = document.getElementById('tabOverviewLabel');
-  if (tabOverviewLabel) tabOverviewLabel.textContent = tt('Overview', '总览');
-  const tabCostLabel = document.getElementById('tabCostLabel');
-  if (tabCostLabel) tabCostLabel.textContent = tt('Cost', '成本');
-  const tabCronLabel = document.getElementById('tabCronLabel');
-  if (tabCronLabel) tabCronLabel.textContent = tt('Cron', '定时任务');
-  const tabHealthLabel = document.getElementById('tabHealthLabel');
-  if (tabHealthLabel) tabHealthLabel.textContent = tt('Health', '健康');
-  const tabConfigLabel = document.getElementById('tabConfigLabel');
-  if (tabConfigLabel) tabConfigLabel.textContent = tt('Config', '配置');
-
-  const cronRunsTitle = document.getElementById('cronRunsTitleText');
-  if (cronRunsTitle) cronRunsTitle.textContent = tt("Today's Cron Runs", '今日 Cron 执行记录');
-
-  const wdStatus = document.getElementById('watchdogStatusText');
-  if (wdStatus && !wdStatus.dataset.liveRendered) wdStatus.textContent = tt('Loading watchdog status...', '正在加载看门狗状态...');
-
-  const cronCostTitle = document.getElementById('cronCostTitle');
-  if (cronCostTitle) cronCostTitle.textContent = tt('💰 Cron Cost Analysis', '💰 Cron 成本分析');
-  const cronTrendTitle = document.getElementById('cronTrendTitle');
-  if (cronTrendTitle) cronTrendTitle.textContent = tt('📈 Fixed vs Variable Cost Trend', '📈 固定成本 vs 浮动成本趋势');
-  const cronTrendSub = document.getElementById('cronTrendSub');
-  if (cronTrendSub) cronTrendSub.textContent = tt(
-    'Cron (fixed) = scheduled jobs · Interactive (variable) = manually triggered chats',
-    'Cron（固定）= 每日自动任务 · 交互（浮动）= 人工触发的对话'
-  );
-
-  // Default model label is now dynamic (set by loadSystemInfo)
-}
-
-function toggleLanguage() {
-  currentLang = isZh() ? 'en' : 'zh';
-  localStorage.setItem(LANG_KEY, currentLang);
-  applyLanguageUI();
-  if (_watchdogCache) renderWatchdogStatus(_watchdogCache);
-  loadSessions();
-  loadCronEnhanced();
-  loadCronCosts();
-}
 
 async function apiFetch(path, opts = {}) {
-  const sep = path.includes('?') ? '&' : '?';
-  const url = `${API}${path}${sep}token=${encodeURIComponent(TOKEN)}`;
+  const url = `${API}${path}`;
+  const authHeaders = TOKEN ? { Authorization: `Bearer ${TOKEN}` } : {};
   const res = await fetch(url, {
     ...opts,
-    headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) }
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json', ...authHeaders, ...(opts.headers || {}) }
   });
-  if (!res.ok) {
-    const ct = res.headers.get('content-type') || '';
-    if (ct.includes('json')) {
-      const data = await res.json().catch(() => ({}));
-      const msg = data?.error || data?.message || res.statusText;
-      throw new Error(msg);
-    }
-    throw new Error(`API ${res.status}: ${res.statusText}`);
-  }
+  if (!res.ok) throw new Error(`API ${res.status}: ${res.statusText}`);
   const ct = res.headers.get('content-type') || '';
   if (ct.includes('json')) return res.json();
   return res.text();
-}
-
-const DASHBOARD_CAPS = {
-  mutatingOpsEnabled: false,
-  mutatingOpsLoopbackOnly: true,
-  attachmentFilePathCopyEnabled: false,
-};
-
-function applyCapabilitiesUI() {
-  const mutatingEnabled = !!DASHBOARD_CAPS.mutatingOpsEnabled;
-  ['btnBackup', 'btnRestore', 'btnUpdateOpenClaw'].forEach((id) => {
-    const el = document.getElementById(id);
-    if (!el) return;
-    el.style.display = mutatingEnabled ? '' : 'none';
-  });
-  document.querySelectorAll('.model-select').forEach((el) => {
-    el.disabled = !mutatingEnabled;
-    el.title = mutatingEnabled ? '' : 'Model changes disabled by server policy';
-  });
-}
-
-async function refreshCapabilities() {
-  try {
-    const data = await apiFetch('/ops/config');
-    const caps = data?.capabilities || {};
-    DASHBOARD_CAPS.mutatingOpsEnabled = !!caps.mutatingOpsEnabled;
-    DASHBOARD_CAPS.mutatingOpsLoopbackOnly = caps.mutatingOpsLoopbackOnly !== false;
-    DASHBOARD_CAPS.attachmentFilePathCopyEnabled = !!caps.attachmentFilePathCopyEnabled;
-  } catch {
-    DASHBOARD_CAPS.mutatingOpsEnabled = false;
-    DASHBOARD_CAPS.attachmentFilePathCopyEnabled = false;
-  }
-  applyCapabilitiesUI();
 }
 
 // ─── Connection Check ───
@@ -1171,288 +1129,141 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
     btn.classList.add('active');
     document.getElementById(`panel-${btn.dataset.tab}`).classList.add('active');
-    if (btn.dataset.tab === 'overview') { loadSessions(); loadTasks(true); }
-    if (btn.dataset.tab === 'tasks') { loadCronEnhanced(); loadCronCosts(); }
+    if (btn.dataset.tab === 'sessions') loadSessions();
+    if (btn.dataset.tab === 'tasks') { loadCronEnhanced(); loadTasks(true); loadCronCosts(); }
     if (btn.dataset.tab === 'ops') { loadOpsChannels(); loadOpsAlltime(); loadOpsAudit(); }
-    if (btn.dataset.tab === 'health') { loadOperationsStatus(); loadQuality(); loadAudit(); }
-    if (btn.dataset.tab === 'config') { loadConfig(); loadFileList(); }
+    if (btn.dataset.tab === 'operations') loadOperationsStatus();
+    if (btn.dataset.tab === 'quality') loadQuality();
+    if (btn.dataset.tab === 'audit') loadAudit();
+    if (btn.dataset.tab === 'config') loadConfig();
   });
 });
 
 let _watchdogCache = null;
+let _watchdogWindowMins = 15;
+let _watchdogCriticalOnly = false;
 
-function focusHealthTab() {
-  const btn = document.querySelector('.tab-btn[data-tab="health"]');
+function focusOperationsTab() {
+  const btn = document.querySelector('.tab-btn[data-tab="operations"]');
   if (btn) btn.click();
+}
+
+function setWatchdogWindow(v) {
+  const n = Number(v);
+  if (Number.isFinite(n)) _watchdogWindowMins = Math.min(Math.max(n, 5), 15);
+  pollWatchdogStatus();
+}
+
+function setWatchdogCriticalOnly(checked) {
+  _watchdogCriticalOnly = !!checked;
+  pollWatchdogStatus();
 }
 
 async function pollWatchdogStatus() {
   try {
-    const data = await apiFetch('/ops/watchdog?limit=200&windowMinutes=1440');
+    const data = await apiFetch(`/ops/watchdog?limit=12&windowMinutes=${_watchdogWindowMins}&criticalOnly=${_watchdogCriticalOnly ? '1' : '0'}`);
     _watchdogCache = data;
     renderWatchdogStatus(data);
   } catch (e) {
     renderWatchdogStatus({
       effectiveStatus: 'unknown',
       runtime: { running: false, checkedAt: new Date().toISOString() },
-      watchdog: null, recentEvents: [], timeline: { points: [] },
+      watchdog: null,
+      recentEvents: [],
+      timeline: { points: [], windowMinutes: _watchdogWindowMins, stepSeconds: 30 },
       error: e.message,
     });
   }
 }
 
-function wdParseMs(v) {
-  const t = Date.parse(v || '');
-  return Number.isFinite(t) ? t : NaN;
-}
-
-function wdFmtClock(tsMs) {
-  if (!Number.isFinite(tsMs)) return tt('Unknown time', '未知时间');
-  return new Date(tsMs).toLocaleTimeString(currentLocale(), { timeZone: 'America/Los_Angeles', hour12: false });
-}
-
-function wdFmtDateTime(tsMs) {
-  if (!Number.isFinite(tsMs)) return tt('Unknown time', '未知时间');
-  return new Date(tsMs).toLocaleString(currentLocale(), {
-    timeZone: 'America/Los_Angeles',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: false,
-  });
-}
-
-// Group raw events into incidents (alert → suppressed... → recovered = one incident)
-function wdGroupIncidents(events) {
-  const sorted = [...events].sort((a, b) => Date.parse(a.time) - Date.parse(b.time));
-  const incidents = [];
-  const sysEvents = [];
-  let cur = null;
-  for (const ev of sorted) {
-    if (ev.event === 'baseline_updated' || ev.event === 'baseline_promotion_pending') {
-      sysEvents.push(ev); continue;
-    }
-    if (ev.event === 'alert') {
-      if (!cur) {
-        cur = { start: ev.time, reason: ev.reason, severity: ev.severity, suppressed: 0, end: null };
-        incidents.push(cur);
-      } else {
-        cur.suppressed++;
-      }
-    } else if (ev.event === 'suppressed') {
-      if (cur) cur.suppressed++;
-    } else if (ev.event === 'recovered') {
-      if (cur) { cur.end = ev.time; cur = null; }
-    }
-  }
-  return { incidents: incidents.slice(-7).reverse(), sysEvents };
-}
-
-function wdFmtDuration(seconds) {
-  let s = Number(seconds);
-  if (!Number.isFinite(s) || s < 0) s = 0;
-  s = Math.floor(s);
-  const d = Math.floor(s / 86400);
-  const h = Math.floor((s % 86400) / 3600);
-  const m = Math.floor((s % 3600) / 60);
-  const sec = s % 60;
-  const parts = [];
-  if (d) parts.push(`${d}d`);
-  if (h) parts.push(`${h}h`);
-  if (m) parts.push(`${m}m`);
-  if (sec || !parts.length) parts.push(`${sec}s`);
-  return parts.join(' ');
-}
-
-function wdFmtAgo(tsMs) {
-  if (!Number.isFinite(tsMs)) return tt('unknown', '未知');
-  const diffSec = Math.floor((Date.now() - tsMs) / 1000);
-  if (diffSec < 0) return tt('just now', '刚刚');
-  return tt(`${wdFmtDuration(diffSec)} ago`, `${wdFmtDuration(diffSec)}前`);
-}
-
-function wdStatusZh(status) {
-  const s = String(status || '').toLowerCase();
-  if (s === 'healthy') return tt('healthy', '健康');
-  if (s === 'down') return tt('down', '断连');
-  if (s === 'degraded') return tt('degraded', '降级');
-  if (s === 'critical') return tt('critical', '严重');
-  if (s === 'warning' || s === 'warn') return tt('warning', '告警');
-  return tt('unknown', '未知');
-}
-
-function wdReasonZh(reason) {
-  const r = String(reason || '').toLowerCase();
-  const map = {
-    recovered: tt('recovered', '已恢复'),
-    runtime_stopped: tt('runtime stopped', '运行时停止'),
-    rpc_probe_failed: tt('RPC probe failed', 'RPC 探活失败'),
-    health_unreachable: tt('health check unreachable', '健康检查不可达'),
-    config_invalid: tt('invalid config', '配置无效'),
-    config_rewritten: tt('config overwritten', '配置被改写'),
-    auth_mismatch: tt('auth mismatch', '鉴权不匹配'),
-    gateway_check_failed: tt('gateway check failed', '网关检查失败'),
-    none: tt('none', '无'),
-    unknown: tt('unknown', '未知'),
-  };
-  return map[r] || String(reason || tt('unknown', '未知'));
-}
-
-function renderWatchdogUptimeBar(tl, containerEl) {
-  if (!containerEl) return;
-  const pts = Array.isArray(tl?.points) ? tl.points : [];
-  if (!pts.length) {
-    containerEl.innerHTML = `<div class="ops-ch-meta">${tt('No timeline data.', '无时间线数据。')}</div>`;
+function renderWatchdogTimeline(timeline) {
+  const el = document.getElementById('watchdogTimeline');
+  if (!el) return;
+  const points = Array.isArray(timeline?.points) ? timeline.points : [];
+  const windowMinutes = timeline?.windowMinutes || _watchdogWindowMins;
+  if (!points.length) {
+    el.innerHTML = '<div class="ops-ch-meta">No timeline data.</div>';
     return;
   }
-  const total = pts.length;
-  const downCount  = pts.filter(p => p.status === 'down').length;
-  const degraded   = pts.filter(p => p.status === 'degraded').length;
-  const healthy    = total - downCount - degraded;
-  const uptimePct  = ((healthy / total) * 100).toFixed(1);
-  const COLOR = { healthy: '#3fb950', degraded: '#d29922', down: '#f85149', null: '#30363d' };
-  const bars = pts.map(p => {
-    const c = COLOR[p.status] || COLOR.null;
-    const label = (p.ts ? wdFmtClock(Date.parse(p.ts)) + ' · ' : '') + (p.status || '?');
-    return `<div title="${escHtml(label)}" style="flex:1;min-width:3px;height:20px;background:${c};border-radius:2px"></div>`;
+  const bars = points.map(p => {
+    const color = p.status === 'down' ? 'var(--red)' : (p.status === 'healthy' ? 'var(--green)' : 'var(--yellow)');
+    const ts = new Date(p.ts || Date.now()).toLocaleTimeString();
+    return `<div title="${ts} · ${p.status}" style="height:14px;flex:1;background:${color};opacity:.9;border-radius:2px"></div>`;
   }).join('');
-  containerEl.innerHTML = `
-    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px">
-      <span style="font-size:.72rem;color:var(--text2)">${tt('24h uptime', '24小时可用率')}</span>
-      <span style="font-size:.8rem;font-weight:600;color:${downCount > 0 ? 'var(--yellow)' : 'var(--green)'}">${uptimePct}%</span>
-    </div>
-    <div style="display:flex;gap:2px;width:100%">${bars}</div>
-    <div style="display:flex;justify-content:space-between;margin-top:3px;font-size:.62rem;color:var(--text2)">
-      <span>24h ago</span>
-      <span style="color:${downCount?'var(--red)':degraded?'var(--yellow)':'var(--text2)'}">
-        ${downCount ? `${downCount} down · ` : ''}${degraded ? `${degraded} degraded · ` : ''}${healthy} healthy
-      </span>
-      <span>now</span>
-    </div>`;
+  el.innerHTML = `
+    <div class="ops-ch-meta" style="margin-bottom:6px">Status timeline (${windowMinutes} min): green=healthy · red=down</div>
+    <div style="display:flex;gap:2px;align-items:center">${bars}</div>
+  `;
 }
 
 function renderWatchdogStatus(data) {
-  const statusEl  = document.getElementById('watchdogStatusText');
-  const metaEl    = document.getElementById('watchdogStatusMeta');
-  const eventsEl  = document.getElementById('watchdogEventsList');
-  const tlEl      = document.getElementById('watchdogTimeline');
+  const statusEl = document.getElementById('watchdogStatusText');
+  const metaEl = document.getElementById('watchdogStatusMeta');
+  const eventsEl = document.getElementById('watchdogEventsList');
   const globalAlert = document.getElementById('watchdogGlobalAlert');
-  const globalText  = document.getElementById('watchdogGlobalText');
-  if (!statusEl) return;
+  const globalText = document.getElementById('watchdogGlobalText');
+  if (!statusEl || !metaEl || !eventsEl || !globalAlert || !globalText) return;
 
-  const effective  = data?.effectiveStatus || 'unknown';
-  const running    = !!data?.runtime?.running;
-  const wd         = data?.watchdog || {};
-  const cfg        = data?.configGuard || {};
-  const failures   = wd?.consecutive_failures ?? 0;
-  const reason     = wd?.last_reason || 'none';
-  const lastAlertMs    = Number.isFinite(Number(wd?.last_alert_at))    ? Number(wd.last_alert_at)    * 1000 : NaN;
-  const lastRecovMs    = Number.isFinite(Number(wd?.last_recovered_at)) ? Number(wd.last_recovered_at) * 1000 : NaN;
-  const checkedAt      = data?.runtime?.checkedAt || wd?.updated_at || '';
-  const events     = Array.isArray(data?.recentEvents) ? data.recentEvents : [];
-  const tl         = data?.timeline || { points: [] };
+  const effective = data?.effectiveStatus || 'unknown';
+  const runtimeRunning = !!data?.runtime?.running;
+  const wd = data?.watchdog || {};
+  const cfg = data?.configGuard || {};
+  const failures = wd?.consecutive_failures ?? '—';
+  const reason = wd?.last_reason || 'unknown';
+  const updatedAt = wd?.updated_at || data?.runtime?.checkedAt || '';
+  const configGuardStatus = cfg?.status || 'unknown';
+  const configDriftDetected = !!cfg?.driftDetected;
+  const suspectedConfigDrift = !!cfg?.suspectedConfigDrift;
+  const recent = Array.isArray(data?.recentEvents) ? data.recentEvents : [];
+  const timeline = data?.timeline || { points: [] };
 
-  // ── Global down banner ──
-  const isDown = effective === 'down' || !running;
-  if (globalAlert) {
-    if (isDown) {
-      const downFor = Number.isFinite(lastAlertMs) ? wdFmtDuration(Math.floor((Date.now() - lastAlertMs) / 1000)) : '?';
-      globalAlert.style.display = 'block';
-      if (globalText) globalText.textContent = `OpenClaw 已断连 ${downFor} · 原因: ${wdReasonZh(reason)}`;
-    } else {
-      globalAlert.style.display = 'none';
-    }
+  if (effective === 'down') {
+    const driftMsg = suspectedConfigDrift
+      ? ' Probable root cause: config drift (`openclaw.json` vs `.good`).'
+      : '';
+    statusEl.innerHTML = `<span style="color:var(--red)">OpenClaw is DOWN</span> — watchdog detected runtime outage.${driftMsg}`;
+    globalAlert.style.display = 'block';
+    globalText.textContent = `OpenClaw down: ${reason} · failures=${failures}${suspectedConfigDrift ? ' · config_drift=YES' : ''}`;
+  } else if (effective === 'healthy') {
+    statusEl.innerHTML = '<span style="color:var(--green)">OpenClaw is healthy</span> — watchdog is monitoring.';
+    globalAlert.style.display = 'none';
+  } else {
+    const driftMsg = configDriftDetected
+      ? ' Config drift is present; investigate before it escalates.'
+      : '';
+    statusEl.innerHTML = `<span style="color:var(--yellow)">Watchdog degraded / unknown</span> — check events below.${driftMsg}`;
+    globalAlert.style.display = 'block';
+    globalText.textContent = `Watchdog warning: ${reason} · failures=${failures}${configDriftDetected ? ' · config_drift=YES' : ''}`;
   }
 
-  // ── Status line ──
-  const DOT  = { healthy: '🟢', down: '🔴', degraded: '🟡' };
-  const COL  = { healthy: 'var(--green)', down: 'var(--red)', degraded: 'var(--yellow)' };
-  const dot  = DOT[effective] || '⚪';
-  const col  = COL[effective] || 'var(--text2)';
+  const _timeAgo = updatedAt ? timeSince(new Date(updatedAt).getTime()) : '—';
+  const _pills = [
+    `<span class="pill" style="border-color:${runtimeRunning ? 'var(--green)' : 'var(--red)'};color:${runtimeRunning ? 'var(--green)' : 'var(--red)'}">${runtimeRunning ? '🟢 Running' : '🔴 Stopped'}</span>`,
+    failures > 0 ? `<span class="pill" style="border-color:var(--yellow);color:var(--yellow)">⚠ ${failures} failure${failures !== 1 ? 's' : ''}</span>` : `<span class="pill">✓ 0 failures</span>`,
+    reason !== 'none' && reason !== 'unknown' ? `<span class="pill">Reason: ${escHtml(reason)}</span>` : '',
+    configDriftDetected ? `<span class="pill" style="border-color:var(--yellow);color:var(--yellow)">⚠ Config drift</span>` : `<span class="pill">Config: in sync</span>`,
+    `<span class="pill">Updated: ${_timeAgo}</span>`,
+    _watchdogCriticalOnly ? `<span class="pill" style="border-color:var(--text2);color:var(--text2)">Critical only</span>` : '',
+  ].filter(Boolean).join(' ');
+  metaEl.innerHTML = _pills;
+  renderWatchdogTimeline(timeline);
 
-  let lastIncident = '';
-  if (Number.isFinite(lastAlertMs) && Number.isFinite(lastRecovMs) && lastRecovMs >= lastAlertMs) {
-    const outageSec = Math.floor((lastRecovMs - lastAlertMs) / 1000);
-    lastIncident = ` · <span style="font-size:.72rem;color:var(--text2)">上次断连 <strong>${wdFmtDuration(outageSec)}</strong>，${wdFmtAgo(lastRecovMs)}恢复</span>`;
-  } else if (Number.isFinite(lastAlertMs) && isDown) {
-    const downFor = wdFmtDuration(Math.floor((Date.now() - lastAlertMs) / 1000));
-    lastIncident = ` · <span style="color:var(--red);font-size:.72rem">已断连 <strong>${downFor}</strong></span>`;
-  }
-
-  statusEl.innerHTML = `<span style="color:${col};font-size:.88rem"><strong>${dot} ${wdStatusZh(effective)}</strong></span>`
-    + (failures > 0 ? ` · <span style="color:var(--red);font-size:.72rem">连续失败 ${failures}</span>` : '')
-    + lastIncident
-    + (checkedAt ? ` · <span style="font-size:.68rem;color:var(--text2)">检查于 ${wdFmtAgo(Date.parse(checkedAt))}</span>` : '');
-  statusEl.dataset.liveRendered = '1';
-
-  // ── Config guard meta ──
-  if (metaEl) {
-    const drift = cfg.driftDetected;
-    const driftBadge = drift
-      ? `<span style="color:var(--yellow)">⚠️ 配置漂移</span>`
-      : `<span style="color:var(--green)">✓ 配置一致</span>`;
-    metaEl.innerHTML = `${driftBadge} · <span style="color:var(--text2);font-size:.7rem">来源: ${escHtml(wd.source || '—')} · 原因: ${escHtml(wdReasonZh(reason))}</span>`;
-  }
-
-  // ── 24h uptime bar ──
-  renderWatchdogUptimeBar(tl, tlEl);
-
-  // ── Incidents ──
-  if (!eventsEl) return;
-  const { incidents, sysEvents } = wdGroupIncidents(events);
-
-  if (!incidents.length && !sysEvents.length) {
-    eventsEl.innerHTML = `<div class="ops-ch-meta" style="padding:8px 0">${tt('No events in the past 24 hours — system has been quiet.', '过去 24 小时无事件，系统运行平稳。')}</div>`;
+  if (!recent.length) {
+    eventsEl.innerHTML = `<div class="ops-ch-meta">No watchdog events for selected filter in last ${_watchdogWindowMins} minutes.</div>`;
     return;
   }
-
-  let html = '';
-
-  if (incidents.length) {
-    html += `<div style="font-size:.7rem;font-weight:600;color:var(--text2);margin-bottom:6px;text-transform:uppercase;letter-spacing:.05em">Incidents</div>`;
-    for (const inc of incidents) {
-      const startMs  = Date.parse(inc.start);
-      const endMs    = inc.end ? Date.parse(inc.end) : null;
-      const resolved = endMs !== null;
-      const duration = resolved ? wdFmtDuration(Math.floor((endMs - startMs) / 1000)) : null;
-      const sev      = inc.severity || 'critical';
-      const sevCol   = sev === 'critical' ? 'var(--red)' : 'var(--yellow)';
-      const badge    = resolved
-        ? `<span style="background:rgba(63,185,80,.15);color:var(--green);font-size:.65rem;padding:2px 6px;border-radius:4px">✓ resolved</span>`
-        : `<span style="background:rgba(248,81,73,.15);color:var(--red);font-size:.65rem;padding:2px 6px;border-radius:4px;animation:pulse 2s infinite">⚠ ongoing</span>`;
-
-      html += `<div class="ops-channel-card" style="padding:10px 14px;margin-bottom:6px;border-left:3px solid ${sevCol}">
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
-          <div style="min-width:0">
-            <span style="color:${sevCol};font-size:.8rem;font-weight:600">${escHtml(wdReasonZh(inc.reason))}</span>
-            <span style="color:var(--text2);font-size:.68rem;margin-left:8px">${wdFmtDateTime(startMs)}</span>
-          </div>
-          ${badge}
-        </div>
-        <div style="margin-top:5px;font-size:.7rem;color:var(--text2);display:flex;flex-wrap:wrap;gap:12px">
-          ${duration ? `<span>时长 <strong style="color:var(--text1)">${duration}</strong></span>` : '<span style="color:var(--red)">未恢复</span>'}
-          <span>严重性 <strong style="color:${sevCol}">${sev}</strong></span>
-          ${inc.suppressed > 0 ? `<span style="opacity:.6">${inc.suppressed} 条已抑制</span>` : ''}
-        </div>
-      </div>`;
-    }
-  }
-
-  // System health events summary (baseline_updated / baseline_promotion_pending)
-  if (sysEvents.length) {
-    const baselineUpdates = sysEvents.filter(e => e.event === 'baseline_updated').length;
-    const pending         = sysEvents.filter(e => e.event === 'baseline_promotion_pending').length;
-    html += `<div style="margin-top:8px;padding:7px 10px;border:1px solid var(--border);border-radius:6px;background:rgba(255,255,255,.025);font-size:.7rem;color:var(--text2)">
-      🛡️ 系统健康
-      ${baselineUpdates > 0 ? `<span style="color:var(--green);margin-left:8px">基线已更新 ×${baselineUpdates}</span>` : ''}
-      ${pending > 0 ? `<span style="margin-left:8px">晋级候选 ×${pending}</span>` : ''}
+  eventsEl.innerHTML = recent.map(ev => {
+    const sev = ev.severity || 'info';
+    const color = sev === 'critical' ? 'var(--red)' : (sev === 'warning' ? 'var(--yellow)' : 'var(--green)');
+    const detailsHtml = escHtml(ev.details || '').replace(/\n/g, '<br>');
+    return `<div class="ops-channel-card" style="padding:8px 10px">
+      <div class="ops-ch-left">
+        <div class="ops-ch-name" style="font-size:.8rem;color:${color}">${escHtml(ev.event || 'event')} · ${escHtml(ev.reason || 'n/a')}</div>
+        <div class="ops-ch-meta">${detailsHtml}</div>
+      </div>
+      <div class="ops-ch-right"><div class="ops-ch-cost">${new Date(ev.time || Date.now()).toLocaleTimeString()}</div></div>
     </div>`;
-  }
-
-  eventsEl.innerHTML = html;
+  }).join('');
 }
 
 function loadOperationsStatus() {
@@ -1461,10 +1272,17 @@ function loadOperationsStatus() {
 }
 
 function refreshCurrentTab() {
-  const active = document.querySelector('.tab-btn.active');
-  if (active) active.click();
   checkConnection();
   loadAgentMonitor();
+  pollWatchdogStatus();
+  loadSessions();
+  loadCronEnhanced();
+  loadCronCosts();
+  loadTasks(true);
+  loadOpsChannels();
+  loadOpsAlltime();
+  loadOpsAudit();
+  loadOperationsStatus();
 }
 
 // ─── Toast ───
@@ -1507,44 +1325,9 @@ function renderFullMarkdown(text) {
   return renderMarkdown(text);
 }
 
-// ═══ TASKS ═══
-let allTasks = [];
-let currentFilter = 'all';
-let expandedTaskId = null;
-let _tasksHash = '';
+// ─── Live Polling ───
 let _livePollingId = null;
-const LIVE_POLL_MS = 15000; // was 3000, reduced to avoid excessive polling // poll every 3 seconds
-
-function _hashTasks(tasks) {
-  // Fast hash: JSON of id+status+updatedAt+notes.length for each task
-  return tasks.map(t => `${t.id}|${t.status}|${t.updatedAt}|${(t.notes||[]).length}`).join(';');
-}
-
-async function loadTasks(force) {
-  const list = document.getElementById('taskList');
-  if (!list) return;
-  try {
-    const data = await apiFetch('/tasks');
-    const tasks = Array.isArray(data) ? data : (data.tasks || []);
-    const newHash = _hashTasks(tasks);
-    // Skip re-render if nothing changed (unless forced)
-    if (!force && newHash === _tasksHash) return;
-    _tasksHash = newHash;
-    allTasks = tasks;
-    const taskCountEl = document.getElementById('taskCount');
-    if (taskCountEl) taskCountEl.textContent = allTasks.length;
-    renderTasks();
-    // If detail modal is open and user isn't editing content, refresh it
-    if (detailTaskId && !isContentEditing) {
-      const updated = allTasks.find(t => t.id === detailTaskId);
-      if (updated) openDetailModal(detailTaskId);
-    }
-    // Flash the live indicator on data change
-    _flashLiveIndicator();
-  } catch(e) {
-    list.innerHTML = `<div class="empty-state"><svg viewBox="0 0 80 80"><circle cx="40" cy="40" r="36" fill="none" stroke="currentColor" stroke-width="2"/><path d="M28 28l24 24M52 28L28 52" stroke="currentColor" stroke-width="2"/></svg><h3>Unable to Load Tasks</h3><p>${e.message}</p><button class="action-btn primary" onclick="loadTasks(true)" style="margin:0 auto">Retry</button></div>`;
-  }
-}
+const LIVE_POLL_MS = 15000;
 
 function _flashLiveIndicator() {
   const el = document.getElementById('liveIndicator');
@@ -1555,7 +1338,7 @@ function _flashLiveIndicator() {
 
 function startLivePolling() {
   if (_livePollingId) return;
-  _livePollingId = setInterval(() => loadTasks(false), LIVE_POLL_MS);
+  _livePollingId = setInterval(() => loadOps(), LIVE_POLL_MS);
   const el = document.getElementById('liveIndicator');
   if (el) el.classList.add('active');
 }
@@ -1571,742 +1354,6 @@ function toggleLivePolling() {
   else { startLivePolling(); toast('Live updates enabled', 'info'); }
 }
 
-function renderTasks() {
-  const list = document.getElementById('taskList');
-  if (!list) return;
-  const search = (document.getElementById('taskSearch').value || '').toLowerCase();
-  let filtered = allTasks;
-  if (currentFilter !== 'all') filtered = filtered.filter(t => (t.status || 'new') === currentFilter);
-  if (search) filtered = filtered.filter(t => (t.title || '').toLowerCase().includes(search) || (t.description || '').toLowerCase().includes(search));
-
-  if (filtered.length === 0) {
-    list.innerHTML = `<div class="empty-state">
-      <svg viewBox="0 0 80 80"><rect x="16" y="12" width="48" height="56" rx="6" fill="none" stroke="currentColor" stroke-width="1.5"/><line x1="28" y1="28" x2="52" y2="28" stroke="currentColor" stroke-width="1.5"/><line x1="28" y1="38" x2="48" y2="38" stroke="currentColor" stroke-width="1.5"/><line x1="28" y1="48" x2="44" y2="48" stroke="currentColor" stroke-width="1.5"/><circle cx="24" cy="28" r="2" fill="currentColor"/><circle cx="24" cy="38" r="2" fill="currentColor"/><circle cx="24" cy="48" r="2" fill="currentColor"/></svg>
-      <h3>${currentFilter !== 'all' ? 'No matching tasks' : 'No tasks yet'}</h3>
-      <p>${currentFilter !== 'all' ? 'Try a different filter or create a new task.' : 'Create your first task to get started with agent task management.'}</p>
-      <button class="create-btn" onclick="openCreateModal()" style="margin:0 auto">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-        New Task
-      </button>
-    </div>`;
-    return;
-  }
-
-  list.innerHTML = filtered.map((task, i) => {
-    const status = task.status || 'new';
-    const priority = task.priority || 'medium';
-    const isExpanded = expandedTaskId === task.id;
-    const notes = task.notes || [];
-    const date = task.createdAt ? new Date(task.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
-    const dueDate = task.dueDate ? new Date(task.dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
-    return `<div class="glass-card task-card status-${status} ${isExpanded ? 'expanded' : ''}" onclick="toggleTask('${task.id}')" style="animation:cardIn .4s ease backwards;animation-delay:${i * 0.05}s">
-      <div class="task-header">
-        <span class="task-title">${escHtml(task.title || 'Untitled')}</span>
-        <span class="badge badge-${status}">${statusLabel(status)}</span>
-        <span class="badge badge-priority ${priority}">${priority}</span>
-      </div>
-      <div class="task-meta">
-        ${task.assignee ? `<span>👤 ${escHtml(task.assignee)}</span>` : ''}
-        ${date ? `<span>📅 ${date}</span>` : ''}
-        ${dueDate ? `<span>⏰ Due ${dueDate}</span>` : ''}
-        ${notes.length ? `<span>📝 ${notes.length} note${notes.length > 1 ? 's' : ''}</span>` : ''}
-        ${task.content ? '<span>📄 Content</span>' : ''}
-      </div>
-      <div class="task-body" onclick="event.stopPropagation()">
-        ${task.description ? `<div class="task-description">${renderMarkdown(task.description)}</div>` : ''}
-        ${task.content ? `<div class="task-content-preview" onclick="event.stopPropagation();this.classList.toggle('expanded')">
-          <div class="task-content-label"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg> Content</div>
-          <div class="task-content-md">${renderFullMarkdown(task.content)}</div>
-        </div>` : ''}
-        <div class="task-actions">
-          <button class="spawn-btn" onclick="spawnSingleTask('${task.id}')">⚡ Spawn</button>
-          ${status !== 'in-progress' ? `<button class="action-btn primary" onclick="updateTaskStatus('${task.id}','in-progress')">▶ In Progress</button>` : ''}
-          ${status !== 'done' ? `<button class="action-btn" onclick="updateTaskStatus('${task.id}','done')" style="border-color:rgba(45,212,160,0.3);color:var(--green)">✓ Done</button>` : ''}
-          ${status !== 'failed' ? `<button class="action-btn danger" onclick="updateTaskStatus('${task.id}','failed')">✕ Failed</button>` : ''}
-          ${status !== 'new' ? `<button class="action-btn" onclick="updateTaskStatus('${task.id}','new')">↩ Reset</button>` : ''}
-        </div>
-        <div class="notes-section">
-          <div class="notes-title">Notes</div>
-          <div class="notes-list">
-            ${notes.length === 0 ? '<div style="font-size:.8rem;color:var(--text2);padding:4px 0 4px 16px;border-left:2px solid var(--border)">No notes yet</div>' : notes.map(n => `
-              <div class="note-item">
-                <span class="note-time">${n.createdAt ? new Date(n.createdAt).toLocaleString('en-US', { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' }) : ''}</span>
-                <span class="note-text">${escHtml(n.text || n.content || '')}</span>
-              </div>
-            `).join('')}
-          </div>
-          <div class="add-note-row">
-            <input type="text" class="note-input" id="note-${task.id}" placeholder="Add a note…" onkeydown="if(event.key==='Enter')addNote('${task.id}')">
-            <button class="action-btn" onclick="addNote('${task.id}')">Add</button>
-          </div>
-        </div>
-      </div>
-    </div>`;
-  }).join('');
-}
-
-function statusLabel(s) {
-  return { 'new': 'New', 'in-progress': 'In Progress', 'done': 'Done', 'failed': 'Failed' }[s] || s;
-}
-
-function escHtml(s) {
-  const d = document.createElement('div');
-  d.textContent = s;
-  return d.innerHTML;
-}
-
-function toggleTask(id) {
-  openDetailModal(id);
-}
-
-async function updateTaskStatus(id, status) {
-  try {
-    await apiFetch(`/tasks/${id}`, { method: 'PATCH', body: JSON.stringify({ status }) });
-    toast(`Task updated to ${statusLabel(status)}`, 'success');
-    loadTasks(true);
-  } catch(e) { toast(`Failed: ${e.message}`, 'error'); }
-}
-
-async function addNote(taskId) {
-  const input = document.getElementById(`note-${taskId}`);
-  const text = input?.value?.trim();
-  if (!text) return;
-  try {
-    await apiFetch(`/tasks/${taskId}/notes`, { method: 'POST', body: JSON.stringify({ text }) });
-    input.value = '';
-    toast('Note added', 'success');
-    loadTasks(true);
-  } catch(e) { toast(`Failed: ${e.message}`, 'error'); }
-}
-
-// Filters (guarded for Ops view)
-const _statusFilters = document.getElementById('statusFilters');
-if (_statusFilters) {
-  _statusFilters.addEventListener('click', e => {
-    const btn = e.target.closest('.filter-btn');
-    if (!btn) return;
-    document.querySelectorAll('#statusFilters .filter-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    currentFilter = btn.dataset.filter;
-    renderTasks();
-  });
-}
-
-const _taskSearch = document.getElementById('taskSearch');
-if (_taskSearch) {
-  _taskSearch.addEventListener('input', () => {
-    renderTasks();
-  });
-}
-
-function openCreateModal() {
-  document.getElementById('createModal').classList.add('show');
-  document.getElementById('newTitle').focus();
-}
-
-function closeCreateModal() {
-  document.getElementById('createModal').classList.remove('show');
-  ['newTitle', 'newDesc', 'newContent', 'newDueDate'].forEach(id => document.getElementById(id).value = '');
-  document.getElementById('newPriority').value = 'medium';
-  document.getElementById('newAssignee').value = 'main';
-}
-
-async function createTask() {
-  const title = document.getElementById('newTitle').value.trim();
-  if (!title) { toast('Title is required', 'error'); return; }
-
-  const btn = document.getElementById('createTaskBtn');
-  btn.disabled = true;
-  btn.textContent = 'Creating…';
-
-  const payload = {
-    title,
-    description: document.getElementById('newDesc').value.trim(),
-    content: document.getElementById('newContent').value.trim(),
-    priority: document.getElementById('newPriority').value,
-    assignee: document.getElementById('newAssignee').value,
-    status: 'new'
-  };
-  const due = document.getElementById('newDueDate').value;
-  if (due) payload.dueDate = due;
-
-  try {
-    await apiFetch('/tasks', { method: 'POST', body: JSON.stringify(payload) });
-    toast('Task created!', 'success');
-    closeCreateModal();
-    loadTasks(true);
-  } catch(e) {
-    toast(`Failed: ${e.message}`, 'error');
-  } finally {
-    btn.disabled = false;
-    btn.textContent = 'Create Task';
-  }
-}
-
-// Close modal on overlay click
-document.getElementById('createModal').addEventListener('click', e => {
-  if (e.target === e.currentTarget) closeCreateModal();
-});
-
-// ═══ KANBAN VIEW ═══
-let taskView = localStorage.getItem('taskView') || 'list';
-
-function setTaskView(view) {
-  taskView = view;
-  localStorage.setItem('taskView', view);
-  document.querySelectorAll('#taskViewToggle button').forEach(b => b.classList.toggle('active', b.dataset.view === view));
-  const listEl = document.getElementById('taskList');
-  const kanbanEl = document.getElementById('kanbanBoard');
-  const filtersEl = document.getElementById('statusFilters');
-  if (!listEl || !kanbanEl || !filtersEl) return;
-  if (view === 'kanban') {
-    listEl.style.display = 'none';
-    kanbanEl.style.display = '';
-    filtersEl.style.display = 'none';
-    renderKanban();
-  } else {
-    listEl.style.display = '';
-    kanbanEl.style.display = 'none';
-    filtersEl.style.display = '';
-    renderTasks();
-  }
-}
-
-const KANBAN_COLUMNS = [
-  { status: 'new', label: 'New' },
-  { status: 'in-progress', label: 'In Progress' },
-  { status: 'done', label: 'Done' },
-  { status: 'failed', label: 'Failed' }
-];
-
-function renderKanban() {
-  const board = document.getElementById('kanbanBoard');
-  const search = (document.getElementById('taskSearch').value || '').toLowerCase();
-  let filtered = allTasks;
-  if (search) filtered = filtered.filter(t => (t.title || '').toLowerCase().includes(search) || (t.description || '').toLowerCase().includes(search));
-
-  board.innerHTML = KANBAN_COLUMNS.map(col => {
-    const colTasks = filtered.filter(t => (t.status || 'new') === col.status);
-    return `<div class="kanban-column" data-status="${col.status}"
-                 ondragover="kanbanDragOver(event)" ondragleave="kanbanDragLeave(event)" ondrop="kanbanDrop(event)">
-      <div class="kanban-col-header">
-        <div class="kanban-col-title">
-          <span class="col-dot ${col.status}"></span>
-          ${col.label}
-        </div>
-        <span class="kanban-col-count">${colTasks.length}</span>
-      </div>
-      <div class="kanban-col-body${colTasks.length === 0 ? ' empty-drop' : ''}">
-        ${colTasks.length === 0
-          ? '<div class="drop-hint">Drop tasks here</div>'
-          : colTasks.map(task => renderKanbanCard(task)).join('')}
-      </div>
-    </div>`;
-  }).join('');
-
-  // Add mobile horizontal scroll class
-  if (window.innerWidth <= 768) board.classList.add('horizontal-scroll');
-  else board.classList.remove('horizontal-scroll');
-}
-
-function renderKanbanCard(task) {
-  const status = task.status || 'new';
-  const priority = task.priority || 'medium';
-  return `<div class="kanban-card status-${status}" draggable="true"
-               data-task-id="${task.id}"
-               ondragstart="kanbanDragStart(event)" ondragend="kanbanDragEnd(event)"
-               onclick="kanbanCardClick('${task.id}')">
-    <div class="kanban-card-title">${escHtml(task.title || 'Untitled')}</div>
-    <div class="kanban-card-footer">
-      <span class="badge badge-priority ${priority}">${priority}</span>
-      ${task.notes && task.notes.length ? `<span style="font-size:.68rem;color:var(--text2)">📝${task.notes.length}</span>` : ''}
-      ${task.assignee ? `<span class="kanban-card-assignee">👤 ${escHtml(task.assignee)}</span>` : ''}
-    </div>
-  </div>`;
-}
-
-// ─── Drag & Drop ───
-let draggedTaskId = null;
-
-function kanbanDragStart(e) {
-  draggedTaskId = e.target.dataset.taskId;
-  e.target.classList.add('dragging');
-  e.dataTransfer.effectAllowed = 'move';
-  e.dataTransfer.setData('text/plain', draggedTaskId);
-}
-
-function kanbanDragEnd(e) {
-  e.target.classList.remove('dragging');
-  draggedTaskId = null;
-  document.querySelectorAll('.kanban-column').forEach(c => c.classList.remove('drag-over'));
-}
-
-function kanbanDragOver(e) {
-  e.preventDefault();
-  e.dataTransfer.dropEffect = 'move';
-  const col = e.target.closest('.kanban-column');
-  if (col) col.classList.add('drag-over');
-}
-
-function kanbanDragLeave(e) {
-  const col = e.target.closest('.kanban-column');
-  if (col && !col.contains(e.relatedTarget)) col.classList.remove('drag-over');
-}
-
-async function kanbanDrop(e) {
-  e.preventDefault();
-  const col = e.target.closest('.kanban-column');
-  if (!col) return;
-  col.classList.remove('drag-over');
-  const taskId = e.dataTransfer.getData('text/plain') || draggedTaskId;
-  const newStatus = col.dataset.status;
-  if (!taskId || !newStatus) return;
-  const task = allTasks.find(t => t.id === taskId);
-  if (!task || (task.status || 'new') === newStatus) return;
-  try {
-    await apiFetch(`/tasks/${taskId}`, { method: 'PATCH', body: JSON.stringify({ status: newStatus }) });
-    task.status = newStatus;
-    toast(`Task moved to ${statusLabel(newStatus)}`, 'success');
-    renderKanban();
-  } catch(err) {
-    toast(`Failed: ${err.message}`, 'error');
-  }
-}
-
-function kanbanCardClick(taskId) {
-  openDetailModal(taskId);
-}
-
-// ═══ TASK DETAIL MODAL ═══
-let detailTaskId = null;
-
-function openDetailModal(taskId) {
-  const task = allTasks.find(t => t.id === taskId);
-  if (!task) return;
-  detailTaskId = taskId;
-
-  const status = task.status || 'new';
-  const priority = task.priority || 'medium';
-  const created = task.createdAt ? new Date(task.createdAt) : null;
-  const updated = task.updatedAt ? new Date(task.updatedAt) : null;
-  const due = task.dueDate ? new Date(task.dueDate) : null;
-  const notes = task.notes || [];
-
-  // Separate agent output notes from status/regular notes
-  const statusNotes = [];
-  const outputNotes = [];
-  const regularNotes = [];
-  notes.forEach(n => {
-    const txt = n.text || n.content || '';
-    if (txt.startsWith('Status changed')) statusNotes.push(n);
-    else if (txt.length > 150) outputNotes.push(n);
-    else regularNotes.push(n);
-  });
-
-  // Header
-  document.getElementById('detailStatusRow').innerHTML = `
-    <span class="badge badge-${status}">${statusLabel(status)}</span>
-    <span class="badge badge-priority ${priority}">${priority}</span>
-    ${task.source ? `<span class="badge" style="background:rgba(139,148,158,0.1);color:var(--text2);border:1px solid var(--border)">${escHtml(task.source)}</span>` : ''}
-  `;
-  document.getElementById('detailTitle').textContent = task.title || 'Untitled';
-  document.getElementById('detailMeta').innerHTML = `
-    ${task.assignee ? `<span>👤 ${escHtml(task.assignee)}</span>` : ''}
-    ${created ? `<span>📅 Created ${created.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>` : ''}
-    ${updated ? `<span>🔄 Updated ${timeAgo(updated)}</span>` : ''}
-    ${due ? `<span>⏰ Due ${due.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>` : ''}
-  `;
-
-  // Body
-  let bodyHtml = '';
-
-  // Description section
-  if (task.description) {
-    bodyHtml += `
-    <div class="detail-section">
-      <div class="detail-section-title" onclick="this.classList.toggle('collapsed')">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
-        Description
-      </div>
-      <div class="detail-section-content">
-        <div class="detail-description">${renderMarkdown(task.description)}</div>
-      </div>
-    </div>`;
-  }
-
-  // Content section (rich markdown field)
-  bodyHtml += `
-  <div class="detail-content-section">
-    <div class="detail-content-area" id="detailContentArea">
-      <div class="detail-content-header">
-        <span class="content-label">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
-          Content <span style="font-weight:400;font-size:.68rem;color:var(--text2);letter-spacing:0;text-transform:none;margin-left:4px">Markdown</span>
-        </span>
-        <div class="detail-content-actions">
-          <button class="content-edit-btn" id="contentEditBtn" onclick="toggleContentEdit()">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px;margin-right:3px"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-            Edit
-          </button>
-          <button class="content-save-btn" id="contentSaveBtn" onclick="saveTaskContent()" style="display:none">Save</button>
-        </div>
-      </div>
-      <div class="detail-content-md" id="detailContentMd">
-        ${task.content ? renderFullMarkdown(task.content) : `<div class="detail-content-empty">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-          No content yet — click Edit to add markdown content
-        </div>`}
-      </div>
-      <textarea class="detail-content-textarea" id="detailContentTextarea" placeholder="# Write your content here…&#10;&#10;Supports **bold**, *italic*, \`code\`, lists, tables, and more." style="display:none">${escHtml(task.content || '')}</textarea>
-    </div>
-  </div>`;
-
-  // Agent Output section (long notes = agent results)
-  if (outputNotes.length > 0) {
-    bodyHtml += `
-    <div class="detail-section">
-      <div class="detail-section-title" onclick="this.classList.toggle('collapsed')">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
-        Agent Output <span style="font-weight:400;font-size:.7rem;color:var(--accent2)">${outputNotes.length} result${outputNotes.length > 1 ? 's' : ''}</span>
-      </div>
-      <div class="detail-section-content">
-        ${outputNotes.map((n, i) => {
-          const txt = n.text || n.content || '';
-          const time = n.timestamp || n.createdAt;
-          const escaped = txt.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, '\\n').replace(/\r/g, '');
-          return `<div class="detail-output" style="${i > 0 ? 'margin-top:10px' : ''}">
-            <div class="detail-output-header">
-              <span>🤖 Output${time ? ' · ' + new Date(time).toLocaleString('en-US', { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' }) : ''}</span>
-              <button class="detail-output-copy" onclick="copyOutput(this, '${escaped}')">Copy</button>
-            </div>
-            <div class="detail-output-body">${renderMarkdown(txt)}</div>
-          </div>`;
-        }).join('')}
-      </div>
-    </div>`;
-  }
-
-  // Activity / Comments section (regular + status notes combined)
-  const activityNotes = [...regularNotes, ...statusNotes].sort((a, b) => {
-    const ta = new Date(a.timestamp || a.createdAt || 0).getTime();
-    const tb = new Date(b.timestamp || b.createdAt || 0).getTime();
-    return tb - ta;
-  });
-
-  bodyHtml += `
-  <div class="detail-section">
-    <div class="detail-section-title" onclick="this.classList.toggle('collapsed')">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
-      Activity & Comments <span style="font-weight:400;font-size:.7rem;color:var(--text2)">${activityNotes.length}</span>
-    </div>
-    <div class="detail-section-content">
-      <div class="detail-notes" id="detailNotes">
-        ${activityNotes.length === 0 ? '<div style="font-size:.82rem;color:var(--text2);padding:12px 0">No activity yet</div>' : activityNotes.map(n => {
-          const txt = n.text || n.content || '';
-          const time = n.timestamp || n.createdAt;
-          const isStatus = txt.startsWith('Status changed');
-          const isLong = txt.length > 200;
-          const noteId = 'dn-' + Math.random().toString(36).slice(2, 8);
-          return `<div class="detail-note ${isStatus ? 'is-status' : ''}">
-            <div class="detail-note-time">${time ? new Date(time).toLocaleString('en-US', { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' }) : ''}</div>
-            <div class="detail-note-text ${isLong ? 'truncated' : ''}" id="${noteId}">${escHtml(txt)}</div>
-            ${isLong ? `<span class="detail-note-expand" onclick="toggleNoteExpand('${noteId}', this)">Show more</span>` : ''}
-          </div>`;
-        }).join('')}
-      </div>
-      <div class="detail-add-note">
-        <input type="text" class="detail-note-input" id="detailNoteInput" placeholder="Add a comment…" onkeydown="if(event.key==='Enter')addDetailNote()">
-        <button class="action-btn primary" onclick="addDetailNote()">Add</button>
-      </div>
-    </div>
-  </div>`;
-
-  document.getElementById('detailBody').innerHTML = bodyHtml;
-
-  // Actions footer
-  document.getElementById('detailActions').innerHTML = `
-    <button class="spawn-btn" onclick="spawnSingleTask('${taskId}')">⚡ Run as Sub-Agent</button>
-    ${status !== 'in-progress' ? '<button class="action-btn primary" onclick="detailUpdateStatus(\'in-progress\')">▶ In Progress</button>' : ''}
-    ${status !== 'done' ? '<button class="action-btn" style="border-color:rgba(45,212,160,0.3);color:var(--green)" onclick="detailUpdateStatus(\'done\')">✓ Done</button>' : ''}
-    ${status !== 'failed' ? '<button class="action-btn danger" onclick="detailUpdateStatus(\'failed\')">✕ Failed</button>' : ''}
-    ${status !== 'new' ? '<button class="action-btn" onclick="detailUpdateStatus(\'new\')">↩ Reset</button>' : ''}
-    <span style="flex:1"></span>
-    <button class="action-btn danger" onclick="if(confirm('Delete this task?'))deleteTask('${taskId}')">🗑 Delete</button>
-  `;
-
-  document.getElementById('detailModal').classList.add('show');
-}
-
-function closeDetailModal() {
-  document.getElementById('detailModal').classList.remove('show');
-  detailTaskId = null;
-  isContentEditing = false;
-}
-
-async function detailUpdateStatus(newStatus) {
-  if (!detailTaskId) return;
-  try {
-    await apiFetch('/tasks/' + detailTaskId, { method: 'PATCH', body: JSON.stringify({ status: newStatus }) });
-    toast('Task updated to ' + statusLabel(newStatus), 'success');
-    await loadTasks(true);
-    // Detail modal will be auto-refreshed by loadTasks when detailTaskId is set
-  } catch(e) { toast('Failed: ' + e.message, 'error'); }
-}
-
-async function addDetailNote() {
-  if (!detailTaskId) return;
-  const input = document.getElementById('detailNoteInput');
-  const text = input?.value?.trim();
-  if (!text) return;
-  try {
-    await apiFetch('/tasks/' + detailTaskId + '/notes', { method: 'POST', body: JSON.stringify({ text }) });
-    input.value = '';
-    toast('Comment added', 'success');
-    await loadTasks(true);
-    setTimeout(() => {
-      const body = document.getElementById('detailBody');
-      if (body) body.scrollTop = body.scrollHeight;
-    }, 100);
-  } catch(e) { toast('Failed: ' + e.message, 'error'); }
-}
-
-async function deleteTask(taskId) {
-  try {
-    await apiFetch('/tasks/' + taskId, { method: 'DELETE' });
-    toast('Task deleted', 'success');
-    closeDetailModal();
-    loadTasks(true);
-  } catch(e) { toast('Failed: ' + e.message, 'error'); }
-}
-
-function toggleNoteExpand(noteId, btn) {
-  const el = document.getElementById(noteId);
-  if (!el) return;
-  el.classList.toggle('truncated');
-  btn.textContent = el.classList.contains('truncated') ? 'Show more' : 'Show less';
-}
-
-function copyOutput(btn, text) {
-  navigator.clipboard.writeText(text).then(() => {
-    btn.textContent = 'Copied!';
-    setTimeout(() => { btn.textContent = 'Copy'; }, 2000);
-  }).catch(() => toast('Copy failed', 'error'));
-}
-
-// ─── Content Edit/Save ───
-let isContentEditing = false;
-
-function toggleContentEdit() {
-  isContentEditing = !isContentEditing;
-  const mdView = document.getElementById('detailContentMd');
-  const textarea = document.getElementById('detailContentTextarea');
-  const editBtn = document.getElementById('contentEditBtn');
-  const saveBtn = document.getElementById('contentSaveBtn');
-
-  if (isContentEditing) {
-    mdView.style.display = 'none';
-    textarea.style.display = '';
-    textarea.focus();
-    editBtn.classList.add('active');
-    editBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px;margin-right:3px"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg> Preview';
-    saveBtn.style.display = '';
-  } else {
-    // Update preview with current textarea content
-    const content = textarea.value;
-    mdView.innerHTML = content.trim()
-      ? renderFullMarkdown(content)
-      : '<div class="detail-content-empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>No content yet — click Edit to add markdown content</div>';
-    mdView.style.display = '';
-    textarea.style.display = 'none';
-    editBtn.classList.remove('active');
-    editBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px;margin-right:3px"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg> Edit';
-    saveBtn.style.display = 'none';
-  }
-}
-
-async function saveTaskContent() {
-  if (!detailTaskId) return;
-  const textarea = document.getElementById('detailContentTextarea');
-  const content = textarea.value;
-  const saveBtn = document.getElementById('contentSaveBtn');
-  saveBtn.textContent = 'Saving…';
-  saveBtn.disabled = true;
-  try {
-    await apiFetch('/tasks/' + detailTaskId, { method: 'PATCH', body: JSON.stringify({ content }) });
-    toast('Content saved!', 'success');
-    // Update local task data
-    const task = allTasks.find(t => t.id === detailTaskId);
-    if (task) task.content = content;
-    // Switch back to preview
-    if (isContentEditing) toggleContentEdit();
-    // Refresh the list/kanban behind the modal
-    if (taskView === 'kanban') renderKanban(); else renderTasks();
-  } catch(e) {
-    toast('Save failed: ' + e.message, 'error');
-  } finally {
-    saveBtn.textContent = 'Save';
-    saveBtn.disabled = false;
-  }
-}
-
-function timeAgo(date) {
-  const s = Math.floor((Date.now() - date.getTime()) / 1000);
-  if (s < 60) return 'just now';
-  if (s < 3600) return Math.floor(s / 60) + 'm ago';
-  if (s < 86400) return Math.floor(s / 3600) + 'h ago';
-  return Math.floor(s / 86400) + 'd ago';
-}
-
-document.getElementById('detailModal').addEventListener('click', e => {
-  if (e.target === e.currentTarget) closeDetailModal();
-});
-
-// Restore view on load
-if (taskView === 'kanban') {
-  document.querySelectorAll('#taskViewToggle button').forEach(b => b.classList.toggle('active', b.dataset.view === 'kanban'));
-}
-
-// ═══ DOCUMENTS ═══
-const WORKSPACE_FILES = ['MEMORY.md', 'SOUL.md', 'USER.md', 'AGENTS.md', 'TOOLS.md', 'IDENTITY.md', 'HEARTBEAT.md'];
-let currentFile = null;
-let memoryFiles = [];
-let isEditMode = false;
-let currentFileContent = '';
-
-async function loadFileList() {
-  const sidebar = document.getElementById('fileSidebar');
-  // Load memory dir files
-  try {
-    const data = await apiFetch('/files?path=memory/&list=true');
-    memoryFiles = Array.isArray(data) ? data : (data.files || []);
-  } catch(e) { memoryFiles = []; }
-
-  sidebar.innerHTML = WORKSPACE_FILES.map(f => `
-    <div class="file-item ${currentFile === f ? 'active' : ''}" onclick="selectFile('${f}')">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-      <span class="file-name">${f}</span>
-    </div>
-  `).join('') + (memoryFiles.length ? `
-    <div class="file-divider"></div>
-    <div class="file-sidebar-header">memory/</div>
-    ${memoryFiles.map(f => {
-      const path = typeof f === 'string' ? f : f.name || f.path || '';
-      const name = path.split('/').pop();
-      return `<div class="file-item indent ${currentFile === 'memory/' + name ? 'active' : ''}" onclick="selectFile('memory/${name}')">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-        <span class="file-name">${escHtml(name)}</span>
-      </div>`;
-    }).join('')}
-  ` : '');
-}
-
-async function selectFile(path) {
-  currentFile = path;
-  isEditMode = false;
-  loadFileList();
-  const ta = document.getElementById('editorTextarea');
-  const preview = document.getElementById('mdPreview');
-  const fname = document.getElementById('editorFilename');
-  const saveBtn = document.getElementById('saveBtn');
-  const editBtn = document.getElementById('editToggleBtn');
-  const editLabel = document.getElementById('editToggleLabel');
-
-  fname.innerHTML = `${escHtml(path)}`;
-  preview.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text2)"><div class="spinner"></div><p style="margin-top:12px;font-size:.84rem">Loading…</p></div>';
-  
-  // Show preview mode by default
-  preview.style.display = '';
-  ta.style.display = 'none';
-  saveBtn.style.display = 'none';
-  editBtn.style.display = '';
-  editBtn.classList.remove('editing');
-  editLabel.textContent = 'Edit';
-
-  try {
-    const data = await apiFetch(`/files?path=${encodeURIComponent(path)}`);
-    const content = typeof data === 'string' ? data : (data.content || JSON.stringify(data, null, 2));
-    currentFileContent = content;
-    ta.value = content;
-    ta.disabled = false;
-    saveBtn.disabled = false;
-    renderMarkdownPreview(content);
-  } catch(e) {
-    currentFileContent = '';
-    preview.innerHTML = `<div class="md-empty-hint"><p style="color:var(--red)">Error loading file: ${escHtml(e.message)}</p></div>`;
-    saveBtn.disabled = true;
-    editBtn.style.display = 'none';
-  }
-}
-
-function renderMarkdownPreview(content) {
-  const preview = document.getElementById('mdPreview');
-  if (!content || !content.trim()) {
-    preview.innerHTML = '<div class="md-empty-hint"><p>This file is empty</p></div>';
-    return;
-  }
-  try {
-    if (typeof marked !== 'undefined' && marked.parse) {
-      preview.innerHTML = marked.parse(content, { breaks: true, gfm: true });
-    } else {
-      // Fallback to simple rendering
-      preview.innerHTML = renderMarkdown(content);
-    }
-  } catch(e) {
-    preview.innerHTML = `<pre style="white-space:pre-wrap;color:var(--text2)">${escHtml(content)}</pre>`;
-  }
-}
-
-function toggleEditMode() {
-  isEditMode = !isEditMode;
-  const ta = document.getElementById('editorTextarea');
-  const preview = document.getElementById('mdPreview');
-  const saveBtn = document.getElementById('saveBtn');
-  const editBtn = document.getElementById('editToggleBtn');
-  const editLabel = document.getElementById('editToggleLabel');
-
-  if (isEditMode) {
-    // Switch to edit mode
-    ta.value = currentFileContent;
-    ta.style.display = '';
-    preview.style.display = 'none';
-    saveBtn.style.display = '';
-    editBtn.classList.add('editing');
-    editLabel.textContent = 'Preview';
-    ta.focus();
-  } else {
-    // Switch back to preview mode — pick up any edits
-    currentFileContent = ta.value;
-    ta.style.display = 'none';
-    preview.style.display = '';
-    saveBtn.style.display = 'none';
-    editBtn.classList.remove('editing');
-    editLabel.textContent = 'Edit';
-    renderMarkdownPreview(currentFileContent);
-  }
-}
-
-async function saveFile() {
-  if (!currentFile) return;
-  const btn = document.getElementById('saveBtn');
-  const content = document.getElementById('editorTextarea').value;
-  btn.disabled = true;
-  btn.textContent = 'Saving…';
-  try {
-    await apiFetch(`/files?path=${encodeURIComponent(currentFile)}`, {
-      method: 'PUT',
-      body: JSON.stringify({ content })
-    });
-    currentFileContent = content;
-    toast('File saved successfully', 'success');
-  } catch(e) {
-    toast(`Save failed: ${e.message}`, 'error');
-  } finally {
-    btn.disabled = false;
-    btn.textContent = 'Save';
-  }
-}
-
-
 // ═══ AGENT MONITOR ═══
 let agentData = null;
 
@@ -2321,17 +1368,7 @@ async function loadAgentMonitor() {
 }
 
 function loadSystemInfo() {
-  // Refresh model options from server registry (models-registry.json)
-  apiFetch('/ops/models').then(data => {
-    if (data.registry) refreshModelOptions(data.registry);
-  }).catch(() => {});
-
   apiFetch('/ops/system').then(sys => {
-    // Update global default model from live config
-    if (sys.models?.primary) {
-      const p = sys.models.primary;
-      globalDefaultModel = p.includes('/') ? p.split('/').pop() : p;
-    }
     const el = document.getElementById('systemInfoBar');
     const c = document.getElementById('systemInfoContent');
     if (!el || !c) return;
@@ -2340,13 +1377,13 @@ function loadSystemInfo() {
     const diskPct = parseInt(sys.disk?.usePct) || 0;
     const diskColor = diskPct > 80 ? 'var(--red)' : diskPct > 60 ? 'var(--yellow)' : 'var(--green)';
     c.innerHTML = `
-      <span>🖥️ <strong>${sys.macModel || sys.hostname}</strong></span>
-      <span>🍎 ${sys.macOS || '—'}</span>
-      <span>🧮 ${sys.cpus} ${tt('cores', '核')} · Load ${sys.loadAvg?.['1m']?.toFixed(1) || '—'}</span>
-      <span style="color:${memColor}">💾 RAM ${memPct}%</span>
-      <span style="color:${diskColor}">💿 Disk ${sys.disk?.usePct || '—'}</span>
-      <span>📦 Node ${sys.nodeVersion || '—'}</span>
-      <span>🦞 v${sys.clawVersion || '—'}</span>
+      <span style="white-space:nowrap">🖥️ <strong>${sys.macModel || sys.hostname}</strong></span>
+      <span style="white-space:nowrap">🍎 ${sys.macOS || '—'}</span>
+      <span style="white-space:nowrap">🧮 ${sys.cpus} cores · Load ${sys.loadAvg?.['1m']?.toFixed(1) || '—'}</span>
+      <span style="white-space:nowrap;color:${memColor}">💾 RAM ${memPct}%</span>
+      <span style="white-space:nowrap;color:${diskColor}">💿 Disk ${sys.disk?.usePct || '—'}</span>
+      <span style="white-space:nowrap">📦 Node ${sys.nodeVersion || '—'}</span>
+      <span style="white-space:nowrap">🦞 v${sys.clawVersion || '—'}</span>
     `;
     el.style.display = '';
   }).catch(() => {});
@@ -2391,7 +1428,7 @@ function renderAgentMonitor() {
     subBadge.className = 'agent-stat-badge active';
     subBadge.innerHTML = 'today';
     const topModel = Object.entries(models).filter(([k]) => k !== 'delivery-mirror' && k !== 'unknown').sort((a, b) => b[1] - a[1])[0];
-    subDetail.textContent = topModel ? 'Top: ' + shortModel(topModel[0]) : '—';
+    subDetail.textContent = topModel ? shortModel(topModel[0]) + ' (top by tokens)' : '—';
 
     // Card 5: Model Mix — visual bars
     const sorted = Object.entries(models).filter(([k]) => k !== 'delivery-mirror' && k !== 'unknown').sort((a, b) => b[1] - a[1]);
@@ -2463,7 +1500,7 @@ async function loadCronRuns() {
     count.textContent = runs.length;
 
     if (runs.length === 0) {
-      body.innerHTML = `<div style="padding:12px 18px;font-size:.8rem;color:var(--text2)">${tt('No Cron runs today', '今日暂无 Cron 执行记录')}</div>`;
+      body.innerHTML = '<div style="padding:12px 18px;font-size:.8rem;color:var(--text2)">No cron runs today</div>';
       return;
     }
 
@@ -2504,9 +1541,65 @@ function toggleSessionsPanel() {
   // Panel toggle handled by CSS via collapsed class
 }
 
+// ═══ PARALLEL EXECUTION ═══
+let selectionMode = false;
+let selectedTaskIds = new Set();
+let parallelRuns = new Map(); // taskId -> { status, startTime, title }
+
+function toggleSelectionMode() {
+  selectionMode = !selectionMode;
+  const btn = document.getElementById('selectionModeBtn');
+  btn.style.background = selectionMode ? 'var(--accent)' : '';
+  btn.style.color = selectionMode ? '#fff' : '';
+  btn.style.borderColor = selectionMode ? 'var(--accent)' : '';
+  selectedTaskIds.clear();
+  updateBatchBar();
+  // Re-render to show/hide checkboxes
+  if (taskView === 'kanban') renderKanban(); else renderTasks();
+}
+
+function toggleTaskSelection(taskId, event) {
+  if (event) event.stopPropagation();
+  if (selectedTaskIds.has(taskId)) {
+    selectedTaskIds.delete(taskId);
+  } else {
+    selectedTaskIds.add(taskId);
+  }
+  updateBatchBar();
+  // Update checkbox visual
+  const cb = document.querySelector(`.task-checkbox[data-task-id="${taskId}"]`);
+  if (cb) cb.classList.toggle('checked', selectedTaskIds.has(taskId));
+}
+
+function selectAllNew() {
+  allTasks.filter(t => t.status === 'new').forEach(t => selectedTaskIds.add(t.id));
+  updateBatchBar();
+  if (taskView === 'kanban') renderKanban(); else renderTasks();
+}
+
+function clearSelection() {
+  selectedTaskIds.clear();
+  updateBatchBar();
+  if (taskView === 'kanban') renderKanban(); else renderTasks();
+}
+
+function updateBatchBar() {
+  const bar = document.getElementById('batchBar');
+  const count = document.getElementById('batchCount');
+  if (selectionMode && selectedTaskIds.size > 0) {
+    bar.style.display = '';
+    count.textContent = `${selectedTaskIds.size} selected`;
+  } else {
+    bar.style.display = 'none';
+  }
+}
+
 async function spawnSingleTask(taskId) {
   try {
+    const task = allTasks.find(t => t.id === taskId);
     await apiFetch(`/tasks/${taskId}/spawn`, { method: 'POST' });
+    parallelRuns.set(taskId, { status: 'running', startTime: Date.now(), title: task?.title || 'Untitled' });
+    renderParallelPanel();
     toast('Task spawned as sub-agent', 'success');
     loadTasks(true);
   } catch(e) {
@@ -2514,65 +1607,131 @@ async function spawnSingleTask(taskId) {
   }
 }
 
-// ─── Sessions Panel ───
-// ─── Model names (single source of truth for display) ───
-const MODEL_DISPLAY_NAMES = [
-  ['claude-opus-4-6', 'Claude Opus 4'],
-  ['claude-sonnet-4-6', 'Claude Sonnet 4'],
-  ['claude-haiku-4-5', 'Claude Haiku 4'],
-  ['gemini-3.1-pro', 'Gemini 3.1 Pro'],
-  ['gemini-3-pro-preview', 'Gemini 3 Pro'],
-  ['gemini-3-pro', 'Gemini 3 Pro'],
-  ['gemini-3.0-flash', 'Gemini 3.0 Flash'],
-  ['gemini-3-flash-preview', 'Gemini 3 Flash'],
-  ['gemini-3-flash', 'Gemini 3 Flash'],
-  ['gpt-5.3-codex', 'GPT-5.3 Codex'],
-  ['gpt-5.2-codex', 'GPT-5.2 Codex'],
-  ['gpt-5.3', 'GPT-5.3'],
-  ['gpt-5.2', 'GPT-5.2'],
-];
-
-// ─── Model Selector ───
-let globalDefaultModel = 'claude-sonnet-4-6'; // updated dynamically from /ops/system
-
-// Starts with hardcoded defaults; refreshed from /ops/models on load.
-// To update model names/ids: edit models-registry.json on the server — no code change needed.
-let MODEL_OPTIONS = [
-  { value: 'default', label: '', full: null, isDefault: true },
-  { value: 'opus',   label: 'Claude Opus 4',   full: 'claude-opus-4-6' },
-  { value: 'sonnet', label: 'Claude Sonnet 4', full: 'claude-sonnet-4-6' },
-  { value: 'flash',  label: 'Gemini 3 Flash',  full: 'gemini-3-flash-preview' },
-  { value: 'pro',    label: 'Gemini 3 Pro',     full: 'gemini-3-pro-preview' },
-  { value: 'codex',  label: 'GPT-5.3 Codex',   full: 'gpt-5.3-codex' },
-];
-
-function refreshModelOptions(registry) {
-  if (!registry || typeof registry !== 'object') return;
-  const opts = [{ value: 'default', label: '', full: null, isDefault: true }];
-  for (const [alias, entry] of Object.entries(registry)) {
-    const id = typeof entry === 'string' ? entry : entry?.id;
-    const label = (typeof entry === 'object' && entry?.label) ? entry.label : alias;
-    if (id) opts.push({ value: alias, label, full: id.includes('/') ? id.split('/').pop() : id });
+async function spawnBatch() {
+  const ids = Array.from(selectedTaskIds);
+  if (ids.length === 0) { toast('No tasks selected', 'error'); return; }
+  try {
+    const result = await apiFetch('/tasks/spawn-batch', {
+      method: 'POST',
+      body: JSON.stringify({ taskIds: ids })
+    });
+    // Track spawned tasks
+    ids.forEach(id => {
+      const task = allTasks.find(t => t.id === id);
+      parallelRuns.set(id, { status: 'running', startTime: Date.now(), title: task?.title || 'Untitled' });
+    });
+    renderParallelPanel();
+    const spawned = result.spawned || ids.length;
+    const skipped = result.skipped?.length || 0;
+    toast(`⚡ ${spawned} tasks spawned in parallel${skipped ? ` (${skipped} skipped)` : ''}`, 'success');
+    selectedTaskIds.clear();
+    updateBatchBar();
+    loadTasks(true);
+  } catch(e) {
+    toast(`Batch spawn failed: ${e.message}`, 'error');
   }
-  MODEL_OPTIONS = opts;
 }
 
-function getDefaultModelLabel() {
-  // Show actual model name instead of "默认"
-  const m = globalDefaultModel || '';
-  return shortModel(m) + ' ★';
+function renderParallelPanel() {
+  const panel = document.getElementById('parallelPanel');
+  const container = document.getElementById('parallelTasks');
+  const countEl = document.getElementById('parallelCount');
+  
+  // Update statuses from task data
+  parallelRuns.forEach((run, taskId) => {
+    const task = allTasks.find(t => t.id === taskId);
+    if (task) {
+      if (task.status === 'done') run.status = 'done';
+      else if (task.status === 'failed') run.status = 'failed';
+      else if (task.status === 'in-progress') run.status = 'running';
+    }
+  });
+
+  if (parallelRuns.size === 0) {
+    panel.style.display = 'none';
+    return;
+  }
+  panel.style.display = '';
+
+  const running = Array.from(parallelRuns.values()).filter(r => r.status === 'running').length;
+  countEl.textContent = `${running} running / ${parallelRuns.size} total`;
+
+  container.innerHTML = Array.from(parallelRuns.entries()).map(([taskId, run]) => {
+    const elapsed = Math.round((Date.now() - run.startTime) / 1000);
+    const elapsedStr = elapsed < 60 ? `${elapsed}s` : `${Math.floor(elapsed/60)}m ${elapsed%60}s`;
+    let icon = '<div class="parallel-spinner"></div>';
+    if (run.status === 'done') icon = '<div class="parallel-done-icon">✓</div>';
+    if (run.status === 'failed') icon = '<div class="parallel-fail-icon">✕</div>';
+    return `<div class="parallel-task-row">
+      ${icon}
+      <span class="parallel-task-name" title="${escHtml(run.title)}">${escHtml(run.title)}</span>
+      <span class="parallel-task-status ${run.status}">${run.status}</span>
+      <span class="parallel-task-time">${elapsedStr}</span>
+    </div>`;
+  }).join('');
 }
+
+function clearCompletedParallel() {
+  parallelRuns.forEach((run, taskId) => {
+    if (run.status === 'done' || run.status === 'failed') parallelRuns.delete(taskId);
+  });
+  renderParallelPanel();
+}
+
+function hideParallelPanel() {
+  document.getElementById('parallelPanel').style.display = 'none';
+}
+
+// ─── Ops Dashboard (Cron + Vision) ───
+async function loadOps() {
+  const visionEl = document.getElementById('visionGrid');
+  const visionStatus = document.getElementById('visionStatus');
+  if (!visionEl) return;
+
+  try {
+    const vision = await apiFetch('/vision/stats');
+    renderVisionStats(vision, visionEl, visionStatus);
+  } catch (e) {
+    visionEl.innerHTML = `<div class="empty-state"><h3>Unable to Load Vision Stats</h3><p>${e.message}</p></div>`;
+  }
+}
+
+function renderVisionStats(data, visionEl, statusEl) {
+  const cats = data?.categories || {};
+  if (statusEl) statusEl.textContent = data?.status === 'not_configured' ? 'Notion not configured' : 'Notion source';
+  const entries = Object.entries(cats);
+  if (entries.length === 0) {
+    visionEl.innerHTML = `<div class="empty-state"><h3>No vision stats</h3><p>Configure Notion databases to see ingestion counts.</p></div>`;
+    return;
+  }
+  visionEl.innerHTML = entries.map(([k, v]) => {
+    return `<div class="vision-card">
+      <div class="vision-label">${k}</div>
+      <div class="vision-count">${v.count ?? 0}</div>
+      <div class="vision-sub">Today</div>
+    </div>`;
+  }).join('');
+}
+
+// ─── Sessions Panel ───
+// ─── Model Selector ───
+const MODEL_OPTIONS = [
+  { value: 'default', label: 'Default', short: 'default' },
+  { value: 'opus',   label: 'Opus',   full: 'claude-opus-4-6' },
+  { value: 'sonnet', label: 'Sonnet', full: 'claude-sonnet-4-6' },
+  { value: 'flash',  label: 'Flash',  full: 'gemini-3.0-flash' },
+  { value: 'pro',    label: 'Pro',    full: 'gemini-3.1-pro' },
+  { value: 'codex',  label: 'Codex',  full: 'gpt-5.3-codex' },
+];
 
 function buildModelSelect(currentModel, id, type) {
   // type: 'session' (channelId) or 'cron' (jobId)
   const opts = MODEL_OPTIONS.map(o => {
-    let label = o.isDefault ? getDefaultModelLabel() : o.label;
     const isCurrent = o.full ? currentModel.includes(o.full) : (!currentModel || currentModel === 'unknown');
-    return `<option value="${o.value}" ${isCurrent ? 'selected' : ''}>${label}</option>`;
+    return `<option value="${o.value}" ${isCurrent ? 'selected' : ''}>${o.label}</option>`;
   }).join('');
   const color = getModelColor(currentModel);
   return `<select class="model-select" style="border-color:${color};color:${color}"
-    ${DASHBOARD_CAPS.mutatingOpsEnabled ? '' : 'disabled title="Model changes disabled by server policy"'}
     onchange="changeModel('${type}','${id}',this.value,this)">${opts}</select>`;
 }
 
@@ -2595,7 +1754,7 @@ async function changeModel(type, id, model, el) {
     el.style.color = '#f87171';
     el.disabled = false;
     el.style.opacity = '1';
-    alert(tt('Model switch failed: ', '模型切换失败: ') + e.message);
+    toast('Model change failed: ' + e.message, 'error');
   }
 }
 
@@ -2626,32 +1785,6 @@ function toggleSessionSort(key) {
 function sessionSortIndicator(key) {
   if (sessionSortState.key !== key) return '&harr;';
   return sessionSortState.dir === 'asc' ? '&uarr;' : '&darr;';
-}
-
-function normalizeTaskTag(tag) {
-  if (!tag) return '';
-  if (isZh()) return tag;
-  const map = {
-    '🔧 深度开发': '🔧 Deep build',
-    '🧠 架构讨论': '🧠 Architecture',
-    '📊 汇报转发': '📊 Reporting',
-    '💬 闲聊': '💬 Chat',
-    '🔍 监控播报': '🔍 Monitoring',
-    '💼 搜索整理': '💼 Job research',
-    '🐦 内容创作': '🐦 Content',
-    '📰 摘要生成': '📰 Summary',
-    '📝 内容摘要': '📝 Summary',
-    '👁️ 图片路由': '👁️ Image routing',
-    '🎯 活动搜索': '🎯 Event search',
-    '📅 规划': '📅 Planning',
-    '👤 信息录入': '👤 Data entry',
-    '🍷 品鉴记录': '🍷 Tasting log',
-    '🚬 品鉴记录': '🚬 Tasting log',
-    '🍵 品鉴记录': '🍵 Tasting log',
-    '🌱 记录': '🌱 Logging',
-    '📖 灵修提醒': '📖 Reflection reminder',
-  };
-  return map[tag] || tag.replace(/[\u4E00-\u9FFF]/g, '').replace(/\s+/g, ' ').trim();
 }
 
 async function loadSessions() {
@@ -2699,27 +1832,27 @@ async function loadSessions() {
       return;
     }
 
-    // Chinese names + task type for Discord channels
+    // Display name + task type for Discord channels
     const channelMeta = {
-      '#dev_build':              { cn: '开发构建', task: '🔧 深度开发', tier: 'hard' },
-      '#ai-learning':            { cn: 'AI学习', task: '🧠 架构讨论', tier: 'hard' },
-      '#ops-report':             { cn: '运维报告', task: '📊 汇报转发', tier: 'easy' },
-      '#general':                { cn: '综合频道', task: '💬 闲聊', tier: 'easy' },
-      '#openclaw-watch':         { cn: '生态监控', task: '🔍 监控播报', tier: 'medium' },
-      '#jobs-intel':             { cn: '求职情报', task: '💼 搜索整理', tier: 'medium' },
-      '#x-ai-socal-radar':      { cn: 'X/AI雷达', task: '🐦 内容创作', tier: 'hard' },
-      '#tech-news':              { cn: '科技新闻', task: '📰 摘要生成', tier: 'medium' },
-      '#podcast_video_article':  { cn: '播客/视频', task: '📝 内容摘要', tier: 'medium' },
-      '#meta-vision-ingest':     { cn: '视觉入口', task: '👁️ 图片路由', tier: 'easy' },
-      '#socal-ai-events':        { cn: '南加AI活动', task: '🎯 活动搜索', tier: 'medium' },
-      '#event-planning':         { cn: '活动策划', task: '📅 规划', tier: 'easy' },
-      '#networking-log':         { cn: '人脉记录', task: '👤 信息录入', tier: 'easy' },
-      '#工作搭子碎碎念':          { cn: '工作搭子', task: '💬 闲聊', tier: 'easy' },
-      '#饮酒':                   { cn: '饮酒', task: '🍷 品鉴记录', tier: 'easy' },
-      '#灰茄':                   { cn: '灰茄', task: '🚬 品鉴记录', tier: 'easy' },
-      '#品茶':                   { cn: '品茶', task: '🍵 品鉴记录', tier: 'easy' },
-      '#养花':                   { cn: '养花', task: '🌱 记录', tier: 'easy' },
-      '#灵修':                   { cn: '灵修', task: '📖 灵修提醒', tier: 'easy' },
+      '#dev_build':              { cn: 'Dev Build',       task: '🔧 Deep Dev',             tier: 'hard' },
+      '#ai-learning':            { cn: 'AI Learning',     task: '🧠 Architecture Discussion', tier: 'hard' },
+      '#ops-report':             { cn: 'Ops Report',      task: '📊 Report Forwarding',    tier: 'easy' },
+      '#general':                { cn: 'General',         task: '💬 Casual Chat',          tier: 'easy' },
+      '#openclaw-watch':         { cn: 'Ecosystem Watch', task: '🔍 Monitor & Broadcast',  tier: 'medium' },
+      '#jobs-intel':             { cn: 'Jobs Intel',      task: '💼 Search & Compile',     tier: 'medium' },
+      '#x-ai-socal-radar':      { cn: 'X/AI Radar',      task: '🐦 Content Creation',     tier: 'hard' },
+      '#tech-news':              { cn: 'Tech News',       task: '📰 Summary Generation',   tier: 'medium' },
+      '#podcast_video_article':  { cn: 'Podcast/Video',   task: '📝 Content Summary',      tier: 'medium' },
+      '#meta-vision-ingest':     { cn: 'Vision Ingest',   task: '👁️ Image Routing',       tier: 'easy' },
+      '#socal-ai-events':        { cn: 'SoCal AI Events', task: '🎯 Event Search',         tier: 'medium' },
+      '#event-planning':         { cn: 'Event Planning',  task: '📅 Planning',             tier: 'easy' },
+      '#networking-log':         { cn: 'Networking Log',  task: '👤 Contact Entry',        tier: 'easy' },
+      '#工作搭子碎碎念':          { cn: 'Work Buddy',      task: '💬 Casual Chat',          tier: 'easy' },
+      '#饮酒':                   { cn: 'Drinking',        task: '🍷 Tasting Notes',        tier: 'easy' },
+      '#灰茄':                   { cn: 'Cigars',          task: '🚬 Tasting Notes',        tier: 'easy' },
+      '#品茶':                   { cn: 'Tea',             task: '🍵 Tasting Notes',        tier: 'easy' },
+      '#养花':                   { cn: 'Gardening',       task: '🌱 Log',                  tier: 'easy' },
+      '#灵修':                   { cn: 'Meditation',      task: '📖 Meditation Reminder',  tier: 'easy' },
     };
 
     // Model tier: what complexity level is this model suited for
@@ -2737,19 +1870,19 @@ async function loadSessions() {
       const mTier = modelTier(s.model);
       const tiers = { easy: 0, medium: 1, hard: 2 };
       const diff = tiers[mTier] - tiers[taskTier];
-      if (diff >= 2) return { emoji: '🔴', text: tt('Overkill', '过高'), tip: tt('Model is far above task complexity, consider downgrade', '模型远超任务需求，建议降级') };
-      if (diff === 1) return { emoji: '🟡', text: tt('High', '偏高'), tip: tt('Could downgrade to save cost', '可考虑降级节省成本') };
-      if (diff === 0) return { emoji: '🟢', text: tt('Match', '匹配'), tip: tt('Model matches task complexity', '模型与任务复杂度匹配') };
-      if (diff === -1) return { emoji: '🔵', text: tt('Low', '偏低'), tip: tt('Task might need stronger model', '任务较复杂，可考虑升级') };
+      if (diff >= 2) return { emoji: '🔴', text: 'Over-spec', tip: 'Model far exceeds task needs — consider downgrading to save cost' };
+      if (diff === 1) return { emoji: '🟡', text: 'Slightly high', tip: 'Model slightly overqualified — downgrade may save cost' };
+      if (diff === 0) return { emoji: '🟢', text: 'Good fit', tip: 'Model complexity matches task requirements' };
+      if (diff === -1) return { emoji: '🔵', text: 'Under-spec', tip: 'Task is complex — consider upgrading model' };
       return { emoji: '⚪', text: '—', tip: '' };
     }
 
     const fitSortRank = s => {
       const text = fitLabel(s).text;
-      if (text === tt('Overkill', '过高')) return 4;
-      if (text === tt('High', '偏高')) return 3;
-      if (text === tt('Match', '匹配')) return 2;
-      if (text === tt('Low', '偏低')) return 1;
+      if (text === 'Over-spec') return 4;
+      if (text === 'Slightly high') return 3;
+      if (text === 'Good fit') return 2;
+      if (text === 'Under-spec') return 1;
       return 0;
     };
 
@@ -2785,28 +1918,33 @@ async function loadSessions() {
 
     let html = `<table class="sessions-table">
       <thead><tr>
-        <th>${tt('Channel', '频道')}</th>
-        <th>${tt('Task', '任务')}</th>
-        <th><button type="button" class="sess-sort-btn ${sessionSortState.key === 'model' ? 'active' : ''}" onclick="toggleSessionSort('model')">${tt('Model', '模型')} <span class="sess-sort-indicator">${sessionSortIndicator('model')}</span></button></th>
-        <th><button type="button" class="sess-sort-btn ${sessionSortState.key === 'messages' ? 'active' : ''}" onclick="toggleSessionSort('messages')">${tt('Messages', '消息')} <span class="sess-sort-indicator">${sessionSortIndicator('messages')}</span></button></th>
+        <th>Channel</th>
+        <th>Task</th>
+        <th><button type="button" class="sess-sort-btn ${sessionSortState.key === 'model' ? 'active' : ''}" onclick="toggleSessionSort('model')">Model <span class="sess-sort-indicator">${sessionSortIndicator('model')}</span></button></th>
+        <th title="Effective = total messages minus HEARTBEAT_OK and NO_REPLY"><button type="button" class="sess-sort-btn ${sessionSortState.key === 'messages' ? 'active' : ''}" onclick="toggleSessionSort('messages')">Messages ⓘ <span class="sess-sort-indicator">${sessionSortIndicator('messages')}</span></button></th>
         <th><button type="button" class="sess-sort-btn ${sessionSortState.key === 'tokens' ? 'active' : ''}" onclick="toggleSessionSort('tokens')">Tokens <span class="sess-sort-indicator">${sessionSortIndicator('tokens')}</span></button></th>
-        <th><button type="button" class="sess-sort-btn ${sessionSortState.key === 'cost' ? 'active' : ''}" onclick="toggleSessionSort('cost')">${tt('Cost', '花费')} <span class="sess-sort-indicator">${sessionSortIndicator('cost')}</span></button></th>
-        <th><button type="button" class="sess-sort-btn ${sessionSortState.key === 'costPerMsg' ? 'active' : ''}" onclick="toggleSessionSort('costPerMsg')">${tt('$/msg', '$/条')} <span class="sess-sort-indicator">${sessionSortIndicator('costPerMsg')}</span></button></th>
-        <th><button type="button" class="sess-sort-btn ${sessionSortState.key === 'fit' ? 'active' : ''}" onclick="toggleSessionSort('fit')">${tt('Fit', '匹配')} <span class="sess-sort-indicator">${sessionSortIndicator('fit')}</span></button></th>
+        <th><button type="button" class="sess-sort-btn ${sessionSortState.key === 'cost' ? 'active' : ''}" onclick="toggleSessionSort('cost')">Cost <span class="sess-sort-indicator">${sessionSortIndicator('cost')}</span></button></th>
+        <th><button type="button" class="sess-sort-btn ${sessionSortState.key === 'costPerMsg' ? 'active' : ''}" onclick="toggleSessionSort('costPerMsg')">$/Msg <span class="sess-sort-indicator">${sessionSortIndicator('costPerMsg')}</span></button></th>
+        <th title="Model complexity vs. channel task difficulty. 🔴 Over-spec = model far exceeds task needs."><button type="button" class="sess-sort-btn ${sessionSortState.key === 'fit' ? 'active' : ''}" onclick="toggleSessionSort('fit')">Fit ⓘ <span class="sess-sort-indicator">${sessionSortIndicator('fit')}</span></button></th>
       </tr></thead><tbody>`;
 
     for (const s of sortedSessions) {
       const meta = channelMeta[s.displayName] || {};
       const cn = meta.cn || '';
-      const taskTag = normalizeTaskTag(meta.task || '');
+      const taskTag = meta.task || '';
       const eff = s.today.effectiveMessages || 0;
       const costPerMsg = eff > 0 ? (s.today.cost / eff) : 0;
       const costColor = costPerMsg > 1.5 ? '#f87171' : costPerMsg > 0.5 ? '#fbbf24' : 'var(--green)';
       const fit = fitLabel(s);
 
+      const thinkingLvl = s.thinkingLevel && s.thinkingLevel !== '—' ? s.thinkingLevel : '';
+      const thinkingColor = thinkingLvl === 'low' ? 'var(--green)' : thinkingLvl === 'medium' ? '#fbbf24' : thinkingLvl === 'high' ? '#f87171' : 'var(--text2)';
+      const thinkingTag = thinkingLvl
+        ? `<span style="font-size:.58rem;padding:0 4px;border-radius:3px;border:1px solid ${thinkingColor};color:${thinkingColor};margin-left:4px;vertical-align:middle">🧠 ${escHtml(thinkingLvl)}</span>`
+        : '';
       const nameHtml = cn
-        ? `<span class="sess-name">${escHtml(s.displayName)}</span><br><span style="color:var(--text2);font-size:.65rem">${isZh() ? cn : `CN: ${cn}`}</span>`
-        : `<span class="sess-name">${escHtml(s.displayName)}</span>`;
+        ? `<span class="sess-name">${escHtml(s.displayName)}</span>${thinkingTag}<br><span style="color:var(--text2);font-size:.65rem">${cn}</span>`
+        : `<span class="sess-name">${escHtml(s.displayName)}</span>${thinkingTag}`;
 
       // Model selector dropdown
       const modelSelect = s.channelId ? buildModelSelect(s.model, s.channelId, 'session') : `<span class="sess-model" style="border-color:${getModelColor(s.model)};color:${getModelColor(s.model)}">${shortModel(s.model)}</span>`;
@@ -2815,7 +1953,7 @@ async function loadSessions() {
         <td><span class="sess-status ${s.status}"></span>${nameHtml}</td>
         <td style="font-size:.7rem">${taskTag}</td>
         <td>${modelSelect}</td>
-        <td>${s.today.messages}<span style="color:var(--text2);font-size:.65rem"><br>${eff} ${tt('effective', '有效')}</span></td>
+        <td title="Effective = total − HEARTBEAT_OK − NO_REPLY">${s.today.messages}<span style="color:var(--text2);font-size:.65rem"><br>${eff} effective</span></td>
         <td>${fmtTokens(s.today.totalTokens)}</td>
         <td style="font-weight:600">$${s.today.cost.toFixed(2)}</td>
         <td style="color:${costColor};font-weight:600">${eff > 0 ? '$' + costPerMsg.toFixed(2) : '—'}</td>
@@ -2824,6 +1962,7 @@ async function loadSessions() {
     }
     html += '</tbody></table>';
     tableEl.innerHTML = html;
+    tableEl.style.animation = 'fadeIn .3s ease';
   } catch (e) {
     tableEl.innerHTML = `<div class="empty-state"><p>${e.message}</p></div>`;
   }
@@ -2838,10 +1977,7 @@ async function loadQuality() {
     // Sort by idle rate desc
     sessions.sort((a, b) => b.today.noReplyRate - a.today.noReplyRate);
 
-    let html = `<div class="glass-card" style="padding:16px;margin-bottom:12px"><div class="card-title">${tt('Session Quality (Today)', '会话质量（今日）')}</div><div class="card-sub">${tt(
-      'Silent rate = (NO_REPLY + HEARTBEAT_OK) / total messages. High silent rate means many messages need no response, so you can downgrade the model to save cost.',
-      '静默率 = (NO_REPLY 无回复 + HEARTBEAT_OK 心跳) / 总消息数。高静默率说明该频道大量消息不需要回复，可考虑降级模型节省成本。'
-    )}</div></div>`;
+    let html = '<div class="glass-card" style="padding:16px;margin-bottom:12px"><div class="card-title">Session Quality (Today)</div><div class="card-sub">Silence rate = (NO_REPLY + HEARTBEAT_OK) / total messages. A high silence rate means most messages need no reply — consider downgrading the model to save cost.</div></div>';
     html += '<div class="ops-channel-list">';
     for (const s of sessions) {
       const barWidth = Math.min(s.today.noReplyRate, 100);
@@ -2854,7 +1990,7 @@ async function loadQuality() {
           </div>
           <div class="ops-ch-meta"><span>${s.today.messages} msgs</span><span>${s.today.effectiveMessages} effective</span><span>${s.today.noReply} silent</span><span>${s.today.heartbeat} heartbeat</span></div>
         </div>
-        <div class="ops-ch-right"><div class="ops-ch-tokens" style="color:${color}">${s.today.noReplyRate}%</div><div class="ops-ch-cost">${tt('Silent rate', '静默率')}</div></div>
+        <div class="ops-ch-right"><div class="ops-ch-tokens" style="color:${color}">${s.today.noReplyRate}%</div><div class="ops-ch-cost">Silence Rate</div></div>
       </div>`;
     }
     html += '</div>';
@@ -2866,23 +2002,18 @@ async function loadAudit() {
   const el = document.getElementById('auditContent2');
   if (!el) return;
   try {
-    const [data, changelog] = await Promise.all([
-      apiFetch('/ops/sessions'),
-      apiFetch('/ops/model-changelog').catch(() => ({ entries: [] })),
-    ]);
-    const channelMap = new Map((data.sessions || []).map(s => [String(s.channelId), s.displayName || s.channelId]));
+    const data = await apiFetch('/ops/sessions');
     const sessions = (data.sessions || []).filter(s => s.today.messages > 0);
-    const changeEntries = Array.isArray(changelog?.entries) ? changelog.entries.slice(0, 20) : [];
 
     const recommendations = [];
     for (const s of sessions) {
       // Expensive model with high idle rate
       if (s.model?.includes('opus') && s.today.noReplyRate > 40 && s.today.messages > 3) {
-        recommendations.push({ severity: 'high', session: s.displayName, msg: `Using Claude Opus 4 but ${s.today.noReplyRate}% idle → switch to Claude Sonnet 4 (save ~$${(s.today.cost * 0.8).toFixed(0)}/day)`, model: s.model });
+        recommendations.push({ severity: 'high', session: s.displayName, msg: `Using Opus but ${s.today.noReplyRate}% idle → switch to Sonnet (save ~$${(s.today.cost * 0.8).toFixed(0)}/day)`, model: s.model });
       }
       // Opus for simple channel
       if (s.model?.includes('opus') && s.today.effectiveMessages < 5 && s.today.cost > 1) {
-        recommendations.push({ severity: 'medium', session: s.displayName, msg: `Claude Opus 4 overkill — only ${s.today.effectiveMessages} effective msgs, costing $${s.today.cost.toFixed(2)}`, model: s.model });
+        recommendations.push({ severity: 'medium', session: s.displayName, msg: `Opus overkill — only ${s.today.effectiveMessages} effective msgs, costing $${s.today.cost.toFixed(2)}`, model: s.model });
       }
       // No thinking level set
       if (s.thinkingLevel === '—' && s.today.messages > 0) {
@@ -2955,51 +2086,6 @@ async function loadAudit() {
       </div>`;
     } catch {}
 
-    const fmtChangeTs = (ts) => {
-      const ms = Date.parse(ts || '');
-      if (!Number.isFinite(ms)) return '—';
-      const d = new Date(ms);
-      const mm = String(d.getMonth() + 1).padStart(2, '0');
-      const dd = String(d.getDate()).padStart(2, '0');
-      const hh = String(d.getHours()).padStart(2, '0');
-      const mi = String(d.getMinutes()).padStart(2, '0');
-      return `${mm}/${dd} ${hh}:${mi}`;
-    };
-    const shortId = (id) => {
-      const raw = String(id || '');
-      if (!raw) return '—';
-      if (raw.length <= 14) return raw;
-      return `${raw.slice(0, 6)}...${raw.slice(-4)}`;
-    };
-
-    html += `<div class="glass-card" style="padding:16px;margin-top:12px">
-      <div class="card-title">🔄 ${tt('Model Change History', '模型变更历史')}</div>`;
-    if (!changeEntries.length) {
-      html += `<div class="empty-state" style="padding:10px 4px 2px"><p>${tt('No model changes yet', '暂无变更记录')}</p></div>`;
-    } else {
-      html += '<div style="margin-top:8px">';
-      for (const item of changeEntries) {
-        const isCron = item?.type === 'cron';
-        const typeLabel = isCron ? 'CRON' : 'SESSION';
-        const typeColor = isCron ? 'var(--yellow)' : 'var(--blue)';
-        const displayName = isCron ? (item?.name || item?.id || '—') : (channelMap.get(String(item?.id)) || shortId(item?.id));
-        const fromModel = shortModel(item?.from || 'unknown');
-        const toModel = shortModel(item?.to || 'unknown');
-        const via = item?.via || 'dashboard';
-        html += `<div style="display:grid;grid-template-columns:82px 74px 1fr;gap:8px;align-items:center;padding:7px 2px;border-bottom:1px solid var(--border);font-size:.76rem">
-          <span style="font-family:var(--mono);color:var(--text2)">${fmtChangeTs(item?.ts)}</span>
-          <span style="display:inline-flex;align-items:center;justify-content:center;padding:2px 8px;border-radius:999px;font-size:.66rem;font-weight:700;letter-spacing:.5px;background:${typeColor}1f;color:${typeColor};border:1px solid ${typeColor}4d">${typeLabel}</span>
-          <div style="min-width:0;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-            <span style="color:var(--text);font-family:var(--mono);font-size:.72rem">${escHtml(displayName)}</span>
-            <span style="color:var(--text2)">${escHtml(fromModel)} → ${escHtml(toModel)}</span>
-            <span style="display:inline-flex;align-items:center;padding:1px 7px;border-radius:999px;border:1px solid var(--border);color:var(--text2);font-size:.64rem;text-transform:lowercase">${escHtml(via)}</span>
-          </div>
-        </div>`;
-      }
-      html += '</div>';
-    }
-    html += '</div>';
-
     el.innerHTML = html;
   } catch (e) { el.innerHTML = `<p>${e.message}</p>`; }
 }
@@ -3018,11 +2104,6 @@ async function loadConfig() {
   if (!el) return;
   try {
     const data = await apiFetch('/ops/config');
-    const caps = data.capabilities || {};
-    DASHBOARD_CAPS.mutatingOpsEnabled = !!caps.mutatingOpsEnabled;
-    DASHBOARD_CAPS.mutatingOpsLoopbackOnly = caps.mutatingOpsLoopbackOnly !== false;
-    DASHBOARD_CAPS.attachmentFilePathCopyEnabled = !!caps.attachmentFilePathCopyEnabled;
-    applyCapabilitiesUI();
     const files = data.files || [];
     const cats = { core: '⚙️ Core Config', keys: '🔑 API Keys', personality: '🎭 Personality & Agents' };
     const grouped = {};
@@ -3057,26 +2138,34 @@ async function loadConfig() {
 async function loadCronEnhanced() {
   const panel = document.getElementById('panel-tasks');
   if (!panel) return;
+  const opsGrid = panel.querySelector('.ops-grid');
+  if (!opsGrid) return;
 
   let jobsContainer = document.getElementById('cronJobsContainer');
   if (!jobsContainer) {
     jobsContainer = document.createElement('div');
     jobsContainer.id = 'cronJobsContainer';
     jobsContainer.style.marginBottom = '12px';
-    panel.insertBefore(jobsContainer, panel.firstElementChild);
+    panel.insertBefore(jobsContainer, opsGrid);
   }
 
   try {
     const data = await apiFetch('/ops/cron');
     const jobs = data.jobs || [];
 
+    const badge = document.getElementById('taskCount');
+    if (badge) badge.textContent = data.enabled || 0;
+
     let html = `<div class="glass-card" style="padding:14px;margin-bottom:12px">
       <div class="card-title">Cron Jobs</div>
-      <div class="card-sub">${tt(
-        `${data.total} jobs · ${data.enabled} enabled · ${data.disabled} disabled`,
-        `${data.total} 个任务 · ${data.enabled} 启用 · ${data.disabled} 停用`
-      )}</div>
+      <div class="card-sub">${data.total} jobs · ${data.enabled} enabled · ${data.disabled} disabled</div>
     </div>`;
+
+    if (jobs.length === 0) {
+      html += '<div class="empty-state"><h3>No cron jobs configured</h3><p>Add cron jobs to the openclaw config to see them here.</p></div>';
+      jobsContainer.innerHTML = html;
+      return;
+    }
 
     for (const j of jobs) {
       const statusDot = !j.enabled ? 'off' : (j.lastRun?.status === 'finished' ? 'ok' : (j.lastRun?.status ? 'fail' : 'ok'));
@@ -3085,7 +2174,7 @@ async function loadCronEnhanced() {
         const dur = j.lastRun.durationMs ? (j.lastRun.durationMs / 1000).toFixed(0) + 's' : '';
         const tokens = j.lastRun.tokens ? fmtTokens(j.lastRun.tokens) : '';
         return [ago, dur, tokens, j.lastRun.model ? shortModel(j.lastRun.model) : ''].filter(Boolean).join(' · ');
-      })() : tt('Never run', '尚未运行');
+      })() : 'Never run';
 
       html += `<div class="cron-card ${j.enabled ? '' : 'disabled'}">
         <div class="cron-header">
@@ -3093,13 +2182,13 @@ async function loadCronEnhanced() {
             <div class="cron-name">${escHtml(j.name)}</div>
             <div class="cron-schedule">🕐 ${escHtml(j.schedule)}</div>
           </div>
-          <span class="cron-status"><span class="dot ${statusDot}"></span>${j.enabled ? tt('Enabled', '启用') : tt('Disabled', '停用')}</span>
+          <span class="cron-status"><span class="dot ${statusDot}"></span>${j.enabled ? 'Enabled' : 'Disabled'}</span>
         </div>
         <div class="cron-desc">${escHtml(j.description)}</div>
         <div class="cron-footer">
           <span>📋 ${j.payloadKind || '—'}</span>
-          <span>🧠 ${buildModelSelect(j.model || '', j.id, 'cron')}</span>
-          <span>⏱ ${tt('Last', '上次')}: ${lastRunText}</span>
+          <span title="Changes the LLM model for future runs of this job (takes effect immediately)">🧠 ${buildModelSelect(j.model || '', j.id, 'cron')}</span>
+          <span>⏱ Last: ${lastRunText}</span>
         </div>
       </div>`;
     }
@@ -3111,24 +2200,10 @@ async function loadCronEnhanced() {
 
 // ─── Ops Channel Usage Panel ───
 const MODEL_COLORS = {
-  // Anthropic — purple/pink spectrum (high contrast between tiers)
-  'claude-opus-4-6': '#a855f7',    // vivid purple — flagship
-  'claude-sonnet-4-6': '#ec4899',  // hot pink — daily driver
-  'claude-haiku-4-5': '#f9a8d4',   // soft pink — lightweight
-
-  // OpenAI — green/teal spectrum
-  'gpt-5.2-codex': '#10b981',      // emerald — codex
-  'gpt-5.3-codex': '#10b981',
-  'gpt-5.2': '#06b6d4',            // cyan — general
-  'gpt-5.3': '#06b6d4',
-
-  // Google — amber/orange spectrum
-  'gemini-3.1-pro': '#f59e0b',     // amber — pro tier
-  'gemini-3-pro-preview': '#f59e0b',
-  'gemini-3-pro': '#f59e0b',
-  'gemini-3.0-flash': '#fb923c',   // orange — flash tier
-  'gemini-3-flash-preview': '#fb923c',
-  'gemini-3-flash': '#fb923c',
+  'claude-opus-4-6': '#c084fc', 'claude-sonnet-4-6': '#818cf8',
+  'gpt-5.2-codex': '#34d399', 'gpt-5.2': '#6ee7b7',
+  'gemini-3-pro': '#fbbf24', 'gemini-3-flash': '#fcd34d',
+  'gemini-3-pro-preview': '#fbbf24', 'gemini-3-flash-preview': '#fcd34d',
 };
 
 function getModelColor(model) {
@@ -3137,10 +2212,13 @@ function getModelColor(model) {
 }
 
 function shortModel(m) {
-  const raw = (m || '').replace(/-preview$/, '');
-  if (!raw || raw === 'unknown') return 'unknown';
-  const pair = MODEL_DISPLAY_NAMES.find(([pattern]) => raw.includes(pattern));
-  return pair ? pair[1] : raw.replace(/^[^/]+\//, '').replace(/-/g, ' '); // fallback: strip provider prefix, dashes to spaces
+  return (m || 'unknown')
+    .replace(/-preview$/, '')
+    .replace('claude-', '')
+    .replace('gemini-3-pro', 'Gemini-3-Pro')
+    .replace('gemini-3-flash', 'Gemini-3-Flash')
+    .replace('gpt-5.3-', 'gpt-')
+    .replace('gpt-5.2-', 'gpt-');
 }
 
 function fmtTokens(n) {
@@ -3164,10 +2242,7 @@ async function loadCronCosts() {
     const data = await apiFetch('/ops/cron-costs');
     const s = data.summary || {};
     const today = s.today || {};
-    summaryEl.textContent = tt(
-      `${s.totalRuns || 0} runs · total fixed ${fmtUsd(s.totalCronCost, 2)} (${fmtTokens(s.totalCronTokens || 0)} tokens) · avg daily fixed ${fmtUsd(s.avgDailyCronCost, 2)} · baseline fixed ${fmtUsd(s.avgFixedBaselineCost, 2)} / workload variable ${fmtUsd(s.avgWorkloadVariableCost, 2)} / interactive variable ${fmtUsd(s.avgInteractiveVariableCost, 2)} · today fixed ${fmtUsd(today.cronCost, 2)} (${fmtTokens(today.cronTokens || 0)}) · today variable ${fmtUsd(today.interactiveCost, 2)} · ${s.days || 0} days`,
-      `累计 ${s.totalRuns || 0} 次执行 · 总固定成本 ${fmtUsd(s.totalCronCost, 2)}（${fmtTokens(s.totalCronTokens || 0)} tokens） · 日均固定成本 ${fmtUsd(s.avgDailyCronCost, 2)} · 基线固定 ${fmtUsd(s.avgFixedBaselineCost, 2)} / 任务量波动 ${fmtUsd(s.avgWorkloadVariableCost, 2)} / 交互波动 ${fmtUsd(s.avgInteractiveVariableCost, 2)} · 今日固定 ${fmtUsd(today.cronCost, 2)}（${fmtTokens(today.cronTokens || 0)}） · 今日浮动 ${fmtUsd(today.interactiveCost, 2)} · ${s.days || 0} 天`
-    );
+    summaryEl.textContent = `${s.totalRuns || 0} total runs · cron cost ${fmtUsd(s.totalCronCost, 2)} (${fmtTokens(s.totalCronTokens || 0)} tokens) · daily avg ${fmtUsd(s.avgDailyCronCost, 2)} · fixed baseline ${fmtUsd(s.avgFixedBaselineCost, 2)} / workload variable ${fmtUsd(s.avgWorkloadVariableCost, 2)} / interactive variable ${fmtUsd(s.avgInteractiveVariableCost, 2)} · today cron ${fmtUsd(today.cronCost, 2)} (${fmtTokens(today.cronTokens || 0)}) · today interactive ${fmtUsd(today.interactiveCost, 2)} · ${s.days || 0} days`;
 
     // Per-job cost table (each run + each day)
     const jobs = data.jobs || [];
@@ -3176,18 +2251,18 @@ async function loadCronCosts() {
     const ri = review.interactive || {};
     const cov = review.coverage || {};
     let html = `<div class="glass-card" style="padding:10px;margin-bottom:10px">
-      <div style="font-size:.8rem;font-weight:600;margin-bottom:6px">🔎 ${tt('Data quality review', '数据质量 Review')}</div>
+      <div style="font-size:.8rem;font-weight:600;margin-bottom:6px">🔎 Data Quality Review</div>
       <div style="font-size:.74rem;color:var(--text2);display:flex;gap:14px;flex-wrap:wrap">
         <span>Cron finished: <b>${rc.finishedRuns || 0}</b></span>
-        <span>${tt('No usage', '无 usage')}: <b style="color:${(rc.runsWithoutUsage || 0) > 0 ? '#fbbf24' : 'var(--green)'}">${rc.runsWithoutUsage || 0}</b></span>
-        <span>${tt('Zero tokens', '零 tokens')}: <b style="color:${(rc.runsWithZeroTokens || 0) > 0 ? '#fbbf24' : 'var(--green)'}">${rc.runsWithZeroTokens || 0}</b></span>
-        <span>${tt('Interactive coverage days', '交互覆盖天数')}: <b>${cov.daysWithInteractive || 0}/${cov.daysWithCron || 0}</b>（${cov.interactiveCoveragePct || 0}%）</span>
-        <span>${tt('Interactive msgs with usage', '交互 usage消息')}: <b>${ri.messagesWithUsage || 0}</b></span>
+        <span>No usage: <b style="color:${(rc.runsWithoutUsage || 0) > 0 ? '#fbbf24' : 'var(--green)'}">${rc.runsWithoutUsage || 0}</b></span>
+        <span>Zero tokens: <b style="color:${(rc.runsWithZeroTokens || 0) > 0 ? '#fbbf24' : 'var(--green)'}">${rc.runsWithZeroTokens || 0}</b></span>
+        <span>Interactive coverage: <b>${cov.daysWithInteractive || 0}/${cov.daysWithCron || 0}</b> days (${cov.interactiveCoveragePct || 0}%)</span>
+        <span>Interactive msgs w/ usage: <b>${ri.messagesWithUsage || 0}</b></span>
       </div>
       ${(review.notes || []).length > 0 ? `<div style="margin-top:6px;font-size:.72rem;color:#fbbf24">${(review.notes || []).map(n => `• ${escHtml(n)}`).join('<br>')}</div>` : ''}
     </div>`;
 
-    html += `<table class="sessions-table"><thead><tr><th>${tt('Cron job', 'Cron 任务')}</th><th>${tt('Runs', '总次数')}</th><th>${tt('Avg duration/run', '平均时长/次')}</th><th>Tokens/${tt('run', '次')}</th><th>$/ ${tt('run', '次')}</th><th>${tt('Today (tokens / $)', '今日（tokens / $）')}</th><th>${tt('Avg daily $', '日均 $')}</th><th>${tt('Total cost', '总花费')}</th></tr></thead><tbody>`;
+    html += '<table class="sessions-table"><thead><tr><th>Cron Job</th><th>Runs</th><th>Avg Duration</th><th>Tokens/Run</th><th>$/Run</th><th>Today (tokens / $)</th><th>Daily Avg $</th><th>Total Cost</th></tr></thead><tbody>';
     for (const j of jobs) {
       html += `<tr>
         <td style="font-weight:600;font-size:.78rem">
@@ -3211,10 +2286,10 @@ async function loadCronCosts() {
       for (const j of jobs) {
         const daily = (j.daily || []).slice(-7).reverse();
         html += `<details class="glass-card" style="padding:10px">
-          <summary style="cursor:pointer;font-size:.78rem;font-weight:600">${escHtml(j.name)} · 最近 ${daily.length} 天每日成本</summary>
+          <summary style="cursor:pointer;font-size:.78rem;font-weight:600">${escHtml(j.name)} · last ${daily.length} days</summary>
           <div style="margin-top:8px;overflow:auto">
             <table class="sessions-table" style="font-size:.74rem">
-              <thead><tr><th>日期</th><th>次数</th><th>Tokens</th><th>Tokens/次</th><th>$/次</th><th>当日总$</th></tr></thead>
+              <thead><tr><th>Date</th><th>Runs</th><th>Tokens</th><th>Tokens/Run</th><th>$/Run</th><th>Daily Total</th></tr></thead>
               <tbody>
                 ${daily.map(d => `<tr>
                   <td>${d.date}</td>
@@ -3288,9 +2363,9 @@ async function loadCronCosts() {
       });
 
       const avgFixed = trend.reduce((sum, d) => sum + (d.fixedCostSharePct || 0), 0) / trend.length;
-      legendEl.innerHTML = `<span style="color:#2dd4a0">■ 固定基线（Cron）</span><span style="color:#fbbf24">■ 任务量波动（Cron）</span><span style="color:#7c5cfc">■ 交互浮动成本</span><span style="color:#8b949e">固定占比均值 ${avgFixed.toFixed(0)}%</span>`;
+      legendEl.innerHTML = `<span style="color:#2dd4a0">■ Cron Fixed Baseline</span><span style="color:#fbbf24">■ Cron Workload Variable</span><span style="color:#7c5cfc">■ Interactive Variable</span><span style="color:#8b949e">Fixed share avg ${avgFixed.toFixed(0)}%</span>`;
     } else if (legendEl) {
-      legendEl.textContent = '趋势数据不足（至少需要 2 天）';
+      legendEl.textContent = 'Insufficient trend data (need ≥ 2 days)';
     }
   } catch (e) {
     contentEl.innerHTML = `<p>${e.message}</p>`;
@@ -3310,7 +2385,7 @@ async function loadOpsChannels() {
     const channels = data.channels || [];
 
     // Total summary
-    if (subEl) subEl.textContent = `${fmtTokens(totals.totalTokens)} tokens · ${totals.messages || 0} messages · $${(totals.cost || 0).toFixed(2)}`;
+    if (subEl) subEl.textContent = `${fmtTokens(totals.totalTokens)} tokens · ${totals.messages || 0} messages · $${(totals.cost || 0).toFixed(2)} est.`;
     if (pillsEl) {
       const modelEntries = Object.entries(totals.models || {}).filter(([,t]) => t > 0).sort((a, b) => b[1] - a[1]);
       pillsEl.innerHTML = modelEntries.slice(0, 4).map(([m, t]) =>
@@ -3467,10 +2542,6 @@ async function loadOpsAudit() {
 
 // ─── Ops Management Actions ───
 async function opsAction(action) {
-  if (!DASHBOARD_CAPS.mutatingOpsEnabled && ['backup', 'restore', 'updateOpenClaw'].includes(action)) {
-    alert(tt('This operation is disabled by server policy.', '当前服务策略禁用了该操作。'));
-    return;
-  }
   const btnMap = { backup: 'btnBackup', restore: 'btnRestore', updateOpenClaw: 'btnUpdateOpenClaw', restart: 'btnRestart' };
   const badgeMap = { backup: 'badgeBackup', restore: 'badgeRestore', updateOpenClaw: 'badgeUpdateOpenClaw', restart: 'badgeRestart' };
   const btn = document.getElementById(btnMap[action]);
@@ -3489,7 +2560,7 @@ async function opsAction(action) {
       const r = await fetch('http://127.0.0.1:18789/hooks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'restart', token: '451374645a4c6bcfc20641ab49ea3091803287d23ccebea2' })
+        body: JSON.stringify({ action: 'restart', token: TOKEN })
       });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       if (badge) badge.textContent = '✅';
@@ -3505,7 +2576,7 @@ async function opsAction(action) {
         <pre style="margin-top:8px;font-size:.75rem;color:var(--text2);white-space:pre-wrap;word-break:break-all">${escHtml(data.output || '')}</pre>`;
 
     } else if (action === 'restore') {
-      const ok = confirm('Load latest auto-backup now? This will overwrite current workspace changes.');
+      const ok = await confirmDialog('Load latest auto-backup now? This will overwrite current workspace changes.');
       if (!ok) {
         if (badge) badge.textContent = '';
         html = '<span style="color:var(--text2)">Canceled.</span>';
@@ -3517,7 +2588,7 @@ async function opsAction(action) {
           <pre style="margin-top:8px;font-size:.75rem;color:var(--text2);white-space:pre-wrap;word-break:break-all">${escHtml(data.output || '')}</pre>`;
       }
     } else if (action === 'updateOpenClaw') {
-      const ok = confirm('Run OpenClaw update now? This will write memory, backup, push, then update.');
+      const ok = await confirmDialog('Run OpenClaw update now? This will write memory, backup, push, then update.');
       if (!ok) {
         if (badge) badge.textContent = '';
         html = '<span style="color:var(--text2)">Canceled.</span>';
@@ -3538,7 +2609,7 @@ async function opsAction(action) {
     }
 
     if (resultInner) resultInner.innerHTML = html;
-    if (resultBox) resultBox.style.display = 'block';
+    if (resultBox) { resultBox.style.display = 'block'; resultBox.style.animation = 'fadeIn .3s ease'; }
   } catch (e) {
     if (badge) badge.textContent = '❌';
     if (resultInner) resultInner.innerHTML = `<span style="color:var(--red)">❌ ${escHtml(e.message)}</span>`;
@@ -3779,14 +2850,29 @@ function drawDailyCostChart(canvas, daily) {
   }
 }
 
+// ─── Confirm Dialog ───
+function confirmDialog(message) {
+  return new Promise(resolve => {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay show';
+    overlay.innerHTML = `
+      <div class="modal" style="max-width:400px;text-align:center;padding:28px 24px">
+        <div style="font-size:.9rem;line-height:1.6;margin-bottom:22px;color:var(--text1)">${escHtml(message)}</div>
+        <div style="display:flex;gap:10px;justify-content:center">
+          <button class="btn-secondary" id="_cdCancel" style="min-width:90px">Cancel</button>
+          <button class="btn-primary" id="_cdConfirm" style="min-width:90px;background:var(--accent);color:#fff;border-color:var(--accent)">Confirm</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    overlay.querySelector('#_cdCancel').onclick = () => { document.body.removeChild(overlay); resolve(false); };
+    overlay.querySelector('#_cdConfirm').onclick = () => { document.body.removeChild(overlay); resolve(true); };
+    overlay.onclick = e => { if (e.target === overlay) { document.body.removeChild(overlay); resolve(false); } };
+  });
+}
+
 // ═══ INIT ═══
-applyLanguageUI();
 checkConnection();
-(async () => {
-  await refreshCapabilities();
-  loadSessions(); // Load sessions tab (default) after caps so model selects render enabled when allowed
-  loadTasks(true);
-})();
+loadSessions(); // Load sessions tab (default)
 loadAgentMonitor();
 pollWatchdogStatus();
 startLivePolling(); // Auto-poll tasks every 3s for live updates
@@ -3794,21 +2880,6 @@ setInterval(checkConnection, 30000);
 setInterval(loadAgentMonitor, 60000); // was 15s, reduced to 60s // Refresh agent monitor every 15s
 setInterval(pollWatchdogStatus, 10000);
 
-// Kanban mobile resize handler
-window.addEventListener('resize', () => {
-  if (taskView === 'kanban') {
-    const board = document.getElementById('kanbanBoard');
-    if (!board) return;
-    if (window.innerWidth <= 768) board.classList.add('horizontal-scroll');
-    else board.classList.remove('horizontal-scroll');
-  }
-});
-
-// Keyboard shortcuts
-document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') { closeDetailModal(); closeCreateModal(); }
-  if (e.key === 'n' && e.ctrlKey && e.shiftKey) { e.preventDefault(); openCreateModal(); }
-});
 </script>
 <footer style="text-align:center;padding:24px 0 16px;color:#8b949e;font-size:0.85rem;font-family:'Outfit',sans-serif;">
   Built by <a href="https://github.com/JonathanJing" target="_blank" style="color:#7c5cfc;text-decoration:none;">Jony Jing</a> ·
