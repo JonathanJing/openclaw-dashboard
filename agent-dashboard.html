@@ -2221,6 +2221,10 @@ function shortModel(m) {
     .replace('gpt-5.2-', 'gpt-');
 }
 
+function escHtml(s) {
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
 function fmtTokens(n) {
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
   if (n >= 1_000) return (n / 1_000).toFixed(0) + 'k';
