@@ -3111,9 +3111,24 @@ async function loadCronEnhanced() {
 
 // ─── Ops Channel Usage Panel ───
 const MODEL_COLORS = {
-  'claude-opus-4-6': '#c084fc', 'claude-sonnet-4-6': '#818cf8', 'claude-haiku-4-5': '#a5b4fc',
-  'gpt-5.2-codex': '#34d399', 'gpt-5.3-codex': '#34d399', 'gpt-5.2': '#6ee7b7', 'gpt-5.3': '#6ee7b7',
-  'gemini-3.1-pro': '#fbbf24', 'gemini-3-pro-preview': '#fbbf24', 'gemini-3-pro': '#fbbf24', 'gemini-3.0-flash': '#fcd34d', 'gemini-3-flash-preview': '#fcd34d', 'gemini-3-flash': '#fcd34d',
+  // Anthropic — purple/pink spectrum (high contrast between tiers)
+  'claude-opus-4-6': '#a855f7',    // vivid purple — flagship
+  'claude-sonnet-4-6': '#ec4899',  // hot pink — daily driver
+  'claude-haiku-4-5': '#f9a8d4',   // soft pink — lightweight
+
+  // OpenAI — green/teal spectrum
+  'gpt-5.2-codex': '#10b981',      // emerald — codex
+  'gpt-5.3-codex': '#10b981',
+  'gpt-5.2': '#06b6d4',            // cyan — general
+  'gpt-5.3': '#06b6d4',
+
+  // Google — amber/orange spectrum
+  'gemini-3.1-pro': '#f59e0b',     // amber — pro tier
+  'gemini-3-pro-preview': '#f59e0b',
+  'gemini-3-pro': '#f59e0b',
+  'gemini-3.0-flash': '#fb923c',   // orange — flash tier
+  'gemini-3-flash-preview': '#fb923c',
+  'gemini-3-flash': '#fb923c',
 };
 
 function getModelColor(model) {
