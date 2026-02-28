@@ -1,7 +1,7 @@
 ---
 name: openclaw-dashboard
-description: Builds and maintains the public OpenClaw dashboard repository with sanitization-first rules. Use when adding features, adjusting `api-server.js` routes, changing `agent-dashboard.html`, or preparing public-safe docs and configuration.
-version: "1.0.5"
+description: Real-time operations dashboard for OpenClaw. Monitors sessions, costs, cron jobs, and gateway health. Use when installing the dashboard, starting the server, adding features, updating `api-server.js` routes, or changing `agent-dashboard.html`. Includes language toggle (EN/中文), watchdog 24h uptime bar, and cost analysis.
+version: "1.5.0"
 metadata:
   {
     "openclaw":
