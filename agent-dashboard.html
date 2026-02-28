@@ -52,6 +52,9 @@ header{display:flex;align-items:center;justify-content:space-between;padding:16p
 .back-link,.refresh-btn{color:var(--accent);text-decoration:none;font-size:.85rem;border:1px solid var(--border);padding:6px 14px;border-radius:999px;transition:all .2s;background:transparent;cursor:pointer;font-family:var(--font)}
 .back-link:hover,.refresh-btn:hover{background:var(--glow);border-color:var(--accent)}
 .refresh-btn svg{vertical-align:middle}
+.lang-btn{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;color:var(--text2);text-decoration:none;font-size:.85rem;border:1px solid var(--border);border-radius:999px;transition:all .2s;background:transparent;cursor:pointer;font-family:var(--font)}
+.lang-btn:hover{background:var(--glow);border-color:var(--accent)}
+.lang-btn.active{color:var(--accent);border-color:var(--accent)}
 
 /* ─── Tab Bar ─── */
 .tab-bar{display:flex;gap:4px;background:var(--glass);backdrop-filter:blur(16px);border:1px solid var(--border);border-radius:14px;padding:4px;margin-bottom:24px;width:fit-content}
@@ -819,6 +822,10 @@ header{display:flex;align-items:center;justify-content:space-between;padding:16p
       <button class="live-indicator active" id="liveIndicator" onclick="toggleLivePolling()" title="Auto-refresh every 15s — click to toggle">
         <span class="live-dot"></span> LIVE
       </button>
+      <button class="lang-btn" id="langToggleBtn" onclick="toggleLanguage()" title="Switch language">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+        <span id="langToggleLabel">EN</span>
+      </button>
       <button class="refresh-btn" onclick="refreshCurrentTab()" title="Refresh all panels now">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
       </button>
@@ -1009,6 +1016,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:16p
           Only critical events
         </label>
       </div>
+      <div id="watchdogUptimeBar" style="margin-top:10px"></div>
       <div id="watchdogTimeline" style="margin-top:10px"></div>
       <div id="watchdogEventsList" class="ops-channel-list" style="margin-top:10px"></div>
     </div>
@@ -1094,6 +1102,44 @@ const API = (location.port === '18789' || location.port === '18790')
   ? `${location.protocol}//${location.hostname}:18790`
   : '';
 
+// ─── Language Toggle ───
+const LANG_KEY = 'openclaw.dashboard.lang';
+let currentLang = localStorage.getItem(LANG_KEY) || 'en';
+if (currentLang !== 'en' && currentLang !== 'zh') currentLang = 'en';
+
+function isZh() { return currentLang === 'zh'; }
+function tt(en, zh) { return isZh() ? zh : en; }
+function currentLocale() { return isZh() ? 'zh-CN' : 'en-US'; }
+
+function applyLanguageUI() {
+  const html = document.documentElement;
+  if (html) html.lang = isZh() ? 'zh' : 'en';
+
+  const btn = document.getElementById('langToggleBtn');
+  const label = document.getElementById('langToggleLabel');
+  if (btn) {
+    btn.classList.add('active');
+    btn.title = tt('Switch language', '切换语言');
+  }
+  if (label) label.textContent = isZh() ? '中文' : 'EN';
+
+  const openOpsBtn = document.getElementById('openOpsBtn');
+  if (openOpsBtn) openOpsBtn.textContent = tt('Open Operations', '打开运维面板');
+
+  const wdStatus = document.getElementById('watchdogStatusText');
+  if (wdStatus && !wdStatus.dataset.liveRendered) wdStatus.textContent = tt('Loading watchdog status…', '正在加载看门狗状态...');
+}
+
+function toggleLanguage() {
+  currentLang = isZh() ? 'en' : 'zh';
+  localStorage.setItem(LANG_KEY, currentLang);
+  applyLanguageUI();
+  if (_watchdogCache) renderWatchdogStatus(_watchdogCache);
+  loadSessions();
+  loadCronEnhanced();
+  loadCronCosts();
+}
+
 async function apiFetch(path, opts = {}) {
   const url = `${API}${path}`;
   const authHeaders = TOKEN ? { Authorization: `Bearer ${TOKEN}` } : {};
@@ -1176,6 +1222,39 @@ async function pollWatchdogStatus() {
   }
 }
 
+function renderWatchdogUptimeBar(tl, containerEl) {
+  if (!containerEl) return;
+  const pts = Array.isArray(tl?.points) ? tl.points : [];
+  if (!pts.length) {
+    containerEl.innerHTML = `<div class="ops-ch-meta">${tt('No timeline data.', '无时间线数据。')}</div>`;
+    return;
+  }
+  const total = pts.length;
+  const downCount  = pts.filter(p => p.status === 'down').length;
+  const degraded   = pts.filter(p => p.status === 'degraded').length;
+  const healthy    = total - downCount - degraded;
+  const uptimePct  = ((healthy / total) * 100).toFixed(1);
+  const COLOR = { healthy: '#3fb950', degraded: '#d29922', down: '#f85149', null: '#30363d' };
+  const bars = pts.map(p => {
+    const c = COLOR[p.status] || COLOR.null;
+    const label = (p.ts ? new Date(p.ts).toLocaleTimeString(currentLocale(), { timeZone: 'America/Los_Angeles', hour12: false }) + ' · ' : '') + (p.status || '?');
+    return `<div title="${escHtml(label)}" style="flex:1;min-width:3px;height:20px;background:${c};border-radius:2px"></div>`;
+  }).join('');
+  containerEl.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px">
+      <span style="font-size:.72rem;color:var(--text2)">${tt('24h uptime', '24小时可用率')}</span>
+      <span style="font-size:.8rem;font-weight:600;color:${downCount > 0 ? 'var(--yellow)' : 'var(--green)'}">${uptimePct}%</span>
+    </div>
+    <div style="display:flex;gap:2px;width:100%">${bars}</div>
+    <div style="display:flex;justify-content:space-between;margin-top:3px;font-size:.62rem;color:var(--text2)">
+      <span>${tt('24h ago', '24小时前')}</span>
+      <span style="color:${downCount?'var(--red)':degraded?'var(--yellow)':'var(--text2)'}">
+        ${downCount ? `${downCount} ${tt('down', '断开')} · ` : ''}${degraded ? `${degraded} ${tt('degraded', '降级')} · ` : ''}${healthy} ${tt('healthy', '健康')}
+      </span>
+      <span>${tt('now', '现在')}</span>
+    </div>`;
+}
+
 function renderWatchdogTimeline(timeline) {
   const el = document.getElementById('watchdogTimeline');
   if (!el) return;
@@ -1247,6 +1326,7 @@ function renderWatchdogStatus(data) {
   ].filter(Boolean).join(' ');
   metaEl.innerHTML = _pills;
   renderWatchdogTimeline(timeline);
+  renderWatchdogUptimeBar(data?.timeline, document.getElementById('watchdogUptimeBar'));
 
   if (!recent.length) {
     eventsEl.innerHTML = `<div class="ops-ch-meta">No watchdog events for selected filter in last ${_watchdogWindowMins} minutes.</div>`;
@@ -2875,6 +2955,7 @@ function confirmDialog(message) {
 }
 
 // ═══ INIT ═══
+applyLanguageUI();
 checkConnection();
 loadSessions(); // Load sessions tab (default)
 loadAgentMonitor();
