@@ -1618,8 +1618,34 @@ function handleOpsAlltime(req, res, method, parsed) {
   const sessDir = path.dirname(SESSIONS_JSON);
   let files;
   try {
-    // Only scan actual session JSONL files, ignoring .deleted and .reset backups
-    files = fs.readdirSync(sessDir).filter(f => f.endsWith('.jsonl'));
+    // Build the set of session UUIDs that belong to cron jobs (they're covered by cron/runs scan below).
+    // .deleted and .reset session files that are NOT cron sessions must be included —
+    // they contain real interactive session history (e.g. large Opus work sessions that were reset).
+    const cronSessionUuids = new Set();
+    try {
+      const cronRunFiles = fs.readdirSync(CRON_RUNS_DIR).filter(f => f.endsWith('.jsonl'));
+      for (const cf of cronRunFiles) {
+        const raw = fs.readFileSync(path.join(CRON_RUNS_DIR, cf), 'utf8');
+        for (const line of raw.split('\n')) {
+          try {
+            const j = JSON.parse(line);
+            if (j.action === 'finished' && j.sessionId) cronSessionUuids.add(j.sessionId);
+          } catch {}
+        }
+      }
+    } catch {}
+
+    const allEntries = fs.readdirSync(sessDir);
+    files = allEntries.filter(f => {
+      if (f.endsWith('.jsonl')) return true; // always include active sessions
+      if (f.includes('.deleted.') || f.includes('.reset.')) {
+        // Extract UUID: strip date prefix (e.g. "2026-03-02T07-51_UUID") and .jsonl suffix
+        let uuid = f.split('.jsonl')[0];
+        if (uuid.includes('_')) uuid = uuid.split('_').pop();
+        return !cronSessionUuids.has(uuid); // include only non-cron archived sessions
+      }
+      return false;
+    });
   } catch (e) {
     return errorReply(res, 500, 'Cannot read sessions dir: ' + e.message);
   }

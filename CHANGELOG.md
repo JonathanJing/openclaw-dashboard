@@ -24,6 +24,11 @@
 - `estimateCost` applied full input rate to `cacheRead`/`cacheWrite` tokens
 - Fixed: per-model `cacheCosts` added to `models-registry.json`; correct rates applied (e.g. Sonnet cacheRead $0.30/1M vs $3.00/1M input)
 
+### 🐛 Additional Fix — Opus Historical Data
+- Opus (and other models from interactive sessions) was severely undercounted — `.reset` and `.deleted` session files that belonged to cron subagents were excluded (correct), but non-cron interactive sessions that were reset/deleted were also being excluded (wrong)
+- Fixed: build a set of cron session UUIDs from `cron/runs/*.jsonl`; `.reset`/`.deleted` files are included if their UUID is NOT a known cron session
+- Result: 85 additional archived interactive session files now correctly included in historical scan
+
 ### 📊 Verified Accuracy
 - Mar 3 bar chart: **$75.97** (was $183.82 before fix)
 - Finance/Cron tab: **$71.07**
