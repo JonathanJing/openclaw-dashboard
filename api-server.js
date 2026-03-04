@@ -2298,6 +2298,12 @@ function handleOpsSystem(req, res, method, parsed) {
     disk = { total: df[1], used: df[2], available: df[3], usePct: df[4] };
   } catch {}
 
+  let models = {};
+  try {
+    const oc = JSON.parse(fs.readFileSync(path.join(process.env.HOME || '', '.openclaw/openclaw.json'), 'utf8'));
+    models = oc?.agents?.defaults?.model || {};
+  } catch {}
+
   // macOS system info (no shell)
   let macModel = '', macOS = '';
   try { macModel = execFileSync('sysctl', ['-n', 'hw.model'], { encoding: 'utf8', timeout: 2000 }).trim(); } catch {}
@@ -2323,6 +2329,7 @@ function handleOpsSystem(req, res, method, parsed) {
       usePct: ((usedMem / totalMem) * 100).toFixed(1),
     },
     disk,
+    models,
     nodeVersion: process.version,
     clawVersion,
     dashboardUptime: Math.floor(dashboardUptime),

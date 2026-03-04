@@ -1,7 +1,7 @@
 ---
 name: openclaw-dashboard
 description: Real-time operations dashboard for OpenClaw. Monitors sessions, costs, cron jobs, and gateway health. Use when installing the dashboard, starting the server, adding features, updating `api-server.js` routes, or changing `agent-dashboard.html`. Includes language toggle (EN/中文), watchdog 24h uptime bar, and cost analysis.
-version: "1.7.1"
+version: "1.7.3"
 metadata:
   {
     "openclaw":
@@ -40,6 +40,17 @@ metadata:
 ---
 
 # OpenClaw Dashboard Skill
+
+## 🛠️ Installation
+
+### 1. Ask OpenClaw (Recommended)
+Tell OpenClaw: *"Install the openclaw-dashboard skill."* The agent will handle the installation and configuration automatically.
+
+### 2. Manual Installation (CLI)
+If you prefer the terminal, run:
+```bash
+clawhub install openclaw-dashboard
+```
 
 ## Mission
 

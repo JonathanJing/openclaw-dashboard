@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.7.3] - 2026-03-03
+### Added
+- Simplified installation instructions (Ask OpenClaw / CLI) to SKILL.md and README.md.
+
 ## [1.7.2] - 2026-03-03
 
 ### ✨ Features

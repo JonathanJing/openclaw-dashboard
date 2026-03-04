@@ -4,15 +4,19 @@ A real-time operations dashboard for [OpenClaw](https://github.com/openclaw/open
 
 ![License](https://img.shields.io/badge/license-MIT-green?style=flat-square) ![Node](https://img.shields.io/badge/node-%3E%3D18-brightgreen?style=flat-square)
 
----
+## 🛠️ Installation
 
-## Installation via OpenClaw
+### 1. Ask OpenClaw (Recommended)
+Tell OpenClaw: *"Install the openclaw-dashboard skill."* The agent will handle the installation and configuration automatically.
 
-The easiest way is to tell your OpenClaw agent:
+### 2. Manual Installation (CLI)
+If you prefer the terminal, run:
+```bash
+clawhub install openclaw-dashboard
+```
 
-> **"Install the openclaw-dashboard skill"**
-
-OpenClaw will automatically install and configure the dashboard. After installation, start the server:
+### 🚀 Getting Started
+After installation, start the server:
 
 ```bash
 cd ~/.openclaw/workspace/skills/openclaw-dashboard
@@ -22,16 +26,6 @@ node api-server.js
 ```
 
 Open `http://localhost:18791/` in your browser.
-
-### Manual Install
-
-```bash
-git clone https://github.com/JonathanJing/openclaw-dashboard.git
-cd openclaw-dashboard
-cp env.example .env
-# Edit .env — set OPENCLAW_AUTH_TOKEN at minimum
-node api-server.js
-```
 
 ---
 
