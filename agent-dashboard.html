@@ -1116,6 +1116,9 @@ function toggleLanguage() {
 }
 
 async function apiFetch(path, opts = {}) {
+  if (window._forceNoCache) {
+    path += (path.includes('?') ? '&' : '?') + 'nocache=1';
+  }
   const url = `${API}${path}`;
   const headers = { 'Content-Type': 'application/json', ...(opts.headers || {}) };
   if (TOKEN) headers['Authorization'] = `Bearer ${TOKEN}`;
@@ -1478,6 +1481,8 @@ function loadOperationsStatus() {
 }
 
 function refreshCurrentTab() {
+  window._forceNoCache = true;
+  setTimeout(() => window._forceNoCache = false, 1000);
   const active = document.querySelector('.tab-btn.active');
   if (active) active.click();
   checkConnection();
