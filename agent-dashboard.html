@@ -793,6 +793,12 @@ header{display:flex;align-items:center;justify-content:space-between;padding:16p
   <!-- ═══ Overview Panel ═══ -->
   <div class="tab-panel active" id="panel-overview">
     <div id="sessionsAlerts" style="margin-bottom:12px"></div>
+    <div style="display:flex;justify-content:flex-end;margin-bottom:6px">
+      <button id="staleToggleBtn" onclick="window._sessionsHideStale=!window._sessionsHideStale; this.textContent=window._sessionsHideStale?'👁 显示全部':'🙈 隐藏7天无活跃'; loadSessions();"
+        style="font-size:.72rem;padding:3px 10px;border-radius:10px;border:1px solid var(--border);background:var(--surface);color:var(--text2);cursor:pointer">
+        🙈 隐藏7天无活跃
+      </button>
+    </div>
     <div id="sessionsTable" class="sessions-table-wrap">
       <div class="skeleton skeleton-card"></div>
     </div>
@@ -1049,7 +1055,7 @@ function getToken() {
   return '';
 }
 const TOKEN = getToken();
-const API = (location.port === '18789' || location.port === '18791' || location.port === '')
+const API = (['18789', '18791', '18792', '18793', ''].includes(location.port))
   ? ''
   : 'http://127.0.0.1:18789';
 const LANG_KEY = 'openclaw.dashboard.lang';
@@ -2346,13 +2352,18 @@ async function loadAgentMonitor() {
   }
 }
 
-function loadSystemInfo() {
+async function loadSystemInfo() {
   // Refresh model options from server dynamically
-  apiFetch('/ops/models').then(data => {
+  try {
+    const data = await apiFetch('/ops/models');
     if (data.registry) refreshModelOptions(data.registry);
     if (data.colors) Object.assign(MODEL_COLORS, data.colors);
-    if (data.displayNames) MODEL_DISPLAY_NAMES.unshift(...data.displayNames);
-  }).catch(() => {});
+    if (data.displayNames) {
+      // clear and push to avoid duplicates on refresh
+      MODEL_DISPLAY_NAMES.length = 0;
+      MODEL_DISPLAY_NAMES.push(...data.displayNames);
+    }
+  } catch(e) {}
 
   apiFetch('/ops/system').then(sys => {
     // Update global default model from live config
@@ -2380,14 +2391,18 @@ function loadSystemInfo() {
   }).catch(() => {});
 }
 
-function renderAgentMonitor() {
+async function renderAgentMonitor() {
   if (!agentData) return;
   const d = agentData;
 
-  loadSystemInfo();
+  await loadSystemInfo();
 
-  // Fetch today's ops data for header cards — use /ops/sessions for accurate totals (includes all channels)
-  apiFetch('/ops/sessions').then(sessData => {
+  // Fetch today's ops data for header cards — merge sessions + cron model usage
+  Promise.all([
+    apiFetch('/ops/sessions'),
+    apiFetch('/ops/cron-costs').catch(() => ({})),
+  ]).then(([sessData, cronData]) => {
+    const cronModelMix = cronData.cronModelMix || {};
     let totalCost = 0, totalTokens = 0, totalMsgs = 0, models = {};
     (sessData.sessions || []).forEach(s => {
       const t = s.today || {};
@@ -2401,6 +2416,14 @@ function renderAgentMonitor() {
         }
       }
     });
+
+    // Add cron-only models not tracked in sessions.jsonl (e.g. local ollama models like qwen3.5)
+    // Cloud cron models already appear in sessions via isolated subagent sessions — don't double-count
+    let cronOnlyTokens = 0;
+    for (const [m, tk] of Object.entries(cronModelMix)) {
+      if (!models[m] && tk > 0) { models[m] = tk; cronOnlyTokens += tk; }
+    }
+    totalTokens += cronOnlyTokens;
 
     // Card 1: Today Cost
     const mainBadge = document.getElementById('mainAgentBadge');
@@ -2551,30 +2574,6 @@ let globalDefaultModel = 'claude-sonnet-4-6'; // updated dynamically from /ops/s
 
 // Starts with hardcoded defaults; refreshed from /ops/models on load.
 // To update model names/ids: edit models-registry.json on the server — no code change needed.
-let MODEL_OPTIONS = [{ value: 'default', label: '', full: null, isDefault: true }];
-
-function refreshModelOptions(registry) {
-  if (!registry || typeof registry !== 'object') return;
-  const opts = [{ value: 'default', label: '', full: null, isDefault: true }];
-  for (const [alias, entry] of Object.entries(registry)) {
-    const id = typeof entry === 'string' ? entry : entry?.id;
-    const label = (typeof entry === 'object' && entry?.label) ? entry.label : alias;
-    if (id) opts.push({ value: alias, label, full: id.includes('/') ? id.split('/').pop() : id });
-  }
-  MODEL_OPTIONS = opts;
-}
-
-function getDefaultModelLabel() {
-  // Show actual model name instead of "默认"
-  const m = globalDefaultModel || '';
-  return shortModel(m) + ' ★';
-}
-
-// ─── Model Selector ───
-let globalDefaultModel = 'claude-sonnet-4-6'; // updated dynamically from /ops/system
-
-// Starts with hardcoded defaults; refreshed from /ops/models on load.
-// To update model names/ids: edit models-registry.json on the server — no code change needed.
 let MODEL_OPTIONS = [
   { value: 'default', label: '', full: null, isDefault: true },
   { value: 'opus',   label: 'Claude Opus 4',   full: 'claude-opus-4-6' },
@@ -2692,13 +2691,16 @@ function normalizeTaskTag(tag) {
   return map[tag] || tag.replace(/[\u4E00-\u9FFF]/g, '').replace(/\s+/g, ' ').trim();
 }
 
+let _sessionsHideStale = false; // global toggle: hide sessions with no activity for 7+ days
+
 async function loadSessions() {
   const alertsEl = document.getElementById('sessionsAlerts');
   const tableEl = document.getElementById('sessionsTable');
   if (!tableEl) return;
 
   try {
-    const data = await apiFetch('/ops/sessions');
+    const url = _sessionsHideStale ? '/ops/sessions?hideStale=1' : '/ops/sessions';
+    const data = await apiFetch(url);
     const sessions = data.sessions || [];
     const alerts = data.alerts || [];
     const summary = data.summary || {};
@@ -3157,14 +3159,18 @@ async function loadCronEnhanced() {
 const MODEL_COLORS = {};
 
 function getModelColor(model) {
-  const key = Object.keys(MODEL_COLORS).find(k => (model || '').includes(k));
+  const norm = (model || '').replace(/\./g, '-'); // normalize dots→hyphens for matching (e.g. "3.1" → "3-1")
+  const key = Object.keys(MODEL_COLORS).find(k => norm.includes(k.replace(/\./g, '-')) || (model || '').includes(k));
   return key ? MODEL_COLORS[key] : '#6b7280';
 }
 
 function shortModel(m) {
   const raw = (m || '').replace(/-preview$/, '');
   if (!raw || raw === 'unknown') return 'unknown';
-  const pair = MODEL_DISPLAY_NAMES.find(([pattern]) => raw.includes(pattern));
+  // Try both exact and dot↔hyphen-normalized matching (e.g. pattern "sonnet-4.6" matches model "claude-sonnet-4-6")
+  const pair = MODEL_DISPLAY_NAMES.find(([pattern]) =>
+    raw.includes(pattern) || raw.includes(pattern.replace(/\./g, '-')) || raw.replace(/\./g, '-').includes(pattern.replace(/\./g, '-'))
+  );
   return pair ? pair[1] : raw.replace(/^[^/]+\//, '').replace(/-/g, ' '); // fallback: strip provider prefix, dashes to spaces
 }
 
@@ -3912,6 +3918,7 @@ applyLanguageUI();
 checkConnection();
 (async () => {
   await refreshCapabilities();
+  await loadSystemInfo();
   loadSessions(); // Load sessions tab (default) after caps so model selects render enabled when allowed
   loadTasks(true);
 })();

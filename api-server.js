@@ -1510,7 +1510,7 @@ function scanSessionUsageToday(sessionFile, todayStartIso) {
   return result;
 }
 
-function handleOpsChannels(req, res, method) {
+function handleOpsChannels(req, res, method, parsed) {
   if (method !== 'GET') return errorReply(res, 405, 'Method not allowed');
 
   const now = Date.now();
@@ -2065,15 +2065,17 @@ async function handleOpsAudit(req, res, method) {
 }
 
 // --- Ops: Sessions Overview ---
-let _sessionsCache = null;
+let _sessionsCache = {};  // keyed by query string for filter variants
 let _sessionsCacheAt = 0;
 const SESSIONS_CACHE_TTL = 60_000;
 
 function handleOpsSessions(req, res, method) {
   if (method !== 'GET') return errorReply(res, 405, 'Method not allowed');
   const now = Date.now();
-  if (_sessionsCache && (now - _sessionsCacheAt) < SESSIONS_CACHE_TTL) {
-    return jsonReply(res, 200, _sessionsCache);
+  const reqUrl = new URL(req.url, 'http://localhost');
+  const cacheKey = reqUrl.search || '';  // e.g. '' | '?hideStale=1' | '?staleDays=7'
+  if (_sessionsCache[cacheKey] && (now - _sessionsCacheAt) < SESSIONS_CACHE_TTL) {
+    return jsonReply(res, 200, _sessionsCache[cacheKey]);
   }
 
   let sessions;
@@ -2249,20 +2251,55 @@ function handleOpsSessions(req, res, method) {
     }
   }
 
+  // Dedup by channelId: if same numeric channel has multiple session entries (e.g. key format changed
+// after an upgrade: discord:channel:ID vs discord:direct:channel:ID), keep only the most recently
+// updated one. Secondary entries are merged (their today tokens are summed) to preserve stats.
+  const channelIdSeen = {};
+  const deduped = [];
+  for (const row of rows) {
+    const chId = row.channelId;
+    if (chId && channelIdSeen[chId] !== undefined) {
+      // Merge today tokens into the winner
+      const winner = deduped[channelIdSeen[chId]];
+      winner.today.totalTokens += row.today.totalTokens;
+      winner.today.cost += row.today.cost;
+      winner.today.messages += row.today.messages;
+      // Prefer more recent updatedAt
+      if ((row.updatedAt || 0) > (winner.updatedAt || 0)) {
+        winner.updatedAt = row.updatedAt;
+        winner.daysSinceUpdate = row.daysSinceUpdate;
+        winner.status = row.status;
+        winner.key = row.key; // use the newer key
+      }
+    } else {
+      if (chId) channelIdSeen[chId] = deduped.length;
+      deduped.push(row);
+    }
+  }
+  // Optionally hide stale sessions (?hideStale=1) or sessions older than N days (?staleDays=N)
+  const hideStale = reqUrl.searchParams.get('hideStale') === '1';
+  const staleDaysParam = Number(reqUrl.searchParams.get('staleDays') || 0);
+  const uniqueRows = hideStale
+    ? deduped.filter(r => r.status !== 'stale')
+    : staleDaysParam > 0
+      ? deduped.filter(r => r.today.messages > 0 || r.daysSinceUpdate < staleDaysParam)
+      : deduped;
+
   // Sort: active first (by today cost desc), then idle, then stale
   const statusOrder = { error: 0, active: 1, idle: 2, stale: 3 };
-  rows.sort((a, b) => (statusOrder[a.status] || 9) - (statusOrder[b.status] || 9) || b.today.totalTokens - a.today.totalTokens);
+  uniqueRows.sort((a, b) => (statusOrder[a.status] || 9) - (statusOrder[b.status] || 9) || b.today.totalTokens - a.today.totalTokens);
+  const rows_final = uniqueRows;
 
   const result = {
-    sessions: rows,
+    sessions: rows_final,
     alerts,
     summary: {
-      total: rows.length,
-      active: rows.filter(r => r.status === 'active').length,
-      errors: rows.filter(r => r.status === 'error').length,
-      todayCost: rows.reduce((s, r) => s + r.today.cost, 0),
-      todayMessages: rows.reduce((s, r) => s + r.today.messages, 0),
-      topModel: Object.entries(rows.reduce((acc, r) => {
+      total: rows_final.length,
+      active: rows_final.filter(r => r.status === 'active').length,
+      errors: rows_final.filter(r => r.status === 'error').length,
+      todayCost: rows_final.reduce((s, r) => s + r.today.cost, 0),
+      todayMessages: rows_final.reduce((s, r) => s + r.today.messages, 0),
+      topModel: Object.entries(rows_final.reduce((acc, r) => {
         for (const [m, t] of Object.entries(r.today.models)) { acc[m] = (acc[m] || 0) + t; }
         return acc;
       }, {})).sort((a, b) => b[1] - a[1])[0]?.[0] || '—',
@@ -2270,7 +2307,7 @@ function handleOpsSessions(req, res, method) {
     cachedAt: now,
   };
 
-  _sessionsCache = result;
+  _sessionsCache[cacheKey] = result;
   _sessionsCacheAt = now;
   return jsonReply(res, 200, result);
 }
@@ -2698,6 +2735,7 @@ function handleOpsCronCosts(req, res, method) {
 
   const byJobId = {}; // jobId -> aggregate
   const byDay = {};   // day -> cron totals
+  const cronModelMixByDay = {}; // day -> { model -> tokens } (per-run accurate, for model mix display)
   const cronReview = {
     filesScanned: 0,
     finishedRuns: 0,
@@ -2764,7 +2802,7 @@ function handleOpsCronCosts(req, res, method) {
         row.totalInputTokens += inp;
         row.totalOutputTokens += out;
         row.totalDurationMs += (j.durationMs || 0);
-        if (j.model && row.model === 'unknown') row.model = j.model;
+        if (j.model) row.model = j.model; // always update to most recent run's model (JSONL appends newest last)
 
         if (!row.byDay[day]) row.byDay[day] = { date: day, runs: 0, cost: 0, tokens: 0, inputTokens: 0, outputTokens: 0 };
         row.byDay[day].runs++;
@@ -2779,6 +2817,13 @@ function handleOpsCronCosts(req, res, method) {
         byDay[day].cronTokens += totalTokens;
         byDay[day].cronInputTokens += inp;
         byDay[day].cronOutputTokens += out;
+
+        // Per-run model accumulation — accurate per-model token counts (not per-job-label)
+        const runModel = j.model || 'unknown';
+        if (runModel !== 'unknown') {
+          if (!cronModelMixByDay[day]) cronModelMixByDay[day] = {};
+          cronModelMixByDay[day][runModel] = (cronModelMixByDay[day][runModel] || 0) + totalTokens;
+        }
       } catch {}
     }
   }
@@ -2922,6 +2967,9 @@ function handleOpsCronCosts(req, res, method) {
   const daysWithInteractive = Object.keys(interactiveByDay).length;
   const todayCron = byDay[todayPst] || { cronCost: 0, cronRuns: 0, cronTokens: 0 };
   const todayInteractive = interactiveByDay[todayPst] || { interactiveCost: 0, interactiveTokens: 0 };
+
+  // Per-run accurate model mix for today (aggregated in the loop above, not from job labels)
+  const cronModelMix = cronModelMixByDay[todayPst] || {};
   const avgFixedBaselineCost = dailyTrend.length > 0 ? dailyTrend.reduce((s, d) => s + (d.fixedBaselineCost || 0), 0) / dailyTrend.length : 0;
   const avgWorkloadVariableCost = dailyTrend.length > 0 ? dailyTrend.reduce((s, d) => s + (d.workloadVariableCost || 0), 0) / dailyTrend.length : 0;
   const avgInteractiveVariableCost = dailyTrend.length > 0 ? dailyTrend.reduce((s, d) => s + (d.interactiveCost || 0), 0) / dailyTrend.length : 0;
@@ -2933,6 +2981,7 @@ function handleOpsCronCosts(req, res, method) {
 
   return jsonReply(res, 200, {
     jobs: jobStats,
+    cronModelMix,
     dailyTrend,
     summary: {
       totalRuns,
@@ -3162,7 +3211,7 @@ function handleOpsSessionModel(req, res, method) {
     }
 
     // Clear sessions cache so next fetch picks up new model
-    _sessionsCache = null;
+    _sessionsCache = {};
 
     // Audit notification
     const displayModel = model === 'default' ? '默认' : fullModel.split('/').pop();
@@ -3405,7 +3454,7 @@ button:active{opacity:.8}
     if (root === 'cron' && segments[1] === 'today') return handleCronToday(req, res, method);
     if (root === 'cron') return handleCron(req, res, parsed, segments, method);
     if (root === 'vision' && segments[1] === 'stats') return handleVisionStats(req, res, method);
-    if (root === 'ops' && segments[1] === 'channels') return handleOpsChannels(req, res, method);
+    if (root === 'ops' && segments[1] === 'channels') return handleOpsChannels(req, res, method, parsed);
     if (root === 'ops' && segments[1] === 'alltime') return handleOpsAlltime(req, res, method, parsed);
     if (root === 'ops' && segments[1] === 'audit') return handleOpsAudit(req, res, method);
     if (root === 'ops' && segments[1] === 'secaudit') return handleOpsSecAudit(req, res, method);
