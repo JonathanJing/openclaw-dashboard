@@ -1,5 +1,34 @@
 # Changelog
 
+## [1.7.5] - 2026-03-04
+
+### 🐛 Bug Fixes — Cost Calculation Overhaul
+
+**Root cause 1: Orphan file scanning (alltime $184 bug)**
+- `handleOpsAlltime` used `filter(f => f.includes('.jsonl'))` which matched `.jsonl.deleted.*` and `.jsonl.reset.*` backup files — historical session data counted multiple times
+- Fixed: changed to `endsWith('.jsonl')` — only live session files scanned
+
+**Root cause 2: Cron double-counting**
+- Cron subagent sessions were counted in *both* session `.jsonl` files AND `cron/runs/*.jsonl` summaries
+- Fixed: alltime now does one clean pass per source — session files for interactive sessions, cron/runs for completed cron sessions. No overlap.
+
+**Root cause 3: `total_tokens` is unreliable in cron run records**
+- In `cron/runs` finished records, `total_tokens` = cumulative context window size (grows with each turn), not actual tokens consumed per run. For Gemini Flash this could be 10–115× the real value.
+- Fixed: cron run cost now uses `input_tokens + output_tokens` exclusively
+
+**Root cause 4: Scan window too small for header stats**
+- `scanSessionUsageToday` read only the last 500KB of each session file — high-volume sessions (Watchdog, jobs-intel) lost early-day messages
+- Fixed: window increased to 25MB
+
+**Root cause 5: Cache token pricing (10× overestimate)**
+- `estimateCost` applied full input rate to `cacheRead`/`cacheWrite` tokens
+- Fixed: per-model `cacheCosts` added to `models-registry.json`; correct rates applied (e.g. Sonnet cacheRead $0.30/1M vs $3.00/1M input)
+
+### 📊 Verified Accuracy
+- Mar 3 bar chart: **$75.97** (was $183.82 before fix)
+- Finance/Cron tab: **$71.07**
+- Delta ~7% — expected, two endpoints use slightly different session registries
+
 ## [1.7.4] - 2026-03-03
 
 ### 🐛 Bug Fixes
