@@ -12,13 +12,14 @@
 <meta name="apple-mobile-web-app-title" content="OpenClaw">
 <meta name="theme-color" content="#06080e">
 <meta name="description" content="Glassmorphic agent management dashboard for OpenClaw with task kanban, document editor, API monitoring & real-time agent tracking.">
-<meta name="author" content="Jony Jing">
+<meta name="author" content="OpenClaw">
 <meta property="og:title" content="OpenClaw Agent Dashboard">
 <meta property="og:description" content="Glassmorphic agent management dashboard for OpenClaw with task kanban, document editor, API monitoring & real-time agent tracking.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://github.com/JonathanJing/openclaw-dashboard">
 <meta property="og:image" content="https://raw.githubusercontent.com/JonathanJing/openclaw-dashboard/main/screenshots/tasks-kanban.png">
 <script src="https://cdn.jsdelivr.net/npm/marked@14/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Space+Mono:wght@400;700&display=swap');
 *{margin:0;padding:0;box-sizing:border-box}
@@ -417,6 +418,12 @@ header{display:flex;align-items:center;justify-content:space-between;padding:16p
 .sess-alert.waste{background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.3)}
 .sess-alert.stale{background:rgba(107,114,128,.1);border:1px solid rgba(107,114,128,.3)}
 
+/* ─── Week Navigator ─── */
+.week-nav{display:flex;align-items:center;justify-content:center;gap:12px;margin-bottom:10px;user-select:none}
+.week-nav button{background:var(--glass);border:1px solid var(--border);color:var(--text1);border-radius:6px;padding:4px 12px;cursor:pointer;font-size:.8rem;transition:background .15s,border-color .15s}
+.week-nav button:hover:not(:disabled){background:var(--accent);border-color:var(--accent);color:#fff}
+.week-nav button:disabled{opacity:.35;cursor:default}
+.week-nav .week-label{font-size:.8rem;color:var(--text2);min-width:160px;text-align:center;font-variant-numeric:tabular-nums}
 /* ─── Cost Heatmap ─── */
 .cost-heatmap{overflow-x:auto;-webkit-overflow-scrolling:touch}
 .cost-heatmap table{width:100%;border-collapse:collapse;font-size:.75rem}
@@ -826,10 +833,15 @@ header{display:flex;align-items:center;justify-content:space-between;padding:16p
         </div>
       </div>
       <div id="alltimeModels" class="ops-channel-list" style="margin-bottom:12px"></div>
-      <div class="card-title" style="font-size:.85rem;margin-bottom:8px">Daily Tokens (Last 14 Days)</div>
+      <div class="week-nav" id="weekNav">
+        <button id="weekPrev" title="Previous week">◀</button>
+        <span class="week-label" id="weekLabel">This Week</span>
+        <button id="weekNext" title="Next week">▶</button>
+      </div>
+      <div class="card-title" style="font-size:.85rem;margin-bottom:8px" id="dailyChartTitle">Daily Tokens</div>
       <canvas id="dailyChart" height="120" style="width:100%;border-radius:8px"></canvas>
       <div class="ops-model-legend chart-legend" style="margin-top:6px"></div>
-      <div class="card-title" style="font-size:.85rem;margin:12px 0 8px">Daily Cost by Model</div>
+      <div class="card-title" style="font-size:.85rem;margin:12px 0 8px" id="dailyCostTitle">Daily Cost by Model</div>
       <canvas id="dailyCostChart" height="120" style="width:100%;border-radius:8px"></canvas>
       <div class="ops-model-legend chart-cost-legend" style="margin-top:6px"></div>
       <div class="card-title" style="font-size:.85rem;margin:12px 0 8px">Cost Heatmap (Model × Day)</div>
@@ -1023,16 +1035,23 @@ header{display:flex;align-items:center;justify-content:space-between;padding:16p
    ═══════════════════════════════════════════════ */
 
 // ─── Auth ───
+// Token is read once from URL param (e.g. ?token=xxx) then stripped from the address bar.
+// All API calls send it via Authorization header — never in URL query strings.
 function getToken() {
   const p = new URLSearchParams(location.search).get('token');
-  if (p) return p;
-  try { const s = JSON.parse(localStorage.getItem('openclaw.control.settings.v1') || '{}'); if (s.token) return s.token; } catch(e) {}
-  return localStorage.getItem('openclaw_token') || '';
+  if (p) {
+    // Strip token from URL to avoid leaking in Referer / logs / browser history
+    const clean = new URL(location.href);
+    clean.searchParams.delete('token');
+    history.replaceState(null, '', clean.pathname + clean.search + clean.hash);
+    return p;
+  }
+  return '';
 }
 const TOKEN = getToken();
-const API = (location.port === '18789' || location.port === '18790')
-  ? `${location.protocol}//${location.hostname}:18790`
-  : '';
+const API = (location.port === '18789' || location.port === '18791' || location.port === '')
+  ? ''
+  : 'http://127.0.0.1:18789';
 const LANG_KEY = 'openclaw.dashboard.lang';
 let currentLang = localStorage.getItem(LANG_KEY) || 'en';
 if (currentLang !== 'en' && currentLang !== 'zh') currentLang = 'en';
@@ -1097,12 +1116,10 @@ function toggleLanguage() {
 }
 
 async function apiFetch(path, opts = {}) {
-  const sep = path.includes('?') ? '&' : '?';
-  const url = `${API}${path}${sep}token=${encodeURIComponent(TOKEN)}`;
-  const res = await fetch(url, {
-    ...opts,
-    headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) }
-  });
+  const url = `${API}${path}`;
+  const headers = { 'Content-Type': 'application/json', ...(opts.headers || {}) };
+  if (TOKEN) headers['Authorization'] = `Bearer ${TOKEN}`;
+  const res = await fetch(url, { ...opts, headers });
   if (!res.ok) {
     const ct = res.headers.get('content-type') || '';
     if (ct.includes('json')) {
@@ -1496,12 +1513,17 @@ function renderMarkdown(text) {
   return `<p>${html}</p>`;
 }
 
-// ─── Full Markdown (using marked.js library) ───
+// ─── Full Markdown (using marked.js library + DOMPurify) ───
+function sanitizeHtml(html) {
+  if (typeof DOMPurify !== 'undefined') return DOMPurify.sanitize(html);
+  // Fallback: strip all tags
+  const d = document.createElement('div'); d.textContent = html; return d.innerHTML;
+}
 function renderFullMarkdown(text) {
   if (!text) return '';
   try {
     if (typeof marked !== 'undefined' && marked.parse) {
-      return marked.parse(text, { breaks: true, gfm: true });
+      return sanitizeHtml(marked.parse(text, { breaks: true, gfm: true }));
     }
   } catch(e) { /* fallback */ }
   return renderMarkdown(text);
@@ -2246,9 +2268,8 @@ function renderMarkdownPreview(content) {
   }
   try {
     if (typeof marked !== 'undefined' && marked.parse) {
-      preview.innerHTML = marked.parse(content, { breaks: true, gfm: true });
+      preview.innerHTML = sanitizeHtml(marked.parse(content, { breaks: true, gfm: true }));
     } else {
-      // Fallback to simple rendering
       preview.innerHTML = renderMarkdown(content);
     }
   } catch(e) {
@@ -2321,9 +2342,11 @@ async function loadAgentMonitor() {
 }
 
 function loadSystemInfo() {
-  // Refresh model options from server registry (models-registry.json)
+  // Refresh model options from server dynamically
   apiFetch('/ops/models').then(data => {
     if (data.registry) refreshModelOptions(data.registry);
+    if (data.colors) Object.assign(MODEL_COLORS, data.colors);
+    if (data.displayNames) MODEL_DISPLAY_NAMES.unshift(...data.displayNames);
   }).catch(() => {});
 
   apiFetch('/ops/system').then(sys => {
@@ -2516,21 +2539,31 @@ async function spawnSingleTask(taskId) {
 
 // ─── Sessions Panel ───
 // ─── Model names (single source of truth for display) ───
-const MODEL_DISPLAY_NAMES = [
-  ['claude-opus-4-6', 'Claude Opus 4'],
-  ['claude-sonnet-4-6', 'Claude Sonnet 4'],
-  ['claude-haiku-4-5', 'Claude Haiku 4'],
-  ['gemini-3.1-pro', 'Gemini 3.1 Pro'],
-  ['gemini-3-pro-preview', 'Gemini 3 Pro'],
-  ['gemini-3-pro', 'Gemini 3 Pro'],
-  ['gemini-3.0-flash', 'Gemini 3.0 Flash'],
-  ['gemini-3-flash-preview', 'Gemini 3 Flash'],
-  ['gemini-3-flash', 'Gemini 3 Flash'],
-  ['gpt-5.3-codex', 'GPT-5.3 Codex'],
-  ['gpt-5.2-codex', 'GPT-5.2 Codex'],
-  ['gpt-5.3', 'GPT-5.3'],
-  ['gpt-5.2', 'GPT-5.2'],
-];
+const MODEL_DISPLAY_NAMES = [];
+
+// ─── Model Selector ───
+let globalDefaultModel = 'claude-sonnet-4-6'; // updated dynamically from /ops/system
+
+// Starts with hardcoded defaults; refreshed from /ops/models on load.
+// To update model names/ids: edit models-registry.json on the server — no code change needed.
+let MODEL_OPTIONS = [{ value: 'default', label: '', full: null, isDefault: true }];
+
+function refreshModelOptions(registry) {
+  if (!registry || typeof registry !== 'object') return;
+  const opts = [{ value: 'default', label: '', full: null, isDefault: true }];
+  for (const [alias, entry] of Object.entries(registry)) {
+    const id = typeof entry === 'string' ? entry : entry?.id;
+    const label = (typeof entry === 'object' && entry?.label) ? entry.label : alias;
+    if (id) opts.push({ value: alias, label, full: id.includes('/') ? id.split('/').pop() : id });
+  }
+  MODEL_OPTIONS = opts;
+}
+
+function getDefaultModelLabel() {
+  // Show actual model name instead of "默认"
+  const m = globalDefaultModel || '';
+  return shortModel(m) + ' ★';
+}
 
 // ─── Model Selector ───
 let globalDefaultModel = 'claude-sonnet-4-6'; // updated dynamically from /ops/system
@@ -3116,26 +3149,7 @@ async function loadCronEnhanced() {
 }
 
 // ─── Ops Channel Usage Panel ───
-const MODEL_COLORS = {
-  // Anthropic — purple/pink spectrum (high contrast between tiers)
-  'claude-opus-4-6': '#a855f7',    // vivid purple — flagship
-  'claude-sonnet-4-6': '#ec4899',  // hot pink — daily driver
-  'claude-haiku-4-5': '#f9a8d4',   // soft pink — lightweight
-
-  // OpenAI — green/teal spectrum
-  'gpt-5.2-codex': '#10b981',      // emerald — codex
-  'gpt-5.3-codex': '#10b981',
-  'gpt-5.2': '#06b6d4',            // cyan — general
-  'gpt-5.3': '#06b6d4',
-
-  // Google — amber/orange spectrum
-  'gemini-3.1-pro': '#f59e0b',     // amber — pro tier
-  'gemini-3-pro-preview': '#f59e0b',
-  'gemini-3-pro': '#f59e0b',
-  'gemini-3.0-flash': '#fb923c',   // orange — flash tier
-  'gemini-3-flash-preview': '#fb923c',
-  'gemini-3-flash': '#fb923c',
-};
+const MODEL_COLORS = {};
 
 function getModelColor(model) {
   const key = Object.keys(MODEL_COLORS).find(k => (model || '').includes(k));
@@ -3399,15 +3413,10 @@ async function loadOpsAlltime() {
       </div>`;
     }).join('');
 
-    // Daily charts
-    const daily = data.recentDaily || [];
-    if (canvas && daily.length > 0) {
-      drawDailyChart(canvas, daily);
-    }
-    const costCanvas = document.getElementById('dailyCostChart');
-    if (costCanvas && daily.length > 0) {
-      drawDailyCostChart(costCanvas, daily);
-      renderCostHeatmap(daily);
+    // Daily charts — week navigation
+    const allDaily = data.recentDaily || [];
+    if (allDaily.length > 0) {
+      initWeekNav(allDaily);
     }
 
     // Audit status
@@ -3492,12 +3501,8 @@ async function opsAction(action) {
     let html = '';
 
     if (action === 'restart') {
-      const r = await fetch('http://127.0.0.1:18789/hooks', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'restart', token: '451374645a4c6bcfc20641ab49ea3091803287d23ccebea2' })
-      });
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const r = await apiFetch('/ops/restart', { method: 'POST' });
+      if (r?.error) throw new Error(r.error);
       if (badge) badge.textContent = '✅';
       html = '<span style="color:var(--green)">✅ Restart signal sent to OpenClaw gateway.</span>';
 
@@ -3553,6 +3558,94 @@ async function opsAction(action) {
     if (btn) btn.classList.remove('loading');
     pollWatchdogStatus();
   }
+}
+
+// ─── Week Navigation ───
+let _weekAllDaily = [];
+let _weekOffset = 0; // 0 = current week, -1 = last week, etc.
+
+function initWeekNav(allDaily) {
+  _weekAllDaily = allDaily;
+  _weekOffset = 0;
+  const prevBtn = document.getElementById('weekPrev');
+  const nextBtn = document.getElementById('weekNext');
+  if (prevBtn) prevBtn.onclick = () => { _weekOffset--; renderWeekView(); };
+  if (nextBtn) nextBtn.onclick = () => { _weekOffset++; renderWeekView(); };
+  renderWeekView();
+}
+
+function getWeekSlice(allDaily, offset) {
+  // Get the Monday-Sunday week based on offset from current week
+  const today = new Date();
+  // Find this week's Monday (in local PST context)
+  const pstNow = new Date(today.toLocaleString('en-US', { timeZone: 'America/Los_Angeles' }));
+  const dayOfWeek = pstNow.getDay(); // 0=Sun
+  const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+  const thisMonday = new Date(pstNow);
+  thisMonday.setDate(pstNow.getDate() + mondayOffset + (offset * 7));
+  thisMonday.setHours(0, 0, 0, 0);
+
+  const thisSunday = new Date(thisMonday);
+  thisSunday.setDate(thisMonday.getDate() + 6);
+
+  const fmtDate = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  const startStr = fmtDate(thisMonday);
+  const endStr = fmtDate(thisSunday);
+
+  // Build full 7-day array (fill missing days with zeros)
+  const result = [];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(thisMonday);
+    d.setDate(thisMonday.getDate() + i);
+    const dateStr = fmtDate(d);
+    const existing = allDaily.find(x => x.date === dateStr);
+    result.push(existing || { date: dateStr, tokens: 0, cost: 0, models: {}, modelCosts: {} });
+  }
+
+  return { days: result, startStr, endStr, monday: thisMonday };
+}
+
+function renderWeekView() {
+  const { days, startStr, endStr, monday } = getWeekSlice(_weekAllDaily, _weekOffset);
+  const label = document.getElementById('weekLabel');
+  const prevBtn = document.getElementById('weekPrev');
+  const nextBtn = document.getElementById('weekNext');
+
+  // Check bounds
+  const oldestDate = _weekAllDaily.length > 0 ? _weekAllDaily[0].date : startStr;
+  const hasPrev = startStr > oldestDate;
+  const hasNext = _weekOffset < 0;
+
+  if (prevBtn) prevBtn.disabled = !hasPrev;
+  if (nextBtn) nextBtn.disabled = !hasNext;
+
+  // Label
+  if (label) {
+    if (_weekOffset === 0) {
+      label.textContent = `This Week · ${startStr.slice(5)} – ${endStr.slice(5)}`;
+    } else {
+      // Show week range
+      const weekNum = Math.abs(_weekOffset);
+      label.textContent = `${startStr.slice(5)} – ${endStr.slice(5)}`;
+    }
+  }
+
+  // Render charts
+  const canvas = document.getElementById('dailyChart');
+  if (canvas && days.length > 0) drawDailyChart(canvas, days);
+  const costCanvas = document.getElementById('dailyCostChart');
+  if (costCanvas && days.length > 0) {
+    drawDailyCostChart(costCanvas, days);
+    renderCostHeatmap(days);
+  }
+
+  // Week totals
+  const weekTokens = days.reduce((s, d) => s + (d.tokens || 0), 0);
+  const weekCost = days.reduce((s, d) => s + (d.cost || 0), 0);
+  const titleEl = document.getElementById('dailyChartTitle');
+  if (titleEl) titleEl.textContent = `Daily Tokens · ${fmtTokens(weekTokens)} total`;
+  const costTitleEl = document.getElementById('dailyCostTitle');
+  if (costTitleEl) costTitleEl.textContent = `Daily Cost · $${weekCost.toFixed(2)} total`;
 }
 
 function drawDailyChart(canvas, daily) {
@@ -3841,7 +3934,7 @@ document.addEventListener('keydown', e => {
 });
 </script>
 <footer style="text-align:center;padding:24px 0 16px;color:#8b949e;font-size:0.85rem;font-family:'Outfit',sans-serif;">
-  Built by <a href="https://github.com/JonathanJing" target="_blank" style="color:#7c5cfc;text-decoration:none;">Jony Jing</a> ·
+  Built for <a href="https://github.com/openclaw" target="_blank" style="color:#7c5cfc;text-decoration:none;">OpenClaw</a> ·
   <a href="https://github.com/JonathanJing/openclaw-dashboard" target="_blank" style="color:#8b949e;text-decoration:none;">GitHub</a>
 </footer>
 </body>
