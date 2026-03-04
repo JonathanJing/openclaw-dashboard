@@ -1344,6 +1344,7 @@ function getDynamicModelRegistry(nocache = false) {
   const registry = {};
   const colors = {};
   const costs = {};
+  const cacheCosts = {}; // [cacheReadCostPerM, cacheWriteCostPerM]
   const displayNames = [];
   const usedColors = new Set();
 
@@ -1394,6 +1395,7 @@ function getDynamicModelRegistry(nocache = false) {
         }
         if (val.costIO) costs[key] = val.costIO;
         else if (typeof val.costPerMToken === 'number') costs[key] = [val.costPerMToken, val.costPerMToken];
+        if (val.costCache) cacheCosts[key] = val.costCache;
         displayNames.push([key, label]);
       }
     }
@@ -1440,12 +1442,12 @@ function getDynamicModelRegistry(nocache = false) {
     }
   } catch (e) {}
 
-  _dynRegistryCache = { registry, colors, costs, displayNames };
+  _dynRegistryCache = { registry, colors, costs, cacheCosts, displayNames };
   _dynRegistryCacheAt = now;
   return _dynRegistryCache;
 }
 // estimateCost: prefer provider-reported cost.total, then input/output/cache split, then fallback
-function estimateCost(model, totalTokens, inputTokens, outputTokens, costObj) {
+function estimateCost(model, totalTokens, inputTokens, outputTokens, costObj, cacheReadTokens, cacheWriteTokens) {
   // If provider gives us a cost object with total, use it directly
   if (costObj && typeof costObj.total === 'number') return costObj.total;
 
@@ -1453,8 +1455,16 @@ function estimateCost(model, totalTokens, inputTokens, outputTokens, costObj) {
   const key = Object.keys(dyn.costs).find(k => (model || '').includes(k));
   if (!key) return 0;
   const [inCost, outCost] = dyn.costs[key];
-  if (inputTokens || outputTokens) {
-    return ((inputTokens || 0) / 1_000_000) * inCost + ((outputTokens || 0) / 1_000_000) * outCost;
+
+  // Use accurate cache pricing when available (cache reads are much cheaper than input)
+  const cacheKey = Object.keys(dyn.cacheCosts || {}).find(k => (model || '').includes(k));
+  const [cacheReadCost, cacheWriteCost] = cacheKey ? (dyn.cacheCosts[cacheKey] || [inCost, inCost]) : [inCost * 0.1, inCost * 1.25];
+
+  if (inputTokens || outputTokens || cacheReadTokens || cacheWriteTokens) {
+    return ((inputTokens || 0) / 1_000_000) * inCost
+         + ((outputTokens || 0) / 1_000_000) * outCost
+         + ((cacheReadTokens || 0) / 1_000_000) * cacheReadCost
+         + ((cacheWriteTokens || 0) / 1_000_000) * cacheWriteCost;
   }
   // Fallback: assume 90% input, 10% output (typical for agent workloads)
   const inp = totalTokens * 0.9, out = totalTokens * 0.1;
@@ -1481,27 +1491,31 @@ function scanSessionUsageToday(sessionFile, todayStartIso) {
   const result = { input: 0, output: 0, totalTokens: 0, cost: 0, models: {}, messages: 0 };
   try {
     const stat = fs.statSync(sessionFile);
-    // Read last 500KB max (should cover today's messages)
-    const readSize = Math.min(500_000, stat.size);
+    // Increase read window to 25MB to ensure we cover full day activity even for high-volume sessions
+    const readSize = Math.min(25_000_000, stat.size);
     const buf = Buffer.alloc(readSize);
     const fd = fs.openSync(sessionFile, 'r');
     fs.readSync(fd, buf, 0, readSize, Math.max(0, stat.size - readSize));
     fs.closeSync(fd);
     const lines = buf.toString('utf8').split('\n').filter(Boolean);
     for (const line of lines) {
+      if (!line.includes('"usage"')) continue;
       try {
         const j = JSON.parse(line);
         if (j.type !== 'message' || !j.message?.usage) continue;
         if (j.timestamp < todayStartIso) continue;
         const u = j.message.usage;
-        const inp = (u.input || 0) + (u.cacheRead || 0) + (u.cacheWrite || 0);
+        const pureInp = u.input || 0;
+        const cr = u.cacheRead || 0;
+        const cw = u.cacheWrite || 0;
+        const inp = pureInp + cr + cw; // for backward-compat totalInput field
         const out = u.output || 0;
         result.input += inp;
         result.output += out;
         const tokens = u.totalTokens || u.total_tokens || (inp + out) || 0;
         result.totalTokens += tokens;
         const m = j.message.model || 'unknown';
-        result.cost += estimateCost(m, tokens, inp, out, u.cost);
+        result.cost += estimateCost(m, tokens, pureInp, out, u.cost, cr, cw);
         result.models[m] = (result.models[m] || 0) + tokens;
         result.messages++;
       } catch {}
@@ -1604,7 +1618,8 @@ function handleOpsAlltime(req, res, method, parsed) {
   const sessDir = path.dirname(SESSIONS_JSON);
   let files;
   try {
-    files = fs.readdirSync(sessDir).filter(f => f.includes('.jsonl'));
+    // Only scan actual session JSONL files, ignoring .deleted and .reset backups
+    files = fs.readdirSync(sessDir).filter(f => f.endsWith('.jsonl'));
   } catch (e) {
     return errorReply(res, 500, 'Cannot read sessions dir: ' + e.message);
   }
@@ -1623,10 +1638,13 @@ function handleOpsAlltime(req, res, method, parsed) {
           if (j.type !== 'message' || !j.message?.usage) continue;
           const u = j.message.usage;
           const m = j.message.model || 'unknown';
-          const input = (u.input || 0) + (u.cacheRead || 0) + (u.cacheWrite || 0);
+          const pureInput = u.input || 0;
+          const cacheRead = u.cacheRead || 0;
+          const cacheWrite = u.cacheWrite || 0;
+          const input = pureInput + cacheRead + cacheWrite;
           const output = u.output || 0;
           const tokens = u.totalTokens || u.total_tokens || (input + output) || 0;
-          const cost = estimateCost(m, tokens, input, output, u.cost);
+          const cost = estimateCost(m, tokens, pureInput, output, u.cost, cacheRead, cacheWrite);
 
           totalTokens += tokens;
           totalInput += input;
@@ -1657,42 +1675,58 @@ function handleOpsAlltime(req, res, method, parsed) {
     } catch {}
   }
 
-  // Also scan cron runs
-  try {
-    const cronFiles = fs.readdirSync(CRON_RUNS_DIR).filter(f => f.endsWith('.jsonl'));
-    for (const cf of cronFiles) {
-      try {
-        const raw = fs.readFileSync(path.join(CRON_RUNS_DIR, cf), 'utf8').trim();
-        for (const line of raw.split('\n')) {
-          try {
-            const j = JSON.parse(line);
-            if (j.action !== 'finished' || !j.usage) continue;
-            const m = j.model || 'cron';
-            const tokens = j.usage.total_tokens || j.usage.totalTokens || 0;
-            if (tokens === 0) continue;
-            let cost = estimateCost(m, tokens, j.usage.input || 0, j.usage.output || 0, j.usage.cost);
-            totalTokens += tokens;
-            totalCost += cost;
-            totalMessages++;
-            if (!models[m]) models[m] = { tokens: 0, input: 0, output: 0, cost: 0, messages: 0 };
-            models[m].tokens += tokens;
-            models[m].cost += cost;
-            models[m].messages++;
-            if (j.ts) {
-              const d = new Date(j.ts);
-              const pstStr = d.toLocaleString("en-CA", { timeZone: "America/Los_Angeles" });
-              const day = pstStr.slice(0, 10);
-              if (!daily[day]) daily[day] = { tokens: 0, cost: 0, models: {}, modelCosts: {} };
-              daily[day].tokens += tokens;
-              daily[day].cost += cost;
-              daily[day].models[m] = (daily[day].models[m] || 0) + tokens;
+  // --- Scan cron/runs for completed cron session costs ---
+  // Cron subagent sessions are deleted after completion (.jsonl → .jsonl.deleted.*),
+  // so we must read from cron/runs JSONL summaries to capture their costs.
+  // NOTE: use input_tokens + output_tokens (NOT total_tokens, which is cumulative context size).
+  const cronRunFiles = fs.existsSync(CRON_RUNS_DIR)
+    ? fs.readdirSync(CRON_RUNS_DIR).filter(f => f.endsWith('.jsonl'))
+    : [];
+  for (const cf of cronRunFiles) {
+    try {
+      const lines = fs.readFileSync(path.join(CRON_RUNS_DIR, cf), 'utf8').split('\n').filter(Boolean);
+      for (const line of lines) {
+        try {
+          const j = JSON.parse(line);
+          if (j.action !== 'finished' || !j.usage) continue;
+          const u = j.usage;
+          const m = j.model || 'unknown';
+          // Use input_tokens + output_tokens; total_tokens is cumulative context size (unreliable)
+          const inp = u.input_tokens || u.input || 0;
+          const out = u.output_tokens || u.output || 0;
+          if (inp === 0 && out === 0) continue;
+          const tokens = inp + out;
+          const cost = estimateCost(m, tokens, inp, out, u.cost);
+
+          totalTokens += tokens;
+          totalInput += inp;
+          totalOutput += out;
+          totalCost += cost;
+          totalMessages++;
+
+          if (!models[m]) models[m] = { tokens: 0, input: 0, output: 0, cost: 0, messages: 0 };
+          models[m].tokens += tokens;
+          models[m].input += inp;
+          models[m].output += out;
+          models[m].cost += cost;
+          models[m].messages++;
+
+          // Daily bucket (PST) using run timestamp
+          const ts = j.ts || j.startedAt || j.runAtMs;
+          if (ts) {
+            const d = new Date(typeof ts === 'number' ? ts : ts);
+            const pstStr = d.toLocaleString("en-CA", { timeZone: "America/Los_Angeles" });
+            const day = pstStr.slice(0, 10);
+            if (!daily[day]) daily[day] = { tokens: 0, cost: 0, models: {}, modelCosts: {} };
+            daily[day].tokens += tokens;
+            daily[day].cost += cost;
+            daily[day].models[m] = (daily[day].models[m] || 0) + tokens;
             daily[day].modelCosts[m] = (daily[day].modelCosts[m] || 0) + cost;
-            }
-          } catch {}
-        }
-      } catch {}
-    }
-  } catch {}
+          }
+        } catch {}
+      }
+    } catch {}
+  }
 
   // Sort models by tokens desc
   const sortedModels = Object.entries(models)
@@ -2186,14 +2220,17 @@ function handleOpsSessions(req, res, method) {
           if (role === 'assistant') {
             const u = j.message?.usage;
             if (u) {
-              const inp = (u.input || 0) + (u.cacheRead || 0) + (u.cacheWrite || 0);
+              const pureInp = u.input || 0;
+              const cr = u.cacheRead || 0;
+              const cw = u.cacheWrite || 0;
+              const inp = pureInp + cr + cw;
               const out = u.output || 0;
               const tokens = u.totalTokens || u.total_tokens || (inp + out) || 0;
               today.input += inp;
               today.output += out;
               today.totalTokens += tokens;
               const m = j.message.model || 'unknown';
-              const cost = estimateCost(m, tokens, inp, out, u.cost);
+              const cost = estimateCost(m, tokens, pureInp, out, u.cost, cr, cw);
               today.cost += cost;
               today.models[m] = (today.models[m] || 0) + tokens;
             }
