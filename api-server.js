@@ -3263,9 +3263,9 @@ const server = http.createServer((req, res) => {
   }
 
   // PWA assets (no auth required)
-  if ((pathname === '/icon.svg' || pathname === '/icon-180.png') && method === 'GET') {
+  if (['/icon.svg', '/icon-180.png', '/marked.min.js', '/purify.min.js'].includes(pathname) && method === 'GET') {
     const file = pathname.slice(1);
-    const ct = file.endsWith('.svg') ? 'image/svg+xml' : 'image/png';
+    const ct = file.endsWith('.js') ? 'application/javascript' : file.endsWith('.svg') ? 'image/svg+xml' : 'image/png';
     try {
       const data = fs.readFileSync(path.join(__dirname, file));
       setCors(res, req);
