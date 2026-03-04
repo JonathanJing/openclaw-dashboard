@@ -1337,9 +1337,9 @@ async function notionCount(dbId, startIso, endIso) {
 let _dynRegistryCache = null;
 let _dynRegistryCacheAt = 0;
 
-function getDynamicModelRegistry() {
+function getDynamicModelRegistry(nocache = false) {
   const now = Date.now();
-  if (_dynRegistryCache && (now - _dynRegistryCacheAt) < 60000) return _dynRegistryCache;
+  if (!nocache && _dynRegistryCache && (now - _dynRegistryCacheAt) < 60000) return _dynRegistryCache;
 
   const registry = {};
   const colors = {};
@@ -1514,7 +1514,7 @@ function handleOpsChannels(req, res, method) {
   if (method !== 'GET') return errorReply(res, 405, 'Method not allowed');
 
   const now = Date.now();
-  if (_opsCache && (now - _opsCacheAt) < OPS_CACHE_TTL) {
+  if (!parsed?.query?.nocache && _opsCache && (now - _opsCacheAt) < OPS_CACHE_TTL) {
     return jsonReply(res, 200, _opsCache);
   }
 
@@ -1593,11 +1593,11 @@ let _allTimeCache = null;
 let _allTimeCacheAt = 0;
 const ALLTIME_CACHE_TTL = 300_000; // 5 min
 
-function handleOpsAlltime(req, res, method) {
+function handleOpsAlltime(req, res, method, parsed) {
   if (method !== 'GET') return errorReply(res, 405, 'Method not allowed');
 
   const now = Date.now();
-  if (_allTimeCache && (now - _allTimeCacheAt) < ALLTIME_CACHE_TTL) {
+  if (!parsed?.query?.nocache && _allTimeCache && (now - _allTimeCacheAt) < ALLTIME_CACHE_TTL) {
     return jsonReply(res, 200, _allTimeCache);
   }
 
@@ -2277,7 +2277,7 @@ function handleOpsSessions(req, res, method) {
 
 // --- Ops: Config Files Viewer ---
 // --- Ops: System Info ---
-function handleOpsSystem(req, res, method) {
+function handleOpsSystem(req, res, method, parsed) {
   if (method !== 'GET') return errorReply(res, 405, 'Method not allowed');
   const os = require('os');
   const { execFileSync } = require('child_process');
@@ -3399,16 +3399,16 @@ button:active{opacity:.8}
     if (root === 'cron') return handleCron(req, res, parsed, segments, method);
     if (root === 'vision' && segments[1] === 'stats') return handleVisionStats(req, res, method);
     if (root === 'ops' && segments[1] === 'channels') return handleOpsChannels(req, res, method);
-    if (root === 'ops' && segments[1] === 'alltime') return handleOpsAlltime(req, res, method);
+    if (root === 'ops' && segments[1] === 'alltime') return handleOpsAlltime(req, res, method, parsed);
     if (root === 'ops' && segments[1] === 'audit') return handleOpsAudit(req, res, method);
     if (root === 'ops' && segments[1] === 'secaudit') return handleOpsSecAudit(req, res, method);
     if (root === 'ops' && segments[1] === 'sessions') return handleOpsSessions(req, res, method);
     if (root === 'ops' && segments[1] === 'config') return handleOpsConfig(req, res, method);
     if (root === 'ops' && segments[1] === 'cron') return handleOpsCron(req, res, method);
     if (root === 'ops' && segments[1] === 'cron-costs') return handleOpsCronCosts(req, res, method);
-    if (root === 'ops' && segments[1] === 'system') return handleOpsSystem(req, res, method);
+    if (root === 'ops' && segments[1] === 'system') return handleOpsSystem(req, res, method, parsed);
     if (root === 'ops' && segments[1] === 'watchdog') return handleOpsWatchdog(req, res, method, parsed);
-    if (root === 'ops' && segments[1] === 'models') return jsonReply(res, 200, getDynamicModelRegistry());
+    if (root === 'ops' && segments[1] === 'models') return jsonReply(res, 200, getDynamicModelRegistry(parsed?.query?.nocache));
     if (root === 'ops' && segments[1] === 'update-openclaw') return handleOpsUpdateOpenClaw(req, res, method);
     if (root === 'ops' && segments[1] === 'session-model') return handleOpsSessionModel(req, res, method);
     if (root === 'ops' && segments[1] === 'cron-model') return handleOpsCronModel(req, res, method);
