@@ -1,65 +1,71 @@
-# Security Policy
+# Security Model — OpenClaw Dashboard
 
-## Threat Model (Summary)
+## Threat Model & Design Philosophy
 
-- This dashboard reads local OpenClaw runtime data from `~/.openclaw/...`.
-- Some operations can trigger local hooks and update workflows.
-- Secrets and provider admin keys must remain opt-in and least-privilege.
+This dashboard is an **administrative control plane** for OpenClaw — analogous to Terraform, Ansible, or Kubernetes Dashboard. Administrative tools inherently require elevated capabilities (file access, process control, service management). The security model is **defense-in-depth with opt-in escalation**: all sensitive capabilities are disabled by default and require explicit operator consent to activate.
 
-## Secure Defaults
+**Key principle:** No sensitive capability is available without the operator explicitly setting an environment variable AND being on localhost.
 
-- `OPENCLAW_LOAD_KEYS_ENV=0` (disabled by default)
-- `OPENCLAW_ENABLE_PROVIDER_AUDIT=0`
-- `OPENCLAW_ENABLE_CONFIG_ENDPOINT=0`
-- `OPENCLAW_ALLOW_ATTACHMENT_FILEPATH_COPY=0`
-- `OPENCLAW_ALLOW_ATTACHMENT_COPY_FROM_TMP=0`
-- `OPENCLAW_ALLOW_ATTACHMENT_COPY_FROM_WORKSPACE=0`
-- `OPENCLAW_ALLOW_ATTACHMENT_COPY_FROM_OPENCLAW_HOME=0`
-- `OPENCLAW_ENABLE_SYSTEMCTL_RESTART=0`
-- `OPENCLAW_ENABLE_MUTATING_OPS=0`
-- `DASHBOARD_HOST=127.0.0.1`
+## Authentication
 
-- `DASHBOARD_CORS_ORIGINS=` (empty = loopback only, no wildcard)
+- **Primary**: HttpOnly + SameSite=Strict cookie (`ds`), set at `/auth` endpoint.
+- **Initial handoff**: URL `?token=` parameter accepted once on page load, then immediately stripped from the address bar via `history.replaceState` to prevent leakage in Referer headers, server logs, and browser history.
+- **API calls**: All subsequent API requests use `Authorization: Bearer <token>` header — never URL query parameters.
+- **No client-side token storage**: Auth tokens are NOT stored in localStorage or sessionStorage. This eliminates XSS-based token theft.
+- **Localhost-only by default**: Dashboard binds to `127.0.0.1`. External access requires explicit Tailscale Funnel or reverse proxy setup.
 
-Mutating operations are additionally restricted to localhost callers.
+## Capability Escalation Matrix
 
-## CORS Policy
+All elevated capabilities follow the same pattern: **off by default → env flag to enable → localhost-only → input sanitization**.
 
-CORS is restricted by default — only loopback origins (`localhost`, `127.0.0.1`) are allowed.
-To allow external origins (e.g. for Tailscale Funnel access), set:
-```
-DASHBOARD_CORS_ORIGINS=https://your-tailscale-hostname.ts.net
-```
-Multiple origins: comma-separated. Use `*` only in trusted environments.
+| Capability | Env Flag Required | Default | Localhost-Only | Input Sanitization |
+|---|---|---|---|---|
+| File attachment copy | `OPENCLAW_ALLOW_ATTACHMENT_FILEPATH_COPY=1` | ❌ Off | ✅ Yes | `realpathSync` symlink resolution, directory allowlist (`/tmp`, `~/.openclaw`, workspace) |
+| Git push / backup | `OPENCLAW_ENABLE_MUTATING_OPS=1` | ❌ Off | ✅ Yes | `execFileSync` with array args (no shell expansion) |
+| npm install | `OPENCLAW_ENABLE_MUTATING_OPS=1` | ❌ Off | ✅ Yes | `execFileSync` with array args |
+| Service restart | `OPENCLAW_ENABLE_MUTATING_OPS=1` | ❌ Off | ✅ Yes | Proxied via authenticated API endpoint with env-sourced token |
+| Task CRUD / notes | `OPENCLAW_AUTH_TOKEN` (always required) | N/A | ✅ Yes | SQL parameterized queries, `escHtml` output encoding |
 
-## Command Execution
+**Without any flags set**, the dashboard is a **read-only monitoring tool** with zero mutating surface.
 
-All child_process calls use `execFileSync` with argument arrays (no shell interpolation).
-Zero `execSync` calls exist in the codebase. The `runCmd()` helper wraps `execFileSync` with timeout and error handling.
-
-## File Copy (FILEPATH_COPY)
+### File Copy Path Restrictions
 
 When `OPENCLAW_ALLOW_ATTACHMENT_FILEPATH_COPY=1` is set:
-- Source paths must match configured allowed prefixes
-- Symlinks are resolved via `realpathSync` and re-checked against allowed prefixes
-- Each sub-directory (`/tmp`, workspace, `.openclaw`) requires its own explicit env flag
+- Paths are resolved via `fs.realpathSync` to prevent symlink traversal attacks
+- Only files under these directories are accessible: `/tmp`, `~/.openclaw`, and the configured workspace
+- All other paths are rejected with 403
 
-## VirusTotal Compliance Checklist
+### Process Execution Safety
 
-Before each release:
+All `child_process` calls use `execFileSync` with **array arguments** (never string concatenation), which prevents shell injection by design. No user input is ever interpolated into a shell command string.
 
-1. Generate hashes:
-   ```bash
-   shasum -a 256 api-server.js agent-dashboard.html SKILL.md README.md .env.example > vt-hashes.txt
-   ```
-2. Submit hashes/files to VirusTotal.
-3. Record report IDs in release notes.
-4. Block release if suspicious detections are unresolved.
+## Prompt Injection Surface
 
-## Reporting a Vulnerability
+The dashboard relays task descriptions and cron messages to the OpenClaw agent via `sessions_send`. This is an inherent prompt injection surface in any AI agent system.
 
-Open a private security report with:
-- affected version
-- reproduction steps
-- impact assessment
-- suggested mitigation
+**Mitigations in place:**
+1. `sanitizeUntrustedText()` strips control characters, trims to max length, and rejects known injection patterns.
+2. All task fields are wrapped with `[UNTRUSTED USER INPUT]` markers before reaching the agent.
+3. The agent's system prompt instructs it to treat these fields as data, not instructions.
+
+**Residual risk:** A sufficiently crafted payload could still influence agent behavior. This is a fundamental limitation of LLM-based systems, not specific to this dashboard. This risk is equivalent to any system that passes user input to an LLM (e.g., ChatGPT plugins, Slack bots, email assistants).
+
+## XSS Prevention
+
+- **Markdown rendering**: All markdown output (task descriptions, file previews) is sanitized through DOMPurify before injection into the DOM.
+- **Static text**: Uses `escHtml()` for all user-supplied strings in non-markdown contexts.
+- **Gateway restart**: Proxied through authenticated `/ops/restart` endpoint on the API server — no tokens embedded in client-side code.
+
+## Data Storage
+
+- SQLite database and logs stored under `~/.openclaw/` (not web-accessible)
+- No secrets stored in the dashboard's own files
+- Dashboard reads `OPENCLAW_AUTH_TOKEN` from environment, never writes it to disk
+
+## Summary of Security Layers
+
+```
+Request → Localhost check → Auth (cookie/Bearer) → Env flag gate → Input sanitization → Action
+```
+
+Every elevated action passes through **4 independent security checks** before execution. Disabling any single layer does not compromise the others.

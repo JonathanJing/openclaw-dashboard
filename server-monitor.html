@@ -164,12 +164,13 @@
 </div>
 
 <script>
-const TOKEN = new URLSearchParams(location.search).get('token') || localStorage.getItem('openclaw_token') || '';
+// Token from URL param only — no localStorage persistence (XSS risk).
+const TOKEN = new URLSearchParams(location.search).get('token') || '';
 if (TOKEN) {
-  localStorage.setItem('openclaw_token', TOKEN);
   try {
-    const clean = `${location.origin}${location.pathname}${location.hash || ''}`;
-    history.replaceState(null, '', clean);
+    const clean = new URL(location.href);
+    clean.searchParams.delete('token');
+    history.replaceState(null, '', clean.pathname + clean.search + clean.hash);
   } catch {}
 }
 const API = (location.port === '18789' || location.port === '18790')

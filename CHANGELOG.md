@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.7.2] - 2026-03-03
+
+### ✨ Features
+- **Dynamic Model Registry**: Completely removed hardcoded models, display names, and costs from the Dashboard frontend (`agent-dashboard.html`) and backend (`api-server.js`).
+- **Dynamic Pricing via `models-registry.json`**: Cost estimation logic (I/O) is now decoupled and driven entirely by `models-registry.json`. Updating prices (e.g., from Google/Anthropic pricing pages) or adding new models requires zero JS code changes.
+- **Smart Color Theming**: Dashboard charts now automatically assign distinct colors to models based on their provider family (Google: Blues, Anthropic: Pinks/Reds, OpenAI: Greens, Local: Teals) using an intelligent palette hash algorithm, ensuring models never collide.
+
+
+## [1.7.0] - 2026-03-01
+
+### 🔒 Security (VirusTotal Review Round 2)
+- **Removed hardcoded gateway restart token** from agent-dashboard.html; restart now proxied through authenticated `/ops/restart` API endpoint
+- **Token no longer sent via URL query params** in API calls; switched to `Authorization: Bearer` header for all apiFetch requests
+- **Token stripped from URL** immediately on page load via `history.replaceState` to prevent leakage in Referer/logs/history
+- **Removed localStorage token storage** from server-monitor.html (was still present despite v1.6.0 claim)
+- **Added DOMPurify** for all marked.js markdown rendering to prevent XSS via untrusted task content
+- **Added `/ops/restart` server-side endpoint** that proxies to gateway hooks with env-sourced HOOK_TOKEN
+- **Updated SECURITY.md** to accurately reflect auth flow, XSS mitigations, and restart architecture
+
 ## [2.1.0] - 2026-02-22
 
 ### 🎯 Dashboard UX and Information Architecture
@@ -7,7 +26,7 @@
 - Added model selector dropdowns for both Sessions and Cron jobs
 - Introduced task-model fit dashboard and redesigned Cron Runs view
 - Added always-visible system info bar above active sessions
-- Renamed product branding to `Jony's OpenClaw Dashboard`
+- Renamed product branding
 - Added mobile display of `匹配` column and improved model/token visibility on smaller screens
 
 ### 💸 Cost Analytics Enhancements

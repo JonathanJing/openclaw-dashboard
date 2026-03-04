@@ -155,4 +155,10 @@ DASHBOARD_CORS_ORIGINS=https://your-tailscale-host.ts.net
 
 ## License
 
-MIT — built by [Jony Jing](https://github.com/JonathanJing)
+MIT
+
+
+### Dynamic Model Configuration
+The dashboard automatically loads your agent model configurations directly from `~/.openclaw/openclaw.json`.
+To update model display names, charting colors, or token I/O pricing (e.g. following upstream provider price drops), simply modify `models-registry.json`. 
+The frontend UI (`agent-dashboard.html`) dynamically fetches this registry on load. No JavaScript rebuilds or edits are required when adopting new models or updating billing rates.
