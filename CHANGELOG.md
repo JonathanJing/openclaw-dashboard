@@ -1,5 +1,32 @@
 # Changelog
 
+## [1.7.4] - 2026-03-03
+
+### 🐛 Bug Fixes
+- **Critical: JS SyntaxError that broke entire dashboard** — `renderAgentMonitor()` used `await` without being declared `async`; entire inline script silently failed to execute, causing "Connecting…" state with no data loaded
+- **Critical: Duplicate `let` declarations** — `globalDefaultModel`, `MODEL_OPTIONS`, `refreshModelOptions`, `getDefaultModelLabel` were all declared twice (copy-paste artifact), causing `Identifier already declared` SyntaxError
+- **`/ops/channels` returned HTTP 500** — `handleOpsChannels` referenced `parsed` from outer scope but the parameter was never passed; fixed function signature
+
+### ✨ Features & Improvements
+
+**Model Mix (top header card):**
+- Local/Ollama models (e.g. `qwen3.5:35b-a3b`) now appear in Model Mix — previously invisible because they run as cron subagents, not channel sessions
+- `cronModelMix` is now computed per-run (accurate model×token counts from `cron/runs/*.jsonl`) instead of per-job-label — eliminates model misattribution when a cron job uses mixed models
+- Cloud models (Gemini, Sonnet) remain authoritative from sessions; cron-only models are merged without double-counting
+- Model names and colors now correctly resolve for Anthropic models: `claude-sonnet-4-6` (hyphen) now matches pattern `sonnet-4.6` (dot) via normalized matching
+- Model labels updated: "Claude Sonnet 4" → **"Claude Sonnet 4.6"**, "Claude Opus 4" → **"Claude Opus 4.6"**
+
+**Sessions Panel:**
+- **Dedup by channelId**: same Discord channel appearing under multiple session keys (e.g. `discord:channel:ID` vs `discord:direct:channel:ID` after key format change) is now merged into one row, with stats combined
+- **"Hide Stale" toggle button** added to sessions panel — one click hides all stale (inactive) sessions, showing only active + idle channels; click again to show all
+
+**Cron Job Model Labels:**
+- Job model label now reflects the **most recent run's model** (JSONL appends newest last); previously stuck on first-ever run's model, causing jobs that migrated models to show stale labels
+
+### 🔧 Technical
+- Sessions cache keyed by query string (`?hideStale=1`, `?staleDays=N`) — filter variants no longer return stale cached results
+- `cronModelMixByDay` accumulated inline during run-record iteration for O(1) per-run cost
+
 ## [1.7.3] - 2026-03-03
 ### Added
 - Simplified installation instructions (Ask OpenClaw / CLI) to SKILL.md and README.md.

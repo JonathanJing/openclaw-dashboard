@@ -1,7 +1,7 @@
 {
   "opus-4.6": {
     "id": "anthropic/claude-opus-4-6",
-    "label": "Claude Opus 4",
+    "label": "Claude Opus 4.6",
     "costIO": [
       15,
       75
@@ -9,7 +9,7 @@
   },
   "sonnet-4.6": {
     "id": "anthropic/claude-sonnet-4-6",
-    "label": "Claude Sonnet 4",
+    "label": "Claude Sonnet 4.6",
     "costIO": [
       3,
       15
