@@ -1,5 +1,25 @@
 # Changelog
 
+## [1.7.6] - 2026-03-04
+
+### 🐛 Bug Fixes — Model Registry & Matching
+
+- **Case-insensitive model matching**: All model ID → registry lookups now normalize to lowercase + unify dots/hyphens to `-` before comparison. Fixes:
+  - `claude-opus-4-6` now correctly matches key `opus-4.6` (dot vs hyphen mismatch was causing MISS)
+  - `Qwen3.5-35B-A3B-UD-Q4_K_XL.gguf` (DGX Spark, uppercase) now correctly matches `Qwen3.5-35B`
+  - Same normalization applied to both `estimateCost` (backend) and `shortModel`/`getModelColor` (frontend)
+
+- **New model IDs added to registry** (`models-registry.json`):
+  - `gemini-3-pro` → Gemini 3 Pro (was showing $0 and no label)
+  - `gpt-5.2` → GPT-5.2
+  - `gpt-5.2-codex` → GPT-5.2 Codex  
+  - `qwen3.5:35b` → Qwen3.5 35B 💻 (MacBook Pro Ollama)
+  - `Qwen3.5-35B` → Qwen3.5 35B ⚡ (DGX Spark, distinguished by emoji)
+  - Removed stale `qwen-35b-local` key that never matched any real model ID
+
+- **Gemini Flash pricing corrected**: `costIO` was `[0.5, 3]`; corrected to actual rate `[0.075, 0.30]`
+
+
 ## [1.7.5] - 2026-03-04
 
 ### 🐛 Bug Fixes — Cost Calculation Overhaul

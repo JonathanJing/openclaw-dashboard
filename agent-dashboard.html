@@ -3158,20 +3158,22 @@ async function loadCronEnhanced() {
 // ─── Ops Channel Usage Panel ───
 const MODEL_COLORS = {};
 
+// Normalize model string: lowercase + dots and hyphens unified → '-'
+// Allows "claude-opus-4-6" to match key "opus-4.6", and "Qwen3.5-35B" to match "qwen3-5-35b"
+function normModelStr(s) { return (s || '').toLowerCase().replace(/[.\-]/g, '-'); }
+
 function getModelColor(model) {
-  const norm = (model || '').replace(/\./g, '-'); // normalize dots→hyphens for matching (e.g. "3.1" → "3-1")
-  const key = Object.keys(MODEL_COLORS).find(k => norm.includes(k.replace(/\./g, '-')) || (model || '').includes(k));
+  const mNorm = normModelStr(model);
+  const key = Object.keys(MODEL_COLORS).find(k => mNorm.includes(normModelStr(k)));
   return key ? MODEL_COLORS[key] : '#6b7280';
 }
 
 function shortModel(m) {
   const raw = (m || '').replace(/-preview$/, '');
   if (!raw || raw === 'unknown') return 'unknown';
-  // Try both exact and dot↔hyphen-normalized matching (e.g. pattern "sonnet-4.6" matches model "claude-sonnet-4-6")
-  const pair = MODEL_DISPLAY_NAMES.find(([pattern]) =>
-    raw.includes(pattern) || raw.includes(pattern.replace(/\./g, '-')) || raw.replace(/\./g, '-').includes(pattern.replace(/\./g, '-'))
-  );
-  return pair ? pair[1] : raw.replace(/^[^/]+\//, '').replace(/-/g, ' '); // fallback: strip provider prefix, dashes to spaces
+  const rawNorm = normModelStr(raw);
+  const pair = MODEL_DISPLAY_NAMES.find(([pattern]) => rawNorm.includes(normModelStr(pattern)));
+  return pair ? pair[1] : raw.replace(/^[^/]+\//, '').replace(/[-_]/g, ' ').replace(/\.gguf$/i, '').trim();
 }
 
 function fmtTokens(n) {
