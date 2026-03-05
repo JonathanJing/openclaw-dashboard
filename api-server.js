@@ -1452,12 +1452,16 @@ function estimateCost(model, totalTokens, inputTokens, outputTokens, costObj, ca
   if (costObj && typeof costObj.total === 'number') return costObj.total;
 
   const dyn = getDynamicModelRegistry();
-  const key = Object.keys(dyn.costs).find(k => (model || '').includes(k));
+  // Normalize model ID for matching: lowercase + dots/hyphens unified → '-'
+  // e.g. "claude-opus-4-6" and key "opus-4.6" both normalize to contain "opus-4-6"
+  const normModel = m => (m || '').toLowerCase().replace(/[.\-]/g, '-');
+  const modelNorm = normModel(model);
+  const key = Object.keys(dyn.costs).find(k => modelNorm.includes(normModel(k)));
   if (!key) return 0;
   const [inCost, outCost] = dyn.costs[key];
 
   // Use accurate cache pricing when available (cache reads are much cheaper than input)
-  const cacheKey = Object.keys(dyn.cacheCosts || {}).find(k => (model || '').includes(k));
+  const cacheKey = Object.keys(dyn.cacheCosts || {}).find(k => modelNorm.includes(normModel(k)));
   const [cacheReadCost, cacheWriteCost] = cacheKey ? (dyn.cacheCosts[cacheKey] || [inCost, inCost]) : [inCost * 0.1, inCost * 1.25];
 
   if (inputTokens || outputTokens || cacheReadTokens || cacheWriteTokens) {
