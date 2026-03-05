@@ -3230,6 +3230,133 @@ function sendAuditNotification(message) {
   }
 }
 
+// --- Ops: DGX Spark Status ---
+async function handleOpsDgxStatus(req, res, method) {
+  if (method !== 'GET') return errorReply(res, 405, 'Method not allowed');
+
+  const https = require('node:https');
+  const http = require('node:http');
+
+  function fetchJson(url, timeoutMs = 4000) {
+    return new Promise((resolve) => {
+      const mod = url.startsWith('https') ? https : http;
+      const t = setTimeout(() => resolve(null), timeoutMs);
+      try {
+        mod.get(url, (r) => {
+          let body = '';
+          r.on('data', d => body += d);
+          r.on('end', () => { clearTimeout(t); try { resolve(JSON.parse(body)); } catch { resolve(null); } });
+          r.on('error', () => { clearTimeout(t); resolve(null); });
+        }).on('error', () => { clearTimeout(t); resolve(null); });
+      } catch { clearTimeout(t); resolve(null); }
+    });
+  }
+
+  function fetchText(url, timeoutMs = 4000) {
+    return new Promise((resolve) => {
+      const mod = url.startsWith('https') ? https : http;
+      const t = setTimeout(() => resolve(null), timeoutMs);
+      try {
+        mod.get(url, (r) => {
+          let body = '';
+          r.on('data', d => body += d);
+          r.on('end', () => { clearTimeout(t); resolve(body); });
+          r.on('error', () => { clearTimeout(t); resolve(null); });
+        }).on('error', () => { clearTimeout(t); resolve(null); });
+      } catch { clearTimeout(t); resolve(null); }
+    });
+  }
+
+  // Read DGX Spark base URL from openclaw config
+  let dgxBase = 'http://192.168.1.152:8000';
+  try {
+    const ocConfig = JSON.parse(fs.readFileSync(path.join(os.homedir(), '.openclaw', 'openclaw.json'), 'utf8'));
+    const dgxProvider = ocConfig?.models?.providers?.['local-dgx-spark'];
+    if (dgxProvider?.baseUrl) dgxBase = dgxProvider.baseUrl.replace(/\/v1$/, '');
+  } catch {}
+
+  // Fetch all endpoints in parallel
+  const [health, props, models, slots, metricsRaw] = await Promise.all([
+    fetchJson(`${dgxBase}/health`),
+    fetchJson(`${dgxBase}/props`),
+    fetchJson(`${dgxBase}/v1/models`),
+    fetchJson(`${dgxBase}/slots`),
+    fetchText(`${dgxBase}/metrics`),
+  ]);
+
+  const online = !!(health?.status === 'ok');
+
+  // Parse model metadata from /v1/models data[]
+  const modelMeta = models?.data?.[0]?.meta || {};
+  const modelName = models?.data?.[0]?.id || models?.models?.[0]?.name || 'unknown';
+  const modelSizeBytes = modelMeta.size || 0;
+  const nParams = modelMeta.n_params || 0;
+  const nCtxTrain = modelMeta.n_ctx_train || 0;
+
+  // Slot summary
+  const slotsArr = Array.isArray(slots) ? slots : [];
+  const totalSlots = props?.total_slots || slotsArr.length || 0;
+  const busySlots = slotsArr.filter(s => s.is_processing).length;
+  const ctxPerSlot = slotsArr[0]?.n_ctx || 0;
+
+  // Generation defaults from /props
+  const genParams = props?.default_generation_settings?.params || {};
+
+  // Parse Prometheus metrics if available (requires --metrics flag on llama-server)
+  let gpuStats = null;
+  if (metricsRaw && !metricsRaw.includes('"error"')) {
+    const parseMetric = (name) => {
+      const m = metricsRaw.match(new RegExp(`^${name}\\s+([\\d.e+\\-]+)`, 'm'));
+      return m ? parseFloat(m[1]) : null;
+    };
+    gpuStats = {
+      promptTokensTotal: parseMetric('llamacpp:prompt_tokens_total'),
+      generatedTokensTotal: parseMetric('llamacpp:tokens_predicted_total'),
+      kvCacheUsage: parseMetric('llamacpp:kv_cache_usage_ratio'),
+      kvCacheTokens: parseMetric('llamacpp:kv_cache_tokens'),
+      requestsProcessing: parseMetric('llamacpp:requests_processing'),
+      requestsDeferred: parseMetric('llamacpp:requests_deferred'),
+      promptTps: parseMetric('llamacpp:prompt_tokens_seconds'),
+      predictTps: parseMetric('llamacpp:predicted_tokens_seconds'),
+    };
+  }
+
+  return jsonReply(res, 200, {
+    online,
+    isSleeping: props?.is_sleeping || false,
+    baseUrl: dgxBase,
+    model: {
+      name: modelName,
+      path: props?.model_path || '',
+      sizeMB: modelSizeBytes ? Math.round(modelSizeBytes / 1024 / 1024) : null,
+      sizeGiB: modelSizeBytes ? (modelSizeBytes / 1024 / 1024 / 1024).toFixed(1) : null,
+      nParams: nParams ? (nParams / 1e9).toFixed(1) + 'B' : null,
+      nCtxTrain,
+      buildInfo: props?.build_info || null,
+    },
+    slots: {
+      total: totalSlots,
+      busy: busySlots,
+      idle: totalSlots - busySlots,
+      ctxPerSlot,
+      totalCtx: ctxPerSlot * totalSlots,
+    },
+    genDefaults: {
+      temperature: genParams.temperature ?? null,
+      topP: genParams.top_p ?? null,
+      topK: genParams.top_k ?? null,
+      minP: genParams.min_p ?? null,
+      maxTokens: genParams.n_predict ?? null,
+      reasoningFormat: genParams.reasoning_format || null,
+      thinkingForcedOpen: genParams.thinking_forced_open ?? null,
+    },
+    metrics: gpuStats,
+    metricsAvailable: gpuStats !== null,
+    metricsNote: gpuStats === null ? 'GPU/memory metrics unavailable — restart llama-server with --metrics flag to enable' : null,
+    fetchedAt: Date.now(),
+  });
+}
+
 function handleOpsSessionModel(req, res, method) {
   if (method !== 'POST') return errorReply(res, 405, 'POST only');
   if (!requireMutatingOps(req, res, 'ops session-model')) return;
@@ -3536,6 +3663,7 @@ button:active{opacity:.8}
     if (root === 'ops' && segments[1] === 'session-model') return handleOpsSessionModel(req, res, method);
     if (root === 'ops' && segments[1] === 'cron-model') return handleOpsCronModel(req, res, method);
     if (root === 'ops' && segments[1] === 'restart') return handleOpsRestart(req, res, method);
+    if (root === 'ops' && segments[1] === 'dgx-status') return handleOpsDgxStatus(req, res, method);
     if (root === 'backup') return handleBackup(req, res, method, segments);
     if (root === 'memory') return handleMemory(req, res, method, parsed);
     if (root === 'metrics') return handleMetrics(req, res, method);
