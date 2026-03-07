@@ -189,21 +189,9 @@ function register(router) {
   router.add('GET', '/ops/models', (req, res) => handleOpsModels(req, res));
   router.add('GET', '/metrics', (req, res) => handleMetrics(req, res));
 
-  // ── Routes that PROXY to old api-server on :18790 ────────────────
-  // (old frontend depends on exact JSON format from these)
-  const opsProxyRoutes = [
-    '/ops/sessions', '/ops/system', '/ops/watchdog',
-    '/ops/cron', '/ops/cron-costs',
-    '/ops/ledger/today', '/ops/ledger/history', '/ops/ledger/drift',
-    '/ops/config',
-    '/cron/today',
-    '/files', '/skills',
-  ];
-  for (const route of opsProxyRoutes) {
-    for (const method of ['GET', 'POST']) {
-      router.add(method, route, (req, res) => proxyToOld(req, res));
-    }
-  }
+  // NOTE: All formerly-proxied routes are now handled by their dedicated providers
+  // (sessions.js, system.js, watchdog.js, cron.js, ledger.js, config.js)
+  // No proxy routes remain.
 
   // ── DGX Status (HTTP probe to Spark) ────────────────────────────────
   router.add('GET', '/ops/dgx-status', async (_req, res) => {
