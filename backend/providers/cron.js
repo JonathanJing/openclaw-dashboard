@@ -20,17 +20,30 @@ function loadCronStore() {
 }
 
 function loadCronRuns(jobId, limit = 10) {
-  const runsDir = path.join(cfg.CRON_RUNS_DIR, jobId);
+  // Read JSONL file at ~/.openclaw/cron/runs/{jobId}.jsonl
+  const runsFile = path.join(cfg.CRON_RUNS_DIR, `${jobId}.jsonl`);
   try {
-    const files = fs.readdirSync(runsDir)
-      .filter(f => f.endsWith('.json'))
-      .sort()
-      .reverse()
-      .slice(0, limit);
-    return files.map(f => {
-      try { return JSON.parse(fs.readFileSync(path.join(runsDir, f), 'utf8')); }
-      catch { return null; }
-    }).filter(Boolean);
+    const raw = fs.readFileSync(runsFile, 'utf8');
+    const lines = raw.trim().split('\n').filter(Boolean);
+    const runs = [];
+    for (const line of lines) {
+      try {
+        const record = JSON.parse(line);
+        if (record.action === 'finished') {
+          // Normalize fields to match expected format
+          runs.push({
+            status: record.status || 'unknown',
+            startedAt: new Date(record.runAtMs).toISOString(),
+            finishedAt: new Date(record.ts).toISOString(),
+            durationMs: record.durationMs || 0,
+            model: record.model || null,
+            tokens: record.usage?.total_tokens || 0,
+            costUsd: 0, // Not available in JSONL
+          });
+        }
+      } catch {}
+    }
+    return runs.slice(0, limit);
   } catch {
     return [];
   }
@@ -117,21 +130,26 @@ function handleCronToday(_req, res) {
   const todayJobs = jobs.filter(j => j.enabled !== false).map(job => {
     const id = job.id || job.jobId;
     const lastRun = loadLastCronRun(id);
+    // Check if job ran today by looking at lastRun timestamp
     const ranToday = lastRun && new Date(lastRun.startedAt || lastRun.finishedAt) >= todayStart;
     return {
       id,
       name: job.name,
       model: job.payload?.model || null,
-      lastRun: lastRun ? {
+      last: lastRun ? {
         status: lastRun.status,
         startedAt: lastRun.startedAt,
+        endedAt: lastRun.finishedAt,
         durationMs: lastRun.durationMs,
+        tokens: lastRun.tokens || 0,
+        costUsd: lastRun.costUsd || 0,
       } : null,
       ranToday,
     };
   });
 
-  jsonReply(res, 200, { date: todayStart.toISOString().split('T')[0], jobs: todayJobs });
+  // Return with todayJobs key to match frontend expectation
+  jsonReply(res, 200, { date: todayStart.toISOString().split('T')[0], todayJobs });
 }
 
 function register(router) {
