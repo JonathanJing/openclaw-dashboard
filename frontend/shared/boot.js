@@ -426,6 +426,12 @@ async function deleteTaskConfirm(taskId) {
 applyLanguageUI();
 checkConnection();
 (async () => {
+  // Fetch model colors early so charts render with correct colors from first paint
+  try {
+    const colorData = await apiFetch('/api/ground-truth/model-colors');
+    if (colorData?.colors) Object.assign(MODEL_COLORS, colorData.colors);
+  } catch(e) { /* non-fatal — fallback colors will be used */ }
+
   await refreshCapabilities();
   await loadSystemInfo();
   loadSessions(); // Load sessions tab (default) after caps so model selects render enabled when allowed

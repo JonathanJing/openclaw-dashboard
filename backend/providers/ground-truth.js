@@ -120,11 +120,44 @@ function getModelRegistry() {
   return parse().models;
 }
 
+// ── Model Color Palette ───────────────────────────────────────────────
+// Visually distinct colors for dark backgrounds, keyed by model alias.
+const MODEL_PALETTE = {
+  'opus-4.6':               '#c084fc',  // purple
+  'sonnet-4.6':             '#60a5fa',  // blue
+  'gemini-3-flash':         '#34d399',  // emerald
+  'gemini-3.1-pro':         '#10b981',  // green
+  'gemini-3.1-flash-lite':  '#6ee7b7',  // light mint
+  'gpt-5.2':                '#f472b6',  // pink
+  'gpt-5.3-codex':          '#fb923c',  // orange
+  'gpt-5-mini':             '#fbbf24',  // amber
+  'gpt-5.3-instant-latest': '#ef4444',  // red
+  'doubao-seed-2-0-pro':    '#a78bfa',  // violet
+  'qwen-mac':               '#38bdf8',  // sky
+  'qwen-spark':             '#818cf8',  // indigo
+};
+
+function _colorHash(str) {
+  let h = 0;
+  for (let i = 0; i < str.length; i++) h = str.charCodeAt(i) + ((h << 5) - h);
+  return `hsl(${Math.abs(h) % 360},65%,62%)`;
+}
+
+function getModelColorMap() {
+  const gt = parse();
+  const colors = {};
+  for (const m of gt.models) {
+    colors[m.alias] = MODEL_PALETTE[m.alias] || _colorHash(m.alias);
+  }
+  return colors;
+}
+
 // ── HTTP handler ─────────────────────────────────────────────────────
 function register(router) {
+  const { jsonReply } = require('../lib/http-helpers');
+
   router.add('GET', '/api/ground-truth', (_req, res) => {
     const gt = parse();
-    const { jsonReply } = require('../lib/http-helpers');
     jsonReply(res, 200, {
       channels: gt.channels,
       crons: gt.crons,
@@ -133,8 +166,11 @@ function register(router) {
   });
 
   router.add('GET', '/api/ground-truth/channels', (_req, res) => {
-    const { jsonReply } = require('../lib/http-helpers');
     jsonReply(res, 200, parse().channels);
+  });
+
+  router.add('GET', '/api/ground-truth/model-colors', (_req, res) => {
+    jsonReply(res, 200, { colors: getModelColorMap() });
   });
 }
 
@@ -145,4 +181,5 @@ module.exports = {
   getChannelMap,
   getCronGroundTruth,
   getModelRegistry,
+  getModelColorMap,
 };

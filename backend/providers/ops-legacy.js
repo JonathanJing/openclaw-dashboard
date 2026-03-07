@@ -142,7 +142,8 @@ function handleOpsModels(_req, res) {
   const registry = models.map(m => ({
     id: m.id, alias: m.alias, available: true,
   }));
-  jsonReply(res, 200, { models: registry, source: 'ground-truth' });
+  const colors = gt.getModelColorMap();
+  jsonReply(res, 200, { models: registry, colors, source: 'ground-truth' });
 }
 
 function handleOpsAlltime(_req, res) {
