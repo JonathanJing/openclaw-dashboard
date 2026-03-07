@@ -6,6 +6,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const url = require('url');
+const { execFileSync } = require('child_process');
 
 // --- Config ---
 const PORT = parseInt(process.env.DASHBOARD_PORT || '18791', 10);
@@ -40,7 +41,13 @@ const WATCHDOG_DIR = process.env.OPENCLAW_WATCHDOG_DIR || path.join(HOME_DIR, '.
 const WATCHDOG_STATE_FILE = path.join(WATCHDOG_DIR, 'state.json');
 const WATCHDOG_EVENTS_FILE = path.join(WATCHDOG_DIR, 'events.jsonl');
 const OPENCLAW_CONFIG_FILE = process.env.OPENCLAW_CONFIG_FILE || path.join(HOME_DIR, '.openclaw', 'openclaw.json');
+const LEDGER_DB_FILE = process.env.OPENCLAW_LEDGER_DB || path.join(HOME_DIR, '.openclaw', 'ledger.db');
 const OPENCLAW_CONFIG_BASELINE_FILE = process.env.OPENCLAW_CONFIG_BASELINE_FILE || path.join(HOME_DIR, '.openclaw', 'openclaw.json.good');
+
+// --- Spark Metrics (DGX Spark observability) ---
+const SPARK_METRICS_GT_FILE = process.env.OPENCLAW_SPARK_METRICS_GT
+  || path.join(HOME_DIR, '.openclaw', 'spark-metrics', 'ground-truth.json');
+
 const BACKUP_REMOTE = process.env.OPENCLAW_BACKUP_REMOTE || 'origin';
 const BACKUP_BRANCH = process.env.OPENCLAW_BACKUP_BRANCH || '';
 const KEYS_ENV_PATH = process.env.OPENCLAW_KEYS_ENV_PATH || path.join(HOME_DIR, '.openclaw', 'keys.env');
@@ -207,6 +214,95 @@ function jsonReply(res, status, data) {
     'Content-Type': 'application/json',
   });
   res.end(body);
+}
+
+// --- Spark Metrics helpers ---
+let _sparkCache = null;
+let _sparkCacheAt = 0;
+const SPARK_CACHE_TTL = 5000; // 5s (snapshot changes frequently)
+
+function readSparkGroundTruth() {
+  try {
+    const raw = fs.readFileSync(SPARK_METRICS_GT_FILE, 'utf8');
+    const gt = JSON.parse(raw);
+    return {
+      metricsUrl: gt.metricsUrl,
+      sshHost: gt.sshHost,
+      sshUser: gt.sshUser,
+      snapshotPath: gt.snapshotPath,
+      sqlitePath: gt.sqlitePath,
+      sampleEverySeconds: gt.sampleEverySeconds,
+    };
+  } catch (e) {
+    return null;
+  }
+}
+
+function readSparkSnapshot(gt) {
+  const p = gt?.snapshotPath;
+  if (!p) return null;
+  try {
+    const raw = fs.readFileSync(p, 'utf8');
+    const j = JSON.parse(raw);
+    const gpu = j.gpu || {};
+    const ram = j.ram || {};
+    const totalKb = Number(ram.ram_total_kb || 0);
+    const usedKb = Number(ram.ram_used_kb || 0);
+    const usedPct = totalKb > 0 ? (usedKb / totalKb) * 100 : null;
+    return {
+      ...j,
+      derived: {
+        ram_used_pct: usedPct !== null ? Number(usedPct.toFixed(2)) : null,
+      },
+    };
+  } catch {
+    return null;
+  }
+}
+
+function sqliteJsonFile(dbFile, sql) {
+  const out = execFileSync('sqlite3', [dbFile, '-json', sql], { encoding: 'utf8' });
+  if (!out || !out.trim()) return [];
+  return JSON.parse(out);
+}
+
+function handleSparkSnapshot(req, res, method, parsed) {
+  if (method !== 'GET') return errorReply(res, 405, 'Method not allowed');
+  const now = Date.now();
+  if (!_sparkCache || (now - _sparkCacheAt) > SPARK_CACHE_TTL || String(parsed?.query?.nocache || '0') === '1') {
+    const gt = readSparkGroundTruth();
+    const snap = gt ? readSparkSnapshot(gt) : null;
+    _sparkCache = {
+      ok: !!(gt && snap),
+      gt,
+      snapshot: snap,
+      fetchedAt: now,
+    };
+    _sparkCacheAt = now;
+  }
+  return jsonReply(res, 200, _sparkCache);
+}
+
+function handleSparkHistory(req, res, method, parsed) {
+  if (method !== 'GET') return errorReply(res, 405, 'Method not allowed');
+  const gt = readSparkGroundTruth();
+  if (!gt || !gt.sqlitePath) return errorReply(res, 500, 'Spark metrics ground-truth missing');
+  const hours = Math.max(1, Math.min(24 * 14, parseInt(parsed?.query?.hours || '24', 10) || 24));
+  const since = Math.floor(Date.now() / 1000) - hours * 3600;
+  const sql = `
+    SELECT ts, ts_iso,
+      gpu_util_pct, gpu_temp_c, gpu_power_w,
+      ram_used_kb, ram_total_kb, ram_available_kb
+    FROM spark_samples
+    WHERE ts >= ${since}
+    ORDER BY ts;
+  `;
+  try {
+    const rows = sqliteJsonFile(gt.sqlitePath, sql);
+    return jsonReply(res, 200, { ok: true, hours, since, rows, gt: { sqlitePath: gt.sqlitePath, snapshotPath: gt.snapshotPath } });
+  } catch (e) {
+    return errorReply(res, 500, 'Spark history query failed: ' + e.message);
+  }
 }
 
 function errorReply(res, status, message) {
@@ -3467,6 +3563,112 @@ function handleOpsCronModel(req, res, method) {
   }).catch(e => errorReply(res, 400, e.message));
 }
 
+// ─── Ledger helpers ───────────────────────────────────────────────
+function sqliteJson(sql) {
+  try {
+    const out = execFileSync('sqlite3', [LEDGER_DB_FILE, '-json', sql], { encoding: 'utf8' });
+    if (!out || !out.trim()) return [];
+    return JSON.parse(out);
+  } catch (e) {
+    // include stderr when present
+    const msg = (e && (e.stderr || e.message)) ? String(e.stderr || e.message) : 'sqlite3 failed';
+    throw new Error(msg);
+  }
+}
+
+// ─── GET /ops/ledger/today ───
+function handleOpsLedgerToday(req, res, method) {
+  if (method !== 'GET') return errorReply(res, 405, 'GET only');
+  const sql = `
+    SELECT provider, model,
+      COUNT(*) AS calls,
+      SUM(input_tokens) AS input_tokens,
+      SUM(output_tokens) AS output_tokens,
+      SUM(cache_read_tokens) AS cache_read_tokens,
+      SUM(cache_write_tokens) AS cache_write_tokens,
+      SUM(input_tokens + cache_read_tokens + cache_write_tokens) AS prompt_context_tokens,
+      SUM(input_tokens + cache_read_tokens + cache_write_tokens + output_tokens) AS billed_total_tokens,
+      SUM(cost_total) AS cost_total
+    FROM calls
+    WHERE ts >= date('now')
+    GROUP BY provider, model
+    ORDER BY cost_total DESC;
+  `;
+  try {
+    return jsonReply(res, 200, { ok: true, rows: sqliteJson(sql) });
+  } catch (e) {
+    return errorReply(res, 500, `ledger query failed: ${e.message}`);
+  }
+}
+
+// ─── GET /ops/ledger/history?days=30 ───
+function handleOpsLedgerHistory(req, res, method, parsed) {
+  if (method !== 'GET') return errorReply(res, 405, 'GET only');
+  const days = Math.max(1, Math.min(365, parseInt(parsed?.query?.days || '30', 10) || 30));
+  const sql = `
+    SELECT substr(ts,1,10) AS day_utc,
+      SUM(input_tokens + cache_read_tokens + cache_write_tokens + output_tokens) AS billed_total_tokens,
+      SUM(cost_total) AS cost_total
+    FROM calls
+    WHERE ts >= date('now', '-${days} days')
+    GROUP BY day_utc
+    ORDER BY day_utc;
+  `;
+  try {
+    return jsonReply(res, 200, { ok: true, days, rows: sqliteJson(sql) });
+  } catch (e) {
+    return errorReply(res, 500, `ledger query failed: ${e.message}`);
+  }
+}
+
+// ─── GET /ops/ledger/drift?days=30&provider=anthropic ───
+function handleOpsLedgerDrift(req, res, method, parsed) {
+  if (method !== 'GET') return errorReply(res, 405, 'GET only');
+  const days = Math.max(1, Math.min(365, parseInt(parsed?.query?.days || '30', 10) || 30));
+  const provider = (parsed?.query?.provider || 'anthropic').trim();
+  // Only drift for providers we have a ground-truth table for.
+  if (provider !== 'anthropic') {
+    return jsonReply(res, 200, { ok: true, provider, days, rows: [], note: 'drift currently supported only for anthropic (provider_daily_usage)' });
+  }
+  const sql = `
+    WITH ledger AS (
+      SELECT substr(ts,1,10) AS usage_date_utc, model AS model_version,
+        SUM(input_tokens) AS input_no_cache,
+        SUM(cache_write_tokens) AS cache_write_5m,
+        SUM(cache_read_tokens) AS cache_read,
+        SUM(output_tokens) AS output_tokens,
+        SUM(cost_total) AS ledger_cost
+      FROM calls
+      WHERE provider='anthropic'
+      GROUP BY 1,2
+    ), prov AS (
+      SELECT usage_date_utc, model_version,
+        SUM(input_no_cache) AS input_no_cache,
+        SUM(cache_write_5m) AS cache_write_5m,
+        SUM(cache_read) AS cache_read,
+        SUM(output_tokens) AS output_tokens
+      FROM provider_daily_usage
+      WHERE provider='anthropic'
+      GROUP BY 1,2
+    )
+    SELECT prov.usage_date_utc, prov.model_version,
+      prov.input_no_cache AS prov_input,  COALESCE(ledger.input_no_cache,0) AS ledger_input,
+      prov.cache_write_5m AS prov_cw,     COALESCE(ledger.cache_write_5m,0) AS ledger_cw,
+      prov.cache_read AS prov_cr,         COALESCE(ledger.cache_read,0) AS ledger_cr,
+      prov.output_tokens AS prov_out,     COALESCE(ledger.output_tokens,0) AS ledger_out,
+      COALESCE(ledger.ledger_cost,0) AS ledger_cost
+    FROM prov
+    LEFT JOIN ledger ON ledger.usage_date_utc = prov.usage_date_utc AND ledger.model_version = prov.model_version
+    WHERE prov.usage_date_utc >= date('now','-${days} days')
+    ORDER BY prov.usage_date_utc, prov.model_version;
+  `;
+  try {
+    return jsonReply(res, 200, { ok: true, provider, days, rows: sqliteJson(sql) });
+  } catch (e) {
+    return errorReply(res, 500, `ledger drift query failed: ${e.message}`);
+  }
+}
+
 // ─── POST /ops/restart ─── Proxy restart to OpenClaw gateway (no hardcoded token in client)
 function handleOpsRestart(req, res, method) {
   if (method !== 'POST') return errorReply(res, 405, 'POST only');
@@ -3662,8 +3864,16 @@ button:active{opacity:.8}
     if (root === 'ops' && segments[1] === 'update-openclaw') return handleOpsUpdateOpenClaw(req, res, method);
     if (root === 'ops' && segments[1] === 'session-model') return handleOpsSessionModel(req, res, method);
     if (root === 'ops' && segments[1] === 'cron-model') return handleOpsCronModel(req, res, method);
+    if (root === 'ops' && segments[1] === 'ledger' && segments[2] === 'today') return handleOpsLedgerToday(req, res, method);
+    if (root === 'ops' && segments[1] === 'ledger' && segments[2] === 'history') return handleOpsLedgerHistory(req, res, method, parsed);
+    if (root === 'ops' && segments[1] === 'ledger' && segments[2] === 'drift') return handleOpsLedgerDrift(req, res, method, parsed);
     if (root === 'ops' && segments[1] === 'restart') return handleOpsRestart(req, res, method);
     if (root === 'ops' && segments[1] === 'dgx-status') return handleOpsDgxStatus(req, res, method);
+
+    // Spark metrics (Dashboard Observability)
+    if (root === 'spark' && segments[1] === 'snapshot') return handleSparkSnapshot(req, res, method, parsed);
+    if (root === 'spark' && segments[1] === 'history') return handleSparkHistory(req, res, method, parsed);
+
     if (root === 'backup') return handleBackup(req, res, method, segments);
     if (root === 'memory') return handleMemory(req, res, method, parsed);
     if (root === 'metrics') return handleMetrics(req, res, method);
