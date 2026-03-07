@@ -117,7 +117,9 @@ function register(router) {
   router.add('GET', '/api/ledger/by-channel',  (req, res, q) => handleByChannel(req, res, q));
   router.add('GET', '/api/ledger/drift',       (req, res, q) => handleDrift(req, res, q));
 
-  // Legacy compatibility routes (old frontend uses these)
+  // Legacy compatibility routes (frontend cost.js may use /ops/ledger/* paths)
+  router.add('GET', '/ops/ledger/today',   (req, res) => handleToday(req, res));
+  router.add('GET', '/ops/ledger/history', (req, res, q) => handleHistory(req, res, q));
 }
 
 module.exports = { register };
