@@ -115,10 +115,13 @@ function serveStatic(req, res, pathname) {
 
 // ── Main HTML ───────────────────────────────────────────────────────
 function serveDashboard(req, res) {
-  // Try new modular frontend first, fall back to old monolith
+  // Serve old monolith HTML for now (compatible with existing frontend JS)
+  // New modular frontend available at /v2 when ready
+  const parsed = url.parse(req.url, true);
+  const useV2 = parsed.query.v2 === '1';
   const newPath = path.join(STATIC_ROOT, 'frontend', 'index.html');
   const oldPath = path.join(STATIC_ROOT, 'agent-dashboard.html');
-  const filePath = fs.existsSync(newPath) ? newPath : oldPath;
+  const filePath = useV2 ? newPath : oldPath;
   try {
     const content = fs.readFileSync(filePath, 'utf8');
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });

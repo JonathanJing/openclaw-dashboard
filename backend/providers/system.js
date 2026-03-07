@@ -55,10 +55,6 @@ function register(router) {
   router.add('GET', '/api/system', (_req, res) => {
     jsonReply(res, 200, getSystemInfo());
   });
-  // Legacy compat
-  router.add('GET', '/ops/system', (_req, res) => {
-    jsonReply(res, 200, getSystemInfo());
-  });
 }
 
 module.exports = { register, getSystemInfo };
