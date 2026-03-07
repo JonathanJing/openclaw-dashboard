@@ -141,8 +141,6 @@ function register(router) {
   router.add('GET', '/api/cron/today',  (req, res) => handleCronToday(req, res));
 
   // Legacy compat
-  router.add('GET', '/ops/cron',        (req, res) => handleCronList(req, res));
-  router.add('GET', '/ops/cron-costs',  (req, res) => handleCronCosts(req, res));
   router.add('GET', '/cron/today',      (req, res) => handleCronToday(req, res));
 }
 

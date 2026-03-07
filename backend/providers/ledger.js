@@ -118,9 +118,6 @@ function register(router) {
   router.add('GET', '/api/ledger/drift',       (req, res, q) => handleDrift(req, res, q));
 
   // Legacy compatibility routes (old frontend uses these)
-  router.add('GET', '/ops/ledger/today',    (req, res) => handleToday(req, res));
-  router.add('GET', '/ops/ledger/history',  (req, res, q) => handleHistory(req, res, q));
-  router.add('GET', '/ops/ledger/drift',    (req, res, q) => handleDrift(req, res, q));
 }
 
 module.exports = { register };

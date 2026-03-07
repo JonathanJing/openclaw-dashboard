@@ -59,7 +59,21 @@ function handleConfig(_req, res) {
 }
 
 function handleFiles(req, res, query) {
-  const filePath = query.path;
+  const filePath = query.path || '';
+  const isList = query.list === 'true';
+
+  // Directory listing mode
+  if (isList && filePath) {
+    const cleanDir = filePath.replace(/^\/|\/$/g, '').split('/')[0];
+    const allowedDirs = ['memory', 'channels', 'refs'];
+    if (!allowedDirs.includes(cleanDir)) return errorReply(res, 403, 'Directory not allowed');
+    const dirPath = path.join(cfg.WORKSPACE, cleanDir);
+    try {
+      const files = fs.readdirSync(dirPath).filter(f => f.endsWith('.md')).map(f => `${cleanDir}/${f}`);
+      return jsonReply(res, 200, { files });
+    } catch { return jsonReply(res, 200, { files: [] }); }
+  }
+
   if (!filePath) {
     // List workspace .md files
     const files = [];
@@ -117,9 +131,6 @@ function register(router) {
   router.add('GET', '/api/skills',  (req, res) => handleSkills(req, res));
 
   // Legacy compat
-  router.add('GET', '/ops/config',  (req, res) => handleConfig(req, res));
-  router.add('GET', '/files',       (req, res, q) => handleFiles(req, res, q));
-  router.add('GET', '/skills',      (req, res) => handleSkills(req, res));
 }
 
 module.exports = { register };

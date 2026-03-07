@@ -75,7 +75,6 @@ function handleWatchdog(req, res, query) {
 function register(router) {
   router.add('GET', '/api/watchdog', (req, res, q) => handleWatchdog(req, res, q));
   // Legacy compat
-  router.add('GET', '/ops/watchdog', (req, res, q) => handleWatchdog(req, res, q));
 }
 
 module.exports = { register, readState, readEvents };
