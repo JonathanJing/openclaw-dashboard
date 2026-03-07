@@ -216,10 +216,21 @@ function register(router) {
       });
     } catch {}
 
+    // Use watchdog status as fallback for online determination
+    const watchdogUp = watchdog?.status === 'up';
+    const effectiveOnline = online || watchdogUp;
+
     jsonReply(res, 200, {
-      online,
+      online: effectiveOnline,
+      isSleeping: false,
       baseUrl: dgxBase,
-      snapshot: snapshot ? { gpu: snapshot.gpu, ram: snapshot.ram, llama: snapshot.llama } : null,
+      snapshot: snapshot ? {
+        gpu: snapshot.gpu,
+        ram: snapshot.ram,
+        llama: snapshot.llama,
+        ts: snapshot.ts,
+        ts_iso: snapshot.ts_iso,
+      } : null,
       watchdog,
       fetchedAt: Date.now(),
     });

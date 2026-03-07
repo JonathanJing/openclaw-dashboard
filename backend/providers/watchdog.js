@@ -1,25 +1,44 @@
 'use strict';
 /**
- * Watchdog Provider — gateway watchdog + spark watchdog.
- * Reads: watchdogs/gateway-discord/{state.json, events.jsonl}
+ * Watchdog Provider — gateway watchdog timeline + status.
+ * Reads: ~/.openclaw/watchdogs/gateway-discord/state.json (plaintext)
+ *        ~/.openclaw/watchdogs/gateway-discord/events.jsonl (JSON lines with `time` field)
  */
-const fs = require('fs');
+const fs   = require('fs');
 const path = require('path');
-const cfg = require('../lib/config');
+const { execFileSync } = require('child_process');
+const cfg  = require('../lib/config');
 const { jsonReply } = require('../lib/http-helpers');
 
 const WATCHDOG_STATE_FILE  = path.join(cfg.WATCHDOG_DIR, 'state.json');
 const WATCHDOG_EVENTS_FILE = path.join(cfg.WATCHDOG_DIR, 'events.jsonl');
 
+// state.json is plaintext: "healthy 0 1772864074 0 0"
+// Fields: status consecutive_failures last_check_ts total_alerts total_recoveries
 function readState() {
   try {
-    return JSON.parse(fs.readFileSync(WATCHDOG_STATE_FILE, 'utf8'));
+    const raw = fs.readFileSync(WATCHDOG_STATE_FILE, 'utf8').trim();
+    // Try JSON first
+    try { return JSON.parse(raw); } catch {}
+    // Parse plaintext format
+    const parts = raw.split(/\s+/);
+    if (parts.length >= 1) {
+      return {
+        status:               parts[0] || 'unknown',
+        consecutive_failures: parseInt(parts[1] || '0', 10),
+        last_check_ts:        parseInt(parts[2] || '0', 10),
+        total_alerts:         parseInt(parts[3] || '0', 10),
+        total_recoveries:     parseInt(parts[4] || '0', 10),
+      };
+    }
+    return null;
   } catch {
     return null;
   }
 }
 
-function readEvents(limit = 200) {
+// events.jsonl lines: { "time": "ISO", "event": "...", ... }
+function readEvents(limit = 500) {
   try {
     const raw = fs.readFileSync(WATCHDOG_EVENTS_FILE, 'utf8');
     const lines = raw.trim().split('\n').filter(Boolean);
@@ -34,47 +53,125 @@ function readEvents(limit = 200) {
   }
 }
 
+// Map event type to a runtime status string
+function eventToRuntimeStatus(ev) {
+  const event  = String(ev?.event  || '').toLowerCase();
+  const reason = String(ev?.reason || '').toLowerCase();
+  const sev    = String(ev?.severity || '').toLowerCase();
+  if (event === 'recovered' || event === 'silent_recovery' || reason === 'recovered') return 'healthy';
+  if (sev === 'critical' || event === 'alert' || event === 'suppressed' || event === 'check_failed' || reason.includes('runtime_stopped')) return 'down';
+  return null;
+}
+
+// Build uptime timeline. Points use ISO ts strings (frontend Date.parse-able).
 function buildTimeline(eventsAsc, startMs, endMs, stepMs, initialStatus) {
-  const steps = [];
-  let currentStatus = initialStatus || 'unknown';
+  const points = [];
+  let idx    = 0;
+  let status = initialStatus;
   for (let t = startMs; t <= endMs; t += stepMs) {
-    // Find the latest event before this step
-    for (const e of eventsAsc) {
-      const ets = new Date(e.ts || e.timestamp).getTime();
-      if (ets <= t) currentStatus = e.status || e.state || currentStatus;
+    while (idx < eventsAsc.length) {
+      const ts = Date.parse(eventsAsc[idx]?.time || '');
+      if (!Number.isFinite(ts) || ts > t) break;
+      const mapped = eventToRuntimeStatus(eventsAsc[idx]);
+      if (mapped) status = mapped;
+      idx++;
     }
-    steps.push({ ts: t, status: currentStatus });
+    points.push({ ts: new Date(t).toISOString(), status });
   }
-  return steps;
+  return points;
+}
+
+// Quick check: is the gateway runtime process running?
+function checkRuntimeRunning() {
+  try {
+    const out = execFileSync('/bin/sh', ['-lc', "pgrep -f 'openclaw-gateway|node.*openclaw.*gateway' | head -1"], {
+      timeout: 2500, encoding: 'utf8',
+    });
+    const pid = out.trim();
+    return { running: !!pid, pid: pid || null };
+  } catch {
+    return { running: false, pid: null };
+  }
 }
 
 function handleWatchdog(req, res, query) {
-  const hours = parseInt(query.hours || '24', 10);
-  const state = readState();
-  const events = readEvents(500);
+  const reqLimit  = parseInt(query.limit         || '200', 10);
+  const reqWindow = parseInt(query.windowMinutes || '1440', 10);
+  const limit         = Number.isFinite(reqLimit)  ? Math.min(Math.max(reqLimit, 1), 500)    : 200;
+  const windowMinutes = Number.isFinite(reqWindow) ? Math.min(Math.max(reqWindow, 5), 10080) : 1440;
+  const criticalOnly  = String(query.criticalOnly || '0') === '1';
 
-  const now = Date.now();
-  const startMs = now - (hours * 3600 * 1000);
-  const stepMs = Math.max(60000, (hours * 3600 * 1000) / 288); // ~5min steps for 24h
+  const state  = readState();
+  const allRaw = readEvents(1000);
 
-  const eventsInRange = events.filter(e => {
-    const ets = new Date(e.ts || e.timestamp).getTime();
-    return ets >= startMs && ets <= now;
-  });
+  // Normalise: events must have a parseable .time field
+  const allEvents = allRaw
+    .map(ev => ({ ...ev, _ts: Date.parse(ev?.time || '') }))
+    .filter(ev => Number.isFinite(ev._ts))
+    .sort((a, b) => a._ts - b._ts);
 
-  const timeline = buildTimeline(eventsInRange, startMs, now, stepMs, 'unknown');
+  const now     = Date.now();
+  const startMs = now - windowMinutes * 60 * 1000;
+
+  const inWindow = allEvents.filter(ev => ev._ts >= startMs);
+
+  // Determine initial status from the last event *before* our window
+  const watchdogStatus = String(state?.status || 'unknown');
+  let initialStatus    = watchdogStatus === 'healthy' ? 'healthy' : 'unknown';
+  for (let i = allEvents.length - 1; i >= 0; i--) {
+    if (allEvents[i]._ts < startMs) {
+      const mapped = eventToRuntimeStatus(allEvents[i]);
+      if (mapped) { initialStatus = mapped; break; }
+    }
+  }
+
+  const stepSeconds = 30;
+  const points = buildTimeline(allEvents, startMs, now, stepSeconds * 1000, initialStatus);
+  const downCount    = points.filter(p => p.status === 'down').length;
+  const healthyCount = points.filter(p => p.status === 'healthy').length;
+
+  // Events for the list (strip internal _ts)
+  const eventsForList = (criticalOnly
+    ? inWindow.filter(ev => String(ev.severity || '').toLowerCase() === 'critical')
+    : inWindow
+  ).slice(-limit).reverse().map(({ _ts, ...ev }) => ev);
+
+  // Derive effective status
+  let rt = { running: false, pid: null };
+  try { rt = checkRuntimeRunning(); } catch {}
+  const effectiveStatus = !rt.running
+    ? 'down'
+    : (watchdogStatus === 'healthy' ? 'healthy' : 'degraded');
 
   jsonReply(res, 200, {
-    state,
-    events: eventsInRange.slice(-50),
-    timeline,
-    hours,
+    effectiveStatus,
+    watchdog: state,
+    runtime: {
+      running: rt.running,
+      pid: rt.pid,
+      checkedAt: new Date().toISOString(),
+    },
+    recentEvents: eventsForList,
+    timeline: {
+      windowMinutes,
+      stepSeconds,
+      points,
+      downCount,
+      healthyCount,
+      filteredListCriticalOnly: criticalOnly,
+    },
+    files: {
+      stateFile:  WATCHDOG_STATE_FILE,
+      eventsFile: WATCHDOG_EVENTS_FILE,
+    },
   });
 }
 
 function register(router) {
-  router.add('GET', '/api/watchdog', (req, res, q) => handleWatchdog(req, res, q));
-  // Legacy compat
+  // Frontend calls /ops/watchdog?limit=200&windowMinutes=1440
+  router.add('GET', '/ops/watchdog', (req, res, q) => handleWatchdog(req, res, q));
+  // Keep /api/watchdog as alias
+  router.add('GET', '/api/watchdog',  (req, res, q) => handleWatchdog(req, res, q));
 }
 
 module.exports = { register, readState, readEvents };
