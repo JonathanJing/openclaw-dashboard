@@ -537,6 +537,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:16p
 .agent-stat.stat-main::before{background:linear-gradient(180deg,var(--green),var(--accent))}
 .agent-stat.stat-subagent::before{background:linear-gradient(180deg,var(--accent),var(--blue))}
 .agent-stat.stat-hook::before{background:linear-gradient(180deg,var(--blue),var(--accent2))}
+.agent-stat.stat-sentinel::before{background:linear-gradient(180deg,var(--blue),var(--green))}
 .agent-stat.stat-cron::before{background:linear-gradient(180deg,var(--yellow),var(--accent))}
 .agent-stat.stat-total::before{background:linear-gradient(180deg,var(--accent2),var(--green))}
 .agent-stat-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
@@ -745,6 +746,15 @@ header{display:flex;align-items:center;justify-content:space-between;padding:16p
       <div class="agent-stat-value val-blue" id="hookValue">0</div>
       <div class="agent-stat-label">Sessions</div>
       <div class="agent-stat-detail" id="hookDetail">—</div>
+    </div>
+    <div class="agent-stat stat-sentinel" style="--accent:var(--blue)">
+      <div class="agent-stat-header">
+        <span class="agent-stat-icon">🛡️</span>
+        <span class="agent-stat-badge idle" id="sentinelBadge">—</span>
+      </div>
+      <div class="agent-stat-value val-accent" id="sentinelValue">—</div>
+      <div class="agent-stat-label" id="sentinelLabel">Sentinel</div>
+      <div class="agent-stat-detail" id="sentinelDetail">—</div>
     </div>
     <div class="agent-stat stat-total">
       <div class="agent-stat-header">
@@ -1120,6 +1130,9 @@ function applyLanguageUI() {
     'Cron（固定）= 每日自动任务 · 交互（浮动）= 人工触发的对话'
   );
 
+  const sentinelLabel = document.getElementById('sentinelLabel');
+  if (sentinelLabel) sentinelLabel.textContent = tt('Sentinel', '系统哨兵');
+
   // Default model label is now dynamic (set by loadSystemInfo)
 }
 
@@ -1425,6 +1438,22 @@ function renderWatchdogStatus(data) {
     + lastIncident
     + (checkedAt ? ` · <span style="font-size:.68rem;color:var(--text2)">检查于 ${wdFmtAgo(Date.parse(checkedAt))}</span>` : '');
   statusEl.dataset.liveRendered = '1';
+
+  // ── Update Overview Card ──
+  const ovValue = document.getElementById('sentinelValue');
+  const ovBadge = document.getElementById('sentinelBadge');
+  const ovDetail = document.getElementById('sentinelDetail');
+  if (ovValue) {
+    ovValue.textContent = wdStatusZh(effective);
+    ovValue.style.color = col;
+    ovBadge.className = `agent-stat-badge ${effective === 'healthy' ? 'active' : 'idle'}`;
+    ovBadge.innerHTML = effective === 'healthy' ? '<span class="pulse-dot"></span> healthy' : 'degraded';
+    if (effective === 'down') {
+      ovBadge.className = 'agent-stat-badge error';
+      ovBadge.innerHTML = 'down';
+    }
+    ovDetail.textContent = checkedAt ? tt('Checked ', '检查于 ') + wdFmtAgo(Date.parse(checkedAt)) : '—';
+  }
 
   // ── Config guard meta ──
   if (metaEl) {
@@ -2409,33 +2438,23 @@ async function renderAgentMonitor() {
 
   await loadSystemInfo();
 
-  // Fetch today's ops data for header cards — merge sessions + cron model usage
-  Promise.all([
-    apiFetch('/ops/sessions'),
-    apiFetch('/ops/cron-costs').catch(() => ({})),
-  ]).then(([sessData, cronData]) => {
-    const cronModelMix = cronData.cronModelMix || {};
-    let totalCost = 0, totalTokens = 0, totalMsgs = 0, models = {};
-    (sessData.sessions || []).forEach(s => {
-      const t = s.today || {};
-      totalCost += t.cost || 0;
-      totalTokens += t.totalTokens || 0;
-      totalMsgs += t.messages || 0;
-      // Aggregate by actual model used in today's messages
-      if (t.models) {
-        for (const [m, tk] of Object.entries(t.models)) {
-          models[m] = (models[m] || 0) + tk;
-        }
-      }
-    });
+  // Fetch today's usage from SQLite Ledger (single source of truth)
+  apiFetch('/ops/ledger/today').then((ledger) => {
+    const rows = ledger.rows || [];
+    let totalCost = 0;
+    let totalTokens = 0; // billed_total_tokens
+    const models = {};
+    let totalCalls = 0;
 
-    // Add cron-only models not tracked in sessions.jsonl (e.g. local ollama models like qwen3.5)
-    // Cloud cron models already appear in sessions via isolated subagent sessions — don't double-count
-    let cronOnlyTokens = 0;
-    for (const [m, tk] of Object.entries(cronModelMix)) {
-      if (!models[m] && tk > 0) { models[m] = tk; cronOnlyTokens += tk; }
-    }
-    totalTokens += cronOnlyTokens;
+    rows.forEach(r => {
+      const cost = Number(r.cost_total || 0);
+      const billed = Number(r.billed_total_tokens || 0);
+      const m = r.model || 'unknown';
+      totalCost += cost;
+      totalTokens += billed;
+      totalCalls += Number(r.calls || 0);
+      models[m] = (models[m] || 0) + billed;
+    });
 
     // Card 1: Today Cost
     const mainBadge = document.getElementById('mainAgentBadge');
@@ -2444,9 +2463,9 @@ async function renderAgentMonitor() {
     mainBadge.className = 'agent-stat-badge active';
     mainBadge.innerHTML = '<span class="pulse-dot"></span> today';
     mainValue.textContent = '$' + totalCost.toFixed(2);
-    mainDetail.textContent = totalMsgs + ' messages';
+    mainDetail.textContent = totalCalls + ' calls';
 
-    // Card 2: Today Tokens — show total + top model percentages
+    // Card 2: Today Tokens — use billed_total_tokens (prompt_context + output)
     const subVal = document.getElementById('subagentValue');
     const subBadge = document.getElementById('subagentBadge');
     const subDetail = document.getElementById('subagentDetail');
@@ -2456,16 +2475,19 @@ async function renderAgentMonitor() {
     const topModel = Object.entries(models).filter(([k]) => k !== 'delivery-mirror' && k !== 'unknown').sort((a, b) => b[1] - a[1])[0];
     subDetail.textContent = topModel ? 'Top: ' + shortModel(topModel[0]) : '—';
 
-    // Card 5: Model Mix — visual bars
+    // Card 5: Model Mix — visual bars (by billed_total_tokens)
     const sorted = Object.entries(models).filter(([k]) => k !== 'delivery-mirror' && k !== 'unknown').sort((a, b) => b[1] - a[1]);
     const mixEl = document.getElementById('modelMixBars');
     const totalVal5 = document.getElementById('totalValue');
     const totalBadge5 = document.getElementById('totalBadge');
-    if (mixEl && sorted.length) {
+    if (mixEl) {
+      if (!sorted.length) {
+        mixEl.innerHTML = '<div class="ops-ch-meta">No ledger data today</div>';
+        return;
+      }
       totalVal5.textContent = sorted.length + ' models';
       totalBadge5.className = 'agent-stat-badge active';
       totalBadge5.innerHTML = 'today';
-      // Stacked bar
       let barHtml = '<div style="display:flex;height:10px;border-radius:5px;overflow:hidden;margin-bottom:6px">';
       const colors = {};
       sorted.forEach(([m, tk]) => {
@@ -2475,7 +2497,6 @@ async function renderAgentMonitor() {
         barHtml += `<div style="width:${pct}%;background:${c};min-width:2px" title="${shortModel(m)} ${pct.toFixed(0)}%"></div>`;
       });
       barHtml += '</div>';
-      // Legend
       barHtml += '<div style="display:flex;flex-wrap:wrap;gap:4px 10px;font-size:.7rem">';
       sorted.forEach(([m, tk]) => {
         const pct = ((tk / (totalTokens || 1)) * 100).toFixed(0);
@@ -3534,13 +3555,24 @@ async function loadOpsAlltime() {
   if (!modelsEl) return;
 
   try {
-    const data = await apiFetch('/ops/alltime');
-    const t = data.totals || {};
+    // Alltime is now driven by ledger history (no JSONL scan)
+    const hist = await apiFetch('/ops/ledger/history?days=90');
+    const today = await apiFetch('/ops/ledger/today');
 
-    if (subEl) subEl.textContent = `${fmtTokens(t.tokens)} tokens · ${t.messages || 0} messages · $${(t.cost || 0).toFixed(2)} est. · ${data.sessionFiles || 0} sessions`;
+    const dayRows = hist.rows || [];
+    const totalCost = dayRows.reduce((a, r) => a + Number(r.cost_total || 0), 0);
+    const totalTokens = dayRows.reduce((a, r) => a + Number(r.billed_total_tokens || 0), 0);
 
-    // Model breakdown
-    const models = data.models || [];
+    if (subEl) subEl.textContent = `${fmtTokens(totalTokens)} tokens · $${totalCost.toFixed(2)} · last ${hist.days} days`;
+
+    // Model breakdown (today)
+    const models = (today.rows || []).map(r => ({
+      name: r.model,
+      tokens: Number(r.billed_total_tokens || 0),
+      cost: Number(r.cost_total || 0),
+      messages: Number(r.calls || 0),
+    }));
+    const t = { tokens: models.reduce((a, m) => a + (m.tokens || 0), 0) };
     modelsEl.innerHTML = models.map(m => {
       const pct = t.tokens > 0 ? ((m.tokens / t.tokens) * 100).toFixed(1) : '0';
       return `<div class="ops-channel-card">
