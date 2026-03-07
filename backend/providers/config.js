@@ -130,7 +130,11 @@ function register(router) {
   router.add('GET', '/api/files',   (req, res, q) => handleFiles(req, res, q));
   router.add('GET', '/api/skills',  (req, res) => handleSkills(req, res));
 
-  // Legacy compat
+  // Legacy compat (frontend still calls these)
+  router.add('GET', '/ops/config',  (req, res) => handleConfig(req, res));
+  router.add('GET', '/files',       (req, res, q) => handleFiles(req, res, q));
+  router.add('GET', '/skills',      (req, res) => handleSkills(req, res));
+  router.add('GET', '/notes',       (_req, res) => jsonReply(res, 200, []));
 }
 
 module.exports = { register };
