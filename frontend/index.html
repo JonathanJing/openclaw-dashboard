@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>OpenClaw Dashboard</title>
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" sizes="180x180" href="/icon-180.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="OpenClaw">
+<meta name="theme-color" content="#06080e">
+<script src="/marked.min.js"></script>
+<script src="/purify.min.js"></script>
+<link rel="stylesheet" href="/frontend/shared/styles.css">
+</head>
+<body>
+<div class="bg-mesh"></div>
+<div class="container">
+  <!-- Header -->
+  <header>
+    <div>
+      <div class="logo">🦞 OpenClaw Dashboard</div>
+      <div class="logo-sub">24/7 Online</div>
+    </div>
+    <div class="header-right">
+      <span class="status-dot ok" id="statusDot"></span>
+      <span id="statusText">Connecting…</span>
+      <button class="live-indicator active" id="liveIndicator" onclick="toggleLivePolling()" title="Toggle live updates">
+        <span class="live-dot"></span> LIVE
+      </button>
+      <button class="lang-btn" id="langToggleBtn" onclick="toggleLanguage()" title="Switch language">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+        <span id="langToggleLabel">EN</span>
+      </button>
+      <button class="refresh-btn" onclick="refreshCurrentTab()" title="Refresh">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+      </button>
+      <a href="/" class="back-link">← Control UI</a>
+    </div>
+  </header>
+
+  <!-- Agent Monitor Bar -->
+  <div class="agent-monitor" id="agentMonitor">
+    <div class="agent-stat stat-main">
+      <div class="agent-stat-header">
+        <span class="agent-stat-icon">💰</span>
+        <span class="agent-stat-badge idle" id="mainAgentBadge"><span class="pulse-dot"></span> today</span>
+      </div>
+      <div class="agent-stat-value val-active" id="mainAgentValue">—</div>
+      <div class="agent-stat-label">Today Cost</div>
+      <div class="agent-stat-detail" id="mainAgentDetail">Loading…</div>
+    </div>
+    <div class="agent-stat stat-subagent">
+      <div class="agent-stat-header">
+        <span class="agent-stat-icon">📊</span>
+        <span class="agent-stat-badge idle" id="subagentBadge">—</span>
+      </div>
+      <div class="agent-stat-value val-accent" id="subagentValue">—</div>
+      <div class="agent-stat-label">Today Tokens</div>
+      <div class="agent-stat-detail" id="subagentDetail">—</div>
+    </div>
+    <div class="agent-stat stat-cron">
+      <div class="agent-stat-header">
+        <span class="agent-stat-icon">⏰</span>
+        <span class="agent-stat-badge idle" id="cronBadge">—</span>
+      </div>
+      <div class="agent-stat-value val-yellow" id="cronValue">0</div>
+      <div class="agent-stat-label">Cron Jobs</div>
+      <div class="agent-stat-detail" id="cronDetail">—</div>
+    </div>
+    <div class="agent-stat stat-hook">
+      <div class="agent-stat-header">
+        <span class="agent-stat-icon">💬</span>
+        <span class="agent-stat-badge idle" id="hookBadge">—</span>
+      </div>
+      <div class="agent-stat-value val-blue" id="hookValue">0</div>
+      <div class="agent-stat-label">Sessions</div>
+      <div class="agent-stat-detail" id="hookDetail">—</div>
+    </div>
+    <div class="agent-stat stat-sentinel" style="--accent:var(--blue)">
+      <div class="agent-stat-header">
+        <span class="agent-stat-icon">🛡️</span>
+        <span class="agent-stat-badge idle" id="sentinelBadge">—</span>
+      </div>
+      <div class="agent-stat-value val-accent" id="sentinelValue">—</div>
+      <div class="agent-stat-label" id="sentinelLabel">Sentinel</div>
+      <div class="agent-stat-detail" id="sentinelDetail">—</div>
+    </div>
+    <div class="agent-stat stat-total">
+      <div class="agent-stat-header">
+        <span class="agent-stat-icon">🧠</span>
+        <span class="agent-stat-badge idle" id="totalBadge">—</span>
+      </div>
+      <div class="agent-stat-value val-purple" id="totalValue">—</div>
+      <div class="agent-stat-label">Model Mix</div>
+      <div id="modelMixBars" style="margin-top:8px"></div>
+    </div>
+  </div>
+
+  <!-- System Info Bar (fixed, always visible) -->
+  <div id="systemInfoBar" class="glass-card" style="padding:10px 16px;margin-bottom:12px;font-size:.75rem;display:none">
+    <div style="display:flex;flex-wrap:wrap;gap:6px 16px;align-items:center" id="systemInfoContent"></div>
+  </div>
+
+  <div id="watchdogGlobalAlert" class="glass-card" style="padding:10px 14px;margin-bottom:12px;border-color:var(--red);display:none">
+    <div style="display:flex;justify-content:space-between;gap:10px;align-items:center">
+      <div style="font-size:.8rem;color:#ffb4b4" id="watchdogGlobalText">OpenClaw Watchdog alert</div>
+      <button class="btn-secondary" id="openOpsBtn" style="padding:6px 10px;font-size:.72rem" onclick="focusHealthTab()">Open Health</button>
+    </div>
+  </div>
+
+  <!-- Today's Cron Runs -->
+  <div class="agent-sessions-panel" id="cronRunsPanel">
+    <div class="agent-sessions-header" onclick="this.classList.toggle('collapsed');this.nextElementSibling.style.maxHeight=this.classList.contains('collapsed')?'0':'400px'">
+      <div class="agent-sessions-title">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+        <span id="cronRunsTitleText">Today's Cron Runs</span>
+      </div>
+      <span class="agent-sessions-count" id="cronRunsCount">0</span>
+    </div>
+    <div class="agent-sessions-body" id="cronRunsBody" style="max-height:400px;transition:max-height .4s"></div>
+  </div>
+
+  <!-- Tab Bar -->
+  <div class="tab-bar">
+    <button class="tab-btn active" data-tab="overview"><span id="tabOverviewLabel">Overview</span></button>
+    <button class="tab-btn" data-tab="ops"><span id="tabCostLabel">Cost</span></button>
+    <button class="tab-btn" data-tab="tasks"><span id="tabCronLabel">Cron</span></button>
+    <button class="tab-btn" data-tab="health"><span id="tabHealthLabel">Health</span></button>
+    <button class="tab-btn" data-tab="config"><span id="tabConfigLabel">Config</span></button>
+  </div>
+
+  <!-- ═══ Overview Panel ═══ -->
+  <div class="tab-panel active" id="panel-overview">
+    <div id="sessionsAlerts" style="margin-bottom:12px"></div>
+    <div style="display:flex;justify-content:flex-end;margin-bottom:6px">
+      <button id="staleToggleBtn" onclick="window._sessionsHideStale=!window._sessionsHideStale; this.textContent=window._sessionsHideStale?'👁 显示全部':'🙈 隐藏7天无活跃'; loadSessions();"
+        style="font-size:.72rem;padding:3px 10px;border-radius:10px;border:1px solid var(--border);background:var(--surface);color:var(--text2);cursor:pointer">
+        🙈 隐藏7天无活跃
+      </button>
+    </div>
+    <div id="sessionsTable" class="sessions-table-wrap">
+      <div class="skeleton skeleton-card"></div>
+    </div>
+    <div class="glass-card" style="padding:16px;margin-top:16px">
+      <div class="card-title">Tasks</div>
+      <div class="card-sub" style="margin-bottom:10px">Basic list view</div>
+      <input type="text" class="search-input" id="taskSearch" placeholder="Search tasks…" style="width:100%;max-width:none;margin-bottom:12px">
+      <div id="taskList" class="task-list">
+        <div class="skeleton skeleton-card"></div>
+        <div class="skeleton skeleton-card"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ Cost Panel ═══ -->
+  <div class="tab-panel" id="panel-ops">
+    <div class="glass-card" style="padding:16px;margin-bottom:16px">
+      <div class="card-header">
+        <div>
+          <div class="card-title">Today's Usage (PST)</div>
+          <div class="card-sub" id="opsTotalSub">Loading…</div>
+        </div>
+        <div class="pill-row" id="opsTotalPills"></div>
+      </div>
+      <div class="ops-model-bar" id="opsModelBar"></div>
+    </div>
+    <div class="card-title" style="margin-bottom:12px">Channel Breakdown</div>
+    <div id="opsChannelList" class="ops-channel-list">
+      <div class="skeleton skeleton-card"></div>
+      <div class="skeleton skeleton-card"></div>
+    </div>
+
+    <div class="glass-card" style="padding:16px;margin-top:16px">
+      <div class="card-header">
+        <div>
+          <div class="card-title">All-Time Usage</div>
+          <div class="card-sub" id="alltimeSub">Loading…</div>
+        </div>
+      </div>
+      <div id="alltimeModels" class="ops-channel-list" style="margin-bottom:12px"></div>
+      <div class="week-nav" id="weekNav">
+        <button id="weekPrev" title="Previous week">◀</button>
+        <span class="week-label" id="weekLabel">This Week</span>
+        <button id="weekNext" title="Next week">▶</button>
+      </div>
+      <div class="card-title" style="font-size:.85rem;margin-bottom:8px" id="dailyChartTitle">Daily Tokens</div>
+      <canvas id="dailyChart" height="120" style="width:100%;border-radius:8px"></canvas>
+      <div class="ops-model-legend chart-legend" style="margin-top:6px"></div>
+      <div class="card-title" style="font-size:.85rem;margin:12px 0 8px" id="dailyCostTitle">Daily Cost by Model</div>
+      <canvas id="dailyCostChart" height="120" style="width:100%;border-radius:8px"></canvas>
+      <div class="ops-model-legend chart-cost-legend" style="margin-top:6px"></div>
+      <div class="card-title" style="font-size:.85rem;margin:12px 0 8px">Cost Heatmap (Model × Day)</div>
+      <div id="costHeatmap" class="cost-heatmap"></div>
+    </div>
+
+    <!-- Provider Audit hidden — no useful billing API from Anthropic/Google yet -->
+    <div class="glass-card" style="padding:16px;margin-top:16px;display:none" id="auditCard">
+      <div class="card-title">🔍 Provider Audit (Official APIs)</div>
+      <div class="card-sub" style="margin-bottom:12px">Cross-reference with provider billing data</div>
+      <div id="auditContent"></div>
+    </div>
+
+  </div>
+
+  <!-- ═══ Health Panel ═══ -->
+  <div class="tab-panel" id="panel-health">
+    <div class="glass-card" style="padding:16px;margin-bottom:16px">
+      <div class="card-title" style="margin-bottom:4px">System Health</div>
+      <div class="card-sub">Watchdog, runtime state, quality and audit</div>
+    </div>
+
+    <!-- DGX Spark Status Card -->
+    <div class="glass-card" style="padding:16px;margin-bottom:16px" id="dgxCard">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+        <div>
+          <div class="card-title" style="margin-bottom:2px">⚡ DGX Spark — Local Inference Node</div>
+          <div class="card-sub">llama.cpp server · Qwen3.5 35B A3B</div>
+        </div>
+        <div id="dgxStatusBadge" style="font-size:.75rem;padding:3px 10px;border-radius:20px;background:rgba(255,255,255,.08);color:var(--text2)">Loading…</div>
+      </div>
+      <div id="dgxContent"><div class="skeleton skeleton-card" style="height:80px"></div></div>
+    </div>
+    <div class="glass-card" style="padding:16px;margin-bottom:16px">
+      <div class="card-title" style="margin-bottom:4px">Quality</div>
+      <div class="card-sub" style="margin-bottom:10px">Session quality and silence ratios</div>
+      <div id="qualityContent"><div class="skeleton skeleton-card"></div></div>
+    </div>
+    <div class="glass-card" style="padding:16px;margin-bottom:16px">
+      <div class="card-title" style="margin-bottom:4px">Audit</div>
+      <div class="card-sub" style="margin-bottom:10px">Model fit suggestions and configuration checks</div>
+      <div id="auditContent2"><div class="skeleton skeleton-card"></div></div>
+    </div>
+    <div class="glass-card" style="padding:16px">
+      <div class="card-title" style="margin-bottom:4px">⚙️ Operations Management</div>
+      <div class="card-sub" style="margin-bottom:16px">Backup/restore, restart and safe OpenClaw update workflow</div>
+      <div class="ops-mgmt-grid">
+        <button class="ops-mgmt-btn" id="btnBackup" onclick="opsAction('backup')">
+          <span class="btn-icon">💾</span>
+          <span class="btn-label">Backup + Push Repo</span>
+          <span class="btn-badge" id="badgeBackup"></span>
+        </button>
+        <button class="ops-mgmt-btn" id="btnRestore" onclick="opsAction('restore')">
+          <span class="btn-icon">📂</span>
+          <span class="btn-label">Load from Backup</span>
+          <span class="btn-badge" id="badgeRestore"></span>
+        </button>
+        <button class="ops-mgmt-btn" id="btnUpdateOpenClaw" onclick="opsAction('updateOpenClaw')">
+          <span class="btn-icon">⬆️</span>
+          <span class="btn-label">Update OpenClaw</span>
+          <span class="btn-badge" id="badgeUpdateOpenClaw"></span>
+        </button>
+        <button class="ops-mgmt-btn" id="btnRestart" onclick="opsAction('restart')">
+          <span class="btn-icon">🔄</span>
+          <span class="btn-label">Restart OpenClaw</span>
+          <span class="btn-badge" id="badgeRestart"></span>
+        </button>
+      </div>
+      <div id="opsMgmtResult" style="margin-top:14px;display:none">
+        <div class="glass-card" style="padding:12px;background:rgba(0,0,0,0.3);border-color:var(--border)" id="opsMgmtResultInner"></div>
+      </div>
+    </div>
+    <div class="glass-card" style="padding:16px;margin-top:16px">
+      <div class="card-title" style="margin-bottom:4px">🐶 Watchdog</div>
+      <div class="card-sub" id="watchdogStatusText">Loading watchdog status...</div>
+      <div class="ops-ch-meta" id="watchdogStatusMeta" style="margin-top:8px"></div>
+      <div style="margin-top:6px;font-size:.7rem;color:var(--text2)" id="watchdogWindowLabel">Showing last 24h · auto-refresh every 10s</div>
+      <div id="watchdogTimeline" style="margin-top:10px"></div>
+      <div id="watchdogEventsList" class="ops-channel-list" style="margin-top:10px"></div>
+    </div>
+  </div>
+
+  <!-- ═══ Config Panel ═══ -->
+  <div class="tab-panel" id="panel-config">
+    <div class="glass-card" style="padding:16px;margin-bottom:16px">
+      <div class="card-title" style="margin-bottom:4px">Config</div>
+      <div class="card-sub" style="margin-bottom:10px">Server capabilities and loaded configuration files</div>
+      <div id="configContent"><div class="skeleton skeleton-card"></div></div>
+    </div>
+    <div class="glass-card" style="padding:16px">
+      <div class="card-title" style="margin-bottom:4px">Documents</div>
+      <div class="card-sub" style="margin-bottom:12px">Workspace file viewer/editor</div>
+      <div class="docs-layout">
+        <div class="glass-card" style="padding:12px">
+          <div class="file-sidebar-header">Workspace Files</div>
+          <div class="file-sidebar" id="fileSidebar"></div>
+        </div>
+        <div class="editor-area" id="editorArea">
+          <div class="editor-toolbar">
+            <div class="editor-filename" id="editorFilename">Select a file<span>to begin editing</span></div>
+            <button class="edit-toggle-btn" id="editToggleBtn" onclick="toggleEditMode()" style="display:none">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+              <span id="editToggleLabel">Edit</span>
+            </button>
+            <button class="save-btn" id="saveBtn" onclick="saveFile()" disabled style="display:none">Save</button>
+          </div>
+          <div class="md-preview" id="mdPreview">
+            <div class="md-empty-hint">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+              <p>Select a file from the sidebar to view its contents</p>
+            </div>
+          </div>
+          <textarea class="editor-textarea" id="editorTextarea" placeholder="Select a file from the sidebar to view and edit its contents…" disabled style="display:none"></textarea>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ Cron Panel ═══ -->
+  <div class="tab-panel" id="panel-tasks">
+    <!-- Cron Cost Analysis -->
+    <div class="glass-card" style="padding:16px;margin-top:16px">
+      <div class="card-title" id="cronCostTitle">💰 Cron Cost Analysis</div>
+      <div class="card-sub" id="cronCostSummary">Loading...</div>
+      <div id="cronCostContent" style="margin-top:12px"></div>
+    </div>
+
+    <!-- Fixed vs Variable Trend -->
+    <div class="glass-card" style="padding:16px;margin-top:12px">
+      <div class="card-title" id="cronTrendTitle">📈 Fixed vs Variable Cost Trend</div>
+      <div class="card-sub" id="cronTrendSub">Cron (fixed) = scheduled jobs · Interactive (variable) = manually triggered chats</div>
+      <canvas id="cronTrendChart" height="160" style="width:100%;margin-top:8px"></canvas>
+      <div id="cronTrendLegend" style="margin-top:6px;font-size:.72rem;display:flex;gap:16px"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Task Detail Modal -->
+<div class="modal-overlay detail-modal" id="detailModal">
+  <div class="modal" style="position:relative">
+    <button class="modal-close" onclick="closeDetailModal()">✕</button>
+    <div class="detail-header">
+      <div class="detail-status-row" id="detailStatusRow"></div>
+      <div class="detail-title" id="detailTitle"></div>
+      <div class="detail-meta" id="detailMeta"></div>
+    </div>
+    <div class="detail-body" id="detailBody"></div>
+    <div class="detail-actions" id="detailActions"></div>
+  </div>
+</div>
+
+<!-- Create Task Modal -->
+<div class="modal-overlay" id="createModal">
+  <div class="modal" style="position:relative">
+    <button class="modal-close" onclick="closeCreateModal()">✕</button>
+    <h2>Create Task</h2>
+    <div class="form-group">
+      <label class="form-label">Title</label>
+      <input type="text" class="form-input" id="newTitle" placeholder="Task title…">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Description</label>
+      <textarea class="form-textarea" id="newDesc" placeholder="Short task description…" style="min-height:60px"></textarea>
+    </div>
+    <div class="form-group">
+      <label class="form-label">📝 Content <span style="font-weight:400;text-transform:none;letter-spacing:0;font-size:.72rem;color:var(--text2)">(Markdown supported — use headers, lists, code blocks, tables…)</span></label>
+      <textarea class="form-textarea" id="newContent" placeholder="# Detailed content here…&#10;&#10;Supports **bold**, *italic*, `code`, lists, tables, and more.&#10;&#10;```js&#10;const example = 'code block';&#10;```" style="min-height:160px"></textarea>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div class="form-group">
+        <label class="form-label">Priority</label>
+        <select class="form-select" id="newPriority">
+          <option value="medium">Medium</option>
+          <option value="high">High</option>
+          <option value="low">Low</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Assignee</label>
+        <select class="form-select" id="newAssignee">
+          <option value="main">Main Agent</option>
+          <option value="sub-agent">Sub-Agent</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Due Date</label>
+      <input type="date" class="form-input" id="newDueDate">
+    </div>
+    <div class="modal-actions">
+      <button class="action-btn" onclick="closeCreateModal()">Cancel</button>
+      <button class="action-btn primary" id="createTaskBtn" onclick="createTask()">Create Task</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast Container -->
+<div class="toast-container" id="toastContainer"></div>
+
+<!-- Modular JS: shared utilities first, then tab modules, then boot -->
+<script src="/frontend/shared/api.js"></script>
+<script src="/frontend/shared/ui-utils.js"></script>
+<script src="/frontend/tabs/overview.js"></script>
+<script src="/frontend/tabs/cost.js"></script>
+<script src="/frontend/tabs/cron.js"></script>
+<script src="/frontend/tabs/health.js"></script>
+<script src="/frontend/tabs/config.js"></script>
+<script src="/frontend/shared/boot.js"></script>
+</body>
+</html>

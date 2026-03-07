@@ -72,23 +72,53 @@ const STATIC_FILES = {
   '/purify.min.js':  { file: 'purify.min.js',  type: 'application/javascript' },
 };
 
+const MIME_TYPES = {
+  '.js':  'application/javascript',
+  '.css': 'text/css',
+  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+  '.html': 'text/html',
+};
+
 function serveStatic(req, res, pathname) {
+  // Known static files
   const entry = STATIC_FILES[pathname];
-  if (!entry) return false;
-  const filePath = path.join(STATIC_ROOT, entry.file);
-  try {
-    const content = fs.readFileSync(filePath);
-    res.writeHead(200, { 'Content-Type': entry.type, 'Cache-Control': 'public, max-age=86400' });
-    res.end(content);
-    return true;
-  } catch {
-    return false;
+  if (entry) {
+    const filePath = path.join(STATIC_ROOT, entry.file);
+    try {
+      const content = fs.readFileSync(filePath);
+      res.writeHead(200, { 'Content-Type': entry.type, 'Cache-Control': 'public, max-age=86400' });
+      res.end(content);
+      return true;
+    } catch { return false; }
   }
+
+  // Serve frontend/ directory (CSS, JS modules)
+  if (pathname.startsWith('/frontend/')) {
+    const relPath = pathname.slice(1); // strip leading /
+    const filePath = path.join(STATIC_ROOT, relPath);
+    // Security: no traversal
+    if (relPath.includes('..')) return false;
+    const ext = path.extname(filePath);
+    const mime = MIME_TYPES[ext];
+    if (!mime) return false;
+    try {
+      const content = fs.readFileSync(filePath);
+      res.writeHead(200, { 'Content-Type': mime, 'Cache-Control': 'public, max-age=300' });
+      res.end(content);
+      return true;
+    } catch { return false; }
+  }
+
+  return false;
 }
 
 // ── Main HTML ───────────────────────────────────────────────────────
 function serveDashboard(req, res) {
-  const filePath = path.join(STATIC_ROOT, 'agent-dashboard.html');
+  // Try new modular frontend first, fall back to old monolith
+  const newPath = path.join(STATIC_ROOT, 'frontend', 'index.html');
+  const oldPath = path.join(STATIC_ROOT, 'agent-dashboard.html');
+  const filePath = fs.existsSync(newPath) ? newPath : oldPath;
   try {
     const content = fs.readFileSync(filePath, 'utf8');
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
