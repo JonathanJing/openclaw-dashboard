@@ -176,8 +176,10 @@ async function loadSessions() {
       // Model selector dropdown
       const modelSelect = s.channelId ? buildModelSelect(s.model, s.channelId, 'session') : `<span class="sess-model" style="border-color:${getModelColor(s.model)};color:${getModelColor(s.model)}">${shortModel(s.model)}</span>`;
 
+      // Status badge colors: active=green, idle=yellow, stale=gray, error=red
+      const statusColor = s.status === 'active' ? '#34d399' : s.status === 'idle' ? '#fbbf24' : s.status === 'stale' ? '#6b7280' : s.status === 'error' ? '#f87171' : '#6b7280';
       html += `<tr>
-        <td><span class="sess-status ${s.status}"></span>${nameHtml}</td>
+        <td><span class="sess-status" style="display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px;background:${statusColor};border:1px solid rgba(255,255,255,0.1)"></span>${nameHtml}</td>
         <td style="font-size:.7rem">${taskTag}</td>
         <td>${modelSelect}</td>
         <td>${s.today.messages}<span style="color:var(--text2);font-size:.65rem"><br>${eff} ${tt('effective', '有效')}</span></td>

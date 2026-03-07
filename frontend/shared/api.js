@@ -294,10 +294,15 @@ function wdReasonZh(reason) {
 
 function renderWatchdogUptimeBar(tl, containerEl) {
   if (!containerEl) return;
-  const pts = Array.isArray(tl?.points) ? tl.points : [];
+  let pts = Array.isArray(tl?.points) ? tl.points : [];
   if (!pts.length) {
     containerEl.innerHTML = `<div class="ops-ch-meta">${tt('No timeline data.', '无时间线数据。')}</div>`;
     return;
+  }
+  // Downsample to max 200 points for visualization
+  if (pts.length > 200) {
+    const step = Math.ceil(pts.length / 200);
+    pts = pts.filter((_, i) => i % step === 0);
   }
   const total = pts.length;
   const downCount  = pts.filter(p => p.status === 'down').length;
