@@ -50,7 +50,11 @@ const providers = [
   require('./providers/watchdog'),
   require('./providers/system'),
   require('./providers/config'),
+  require('./providers/tasks'),
+  require('./providers/ops-legacy'),  // proxy remaining routes to old api-server.js
 ];
+
+const opsLegacy = require('./providers/ops-legacy');
 
 for (const p of providers) {
   p.register(router);
@@ -185,9 +189,9 @@ const server = http.createServer((req, res) => {
       return handler(req, res, parsed.query || {});
     }
 
-    // Legacy fallback: try to forward to old api-server patterns
-    // (will be removed after full migration)
-    helpers.errorReply(res, 404, `Not found: ${method} ${pathname}`);
+    // Legacy fallback: proxy to old api-server.js for unmigrated routes
+    // (tasks CRUD with dynamic IDs, cron/:id/runs, etc.)
+    return opsLegacy.proxyToOld(req, res);
   } catch (e) {
     console.error('Unhandled error:', e);
     helpers.errorReply(res, 500, 'Internal server error');
