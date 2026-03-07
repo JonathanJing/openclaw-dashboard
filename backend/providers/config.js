@@ -1,26 +1,26 @@
 'use strict';
 /**
  * Config Provider — read-only view of openclaw.json + workspace files.
- * No mutation: config is viewable, not editable from dashboard.
+ *
+ * /ops/config  — returns { capabilities, files: [{label, category, size, modified, content}] }
+ * /files       — workspace file browser (read) + optional PUT
+ * /skills      — list installed skills
  */
-const fs = require('fs');
+const fs   = require('fs');
 const path = require('path');
-const cfg = require('../lib/config');
+const cfg  = require('../lib/config');
 const { jsonReply, errorReply } = require('../lib/http-helpers');
 
-function readOpenClawConfig() {
-  try {
-    const raw = fs.readFileSync(cfg.OPENCLAW_CONFIG_FILE, 'utf8');
-    const config = JSON.parse(raw);
-    // Redact sensitive fields
-    const redacted = JSON.parse(JSON.stringify(config));
-    redactSecrets(redacted);
-    return redacted;
-  } catch {
-    return null;
-  }
+// ── Capability flags (read from env / config) ────────────────────────
+function getCapabilities() {
+  return {
+    mutatingOpsEnabled:              cfg.ENABLE_MUTATING_OPS,
+    mutatingOpsLoopbackOnly:         true,
+    attachmentFilePathCopyEnabled:   cfg.ALLOW_ATTACHMENT_FILEPATH_COPY,
+  };
 }
 
+// ── Redact secrets ───────────────────────────────────────────────────
 function redactSecrets(obj) {
   if (!obj || typeof obj !== 'object') return;
   const sensitiveKeys = ['apiKey', 'token', 'secret', 'password', 'webhook', 'auth'];
@@ -32,7 +32,80 @@ function redactSecrets(obj) {
   }
 }
 
-// ── Workspace file browser (read-only) ──────────────────────────────
+// ── Build files list in the format the frontend expects ──────────────
+// Each entry: { label, category, size, modified, content }
+function buildConfigFiles() {
+  const home = cfg.HOME;
+  const ws   = cfg.WORKSPACE;
+  const dotOc = cfg.DOT_OPENCLAW;
+  const files = [];
+
+  // Core config files
+  const coreFiles = [
+    { filePath: path.join(dotOc, 'openclaw.json'), label: 'openclaw.json',        category: 'core'  },
+    { filePath: path.join(dotOc, 'keys.env'),      label: 'keys.env',             category: 'keys'  },
+    { filePath: path.join(dotOc, 'exec-approvals.json'), label: 'exec-approvals.json', category: 'core' },
+  ];
+
+  // Workspace personality files
+  try {
+    const wsFiles = fs.readdirSync(ws)
+      .filter(f => /^(SOUL|AGENTS|USER|IDENTITY|HEARTBEAT|MEMORY|TOOLS).*\.md$/i.test(f))
+      .sort();
+    wsFiles.forEach(f => coreFiles.push({ filePath: path.join(ws, f), label: f, category: 'personality' }));
+  } catch {}
+
+  for (const { filePath, label, category } of coreFiles) {
+    try {
+      const stat    = fs.statSync(filePath);
+      let   content = fs.readFileSync(filePath, 'utf8');
+
+      // Redact JSON files
+      if (label.endsWith('.json')) {
+        try {
+          const parsed = JSON.parse(content);
+          redactSecrets(parsed);
+          content = JSON.stringify(parsed, null, 2);
+        } catch {}
+      } else if (label.endsWith('.env') || label.endsWith('keys.env')) {
+        // Redact values in env files
+        content = content.replace(/^(\s*\w+=)(.+)$/gm, (_, k, v) => k + '***');
+      }
+
+      files.push({
+        label,
+        category,
+        size:     stat.size,
+        modified: stat.mtime.toISOString(),
+        content,
+      });
+    } catch {}
+  }
+
+  return files;
+}
+
+// ── Main config endpoint ─────────────────────────────────────────────
+function handleConfig(_req, res) {
+  if (!cfg.ENABLE_CONFIG_ENDPOINT) {
+    return errorReply(res, 403, 'Config endpoint disabled');
+  }
+
+  const capabilities = getCapabilities();
+  const files        = buildConfigFiles();
+
+  // Also include the raw openclaw.json for callers that expect { config }
+  let rawConfig = null;
+  try {
+    const raw = JSON.parse(fs.readFileSync(cfg.OPENCLAW_CONFIG_FILE, 'utf8'));
+    redactSecrets(raw);
+    rawConfig = raw;
+  } catch {}
+
+  jsonReply(res, 200, { capabilities, files, config: rawConfig });
+}
+
+// ── Workspace file browser ───────────────────────────────────────────
 function isAllowedPath(p) {
   if (!p || typeof p !== 'string') return false;
   const normalized = path.normalize(p);
@@ -50,34 +123,42 @@ function isAllowedPath(p) {
   return false;
 }
 
-function handleConfig(_req, res) {
-  if (!cfg.ENABLE_CONFIG_ENDPOINT) {
-    return errorReply(res, 403, 'Config endpoint disabled');
-  }
-  const config = readOpenClawConfig();
-  jsonReply(res, 200, { config });
-}
-
 function handleFiles(req, res, query) {
   const filePath = query.path || '';
-  const isList = query.list === 'true';
+  const isList   = query.list === 'true';
+  const ws       = cfg.WORKSPACE;
 
   // Directory listing mode
   if (isList && filePath) {
     const cleanDir = filePath.replace(/^\/|\/$/g, '').split('/')[0];
     const allowedDirs = ['memory', 'channels', 'refs'];
     if (!allowedDirs.includes(cleanDir)) return errorReply(res, 403, 'Directory not allowed');
-    const dirPath = path.join(cfg.WORKSPACE, cleanDir);
+    const dirPath = path.join(ws, cleanDir);
     try {
       const files = fs.readdirSync(dirPath).filter(f => f.endsWith('.md')).map(f => `${cleanDir}/${f}`);
       return jsonReply(res, 200, { files });
     } catch { return jsonReply(res, 200, { files: [] }); }
   }
 
+  // PUT — save file
+  if (req.method === 'PUT') {
+    if (!filePath || !isAllowedPath(filePath)) return errorReply(res, 403, 'Path not allowed');
+    let body = '';
+    req.on('data', d => body += d);
+    req.on('end', () => {
+      try {
+        const { content } = JSON.parse(body);
+        if (typeof content !== 'string') return errorReply(res, 400, 'content must be a string');
+        fs.writeFileSync(path.join(ws, filePath), content, 'utf8');
+        jsonReply(res, 200, { ok: true });
+      } catch (e) { errorReply(res, 500, e.message); }
+    });
+    return;
+  }
+
   if (!filePath) {
     // List workspace .md files
     const files = [];
-    const ws = cfg.WORKSPACE;
     try {
       for (const f of fs.readdirSync(ws)) {
         if (f.endsWith('.md')) files.push(f);
@@ -97,7 +178,7 @@ function handleFiles(req, res, query) {
   if (!isAllowedPath(filePath)) {
     return errorReply(res, 403, 'Path not allowed');
   }
-  const fullPath = path.join(cfg.WORKSPACE, filePath);
+  const fullPath = path.join(ws, filePath);
   try {
     const content = fs.readFileSync(fullPath, 'utf8');
     jsonReply(res, 200, { path: filePath, content });
@@ -133,6 +214,7 @@ function register(router) {
   // Legacy compat (frontend still calls these)
   router.add('GET', '/ops/config',  (req, res) => handleConfig(req, res));
   router.add('GET', '/files',       (req, res, q) => handleFiles(req, res, q));
+  router.add('PUT', '/files',       (req, res, q) => handleFiles(req, res, q));
   router.add('GET', '/skills',      (req, res) => handleSkills(req, res));
   router.add('GET', '/notes',       (_req, res) => jsonReply(res, 200, []));
 }
