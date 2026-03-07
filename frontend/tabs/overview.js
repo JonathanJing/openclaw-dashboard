@@ -1,0 +1,314 @@
+
+/* Overview Tab — Sessions, Agent Monitor, DGX Spark */
+
+async function loadAgentMonitor() {
+  try {
+    agentData = await apiFetch('/agents');
+    renderAgentMonitor();
+  } catch(e) {
+    // Silently fail - monitor is non-critical
+    console.warn('Agent monitor fetch failed:', e.message);
+  }
+}
+
+
+async function loadSessions() {
+  const alertsEl = document.getElementById('sessionsAlerts');
+  const tableEl = document.getElementById('sessionsTable');
+  if (!tableEl) return;
+
+  try {
+    const url = _sessionsHideStale ? '/ops/sessions?hideStale=1' : '/ops/sessions';
+    const data = await apiFetch(url);
+    const sessions = data.sessions || [];
+    const alerts = data.alerts || [];
+    const summary = data.summary || {};
+
+    // Update header cards from session data
+    const mainBadge = document.getElementById('mainAgentBadge');
+    const mainValue = document.getElementById('mainAgentValue');
+    const mainDetail = document.getElementById('mainAgentDetail');
+    if (mainValue) {
+      mainBadge.className = 'agent-stat-badge ' + (alerts.filter(a=>a.type==='error').length > 0 ? 'error' : 'active');
+      mainBadge.innerHTML = alerts.length > 0 ? `⚠️ ${alerts.length} alerts` : '✅ healthy';
+      mainValue.textContent = '$' + (summary.todayCost || 0).toFixed(2);
+      mainDetail.textContent = (summary.todayMessages || 0) + ' messages today';
+    }
+    const subVal = document.getElementById('subagentValue');
+    if (subVal) {
+      subVal.textContent = fmtTokens(sessions.reduce((s, r) => s + r.today.totalTokens, 0));
+      document.getElementById('subagentDetail').textContent = shortModel(summary.topModel);
+    }
+    const hookVal = document.getElementById('hookValue');
+    if (hookVal) {
+      hookVal.textContent = summary.active || 0;
+      document.getElementById('hookDetail').textContent = summary.total + ' total';
+    }
+
+    // Alerts
+    if (alertsEl) {
+      alertsEl.innerHTML = alerts.map(a =>
+        `<div class="sess-alert ${a.type}"><span>${a.type === 'error' ? '🔴' : a.type === 'waste' ? '🟡' : '⚪'}</span><strong>${escHtml(a.session)}</strong> ${escHtml(a.msg)}</div>`
+      ).join('');
+    }
+
+    // Table
+    if (sessions.length === 0) {
+      tableEl.innerHTML = '<div class="empty-state"><h3>No sessions</h3></div>';
+      return;
+    }
+
+    // Chinese names + task type for Discord channels
+    const channelMeta = {
+      '#dev_build':              { cn: '开发构建', task: '🔧 深度开发', tier: 'hard' },
+      '#ai-learning':            { cn: 'AI学习', task: '🧠 架构讨论', tier: 'hard' },
+      '#ops-report':             { cn: '运维报告', task: '📊 汇报转发', tier: 'easy' },
+      '#general':                { cn: '综合频道', task: '💬 闲聊', tier: 'easy' },
+      '#openclaw-watch':         { cn: '生态监控', task: '🔍 监控播报', tier: 'medium' },
+      '#jobs-intel':             { cn: '求职情报', task: '💼 搜索整理', tier: 'medium' },
+      '#x-ai-socal-radar':      { cn: 'X/AI雷达', task: '🐦 内容创作', tier: 'hard' },
+      '#tech-news':              { cn: '科技新闻', task: '📰 摘要生成', tier: 'medium' },
+      '#podcast_video_article':  { cn: '播客/视频', task: '📝 内容摘要', tier: 'medium' },
+      '#meta-vision-ingest':     { cn: '视觉入口', task: '👁️ 图片路由', tier: 'easy' },
+      '#socal-ai-events':        { cn: '南加AI活动', task: '🎯 活动搜索', tier: 'medium' },
+      '#event-planning':         { cn: '活动策划', task: '📅 规划', tier: 'easy' },
+      '#networking-log':         { cn: '人脉记录', task: '👤 信息录入', tier: 'easy' },
+      '#工作搭子碎碎念':          { cn: '工作搭子', task: '💬 闲聊', tier: 'easy' },
+      '#饮酒':                   { cn: '饮酒', task: '🍷 品鉴记录', tier: 'easy' },
+      '#灰茄':                   { cn: '灰茄', task: '🚬 品鉴记录', tier: 'easy' },
+      '#品茶':                   { cn: '品茶', task: '🍵 品鉴记录', tier: 'easy' },
+      '#养花':                   { cn: '养花', task: '🌱 记录', tier: 'easy' },
+      '#灵修':                   { cn: '灵修', task: '📖 灵修提醒', tier: 'easy' },
+    };
+
+    // Model tier: what complexity level is this model suited for
+    const modelTier = m => {
+      if (!m) return 'easy';
+      if (m.includes('opus')) return 'hard';
+      if (m.includes('sonnet') || m.includes('codex') || m.includes('pro')) return 'medium';
+      return 'easy'; // flash, etc.
+    };
+
+    // Fit assessment
+    function fitLabel(s) {
+      const meta = channelMeta[s.displayName];
+      const taskTier = meta?.tier || 'medium';
+      const mTier = modelTier(s.model);
+      const tiers = { easy: 0, medium: 1, hard: 2 };
+      const diff = tiers[mTier] - tiers[taskTier];
+      if (diff >= 2) return { emoji: '🔴', text: tt('Overkill', '过高'), tip: tt('Model is far above task complexity, consider downgrade', '模型远超任务需求，建议降级') };
+      if (diff === 1) return { emoji: '🟡', text: tt('High', '偏高'), tip: tt('Could downgrade to save cost', '可考虑降级节省成本') };
+      if (diff === 0) return { emoji: '🟢', text: tt('Match', '匹配'), tip: tt('Model matches task complexity', '模型与任务复杂度匹配') };
+      if (diff === -1) return { emoji: '🔵', text: tt('Low', '偏低'), tip: tt('Task might need stronger model', '任务较复杂，可考虑升级') };
+      return { emoji: '⚪', text: '—', tip: '' };
+    }
+
+    const fitSortRank = s => {
+      const text = fitLabel(s).text;
+      if (text === tt('Overkill', '过高')) return 4;
+      if (text === tt('High', '偏高')) return 3;
+      if (text === tt('Match', '匹配')) return 2;
+      if (text === tt('Low', '偏低')) return 1;
+      return 0;
+    };
+
+    const getSortValue = (s, key) => {
+      const eff = s.today.effectiveMessages || 0;
+      if (key === 'model') return shortModel(s.model || '').toLowerCase();
+      if (key === 'messages') return s.today.messages || 0;
+      if (key === 'tokens') return s.today.totalTokens || 0;
+      if (key === 'cost') return s.today.cost || 0;
+      if (key === 'costPerMsg') return eff > 0 ? (s.today.cost || 0) / eff : null;
+      if (key === 'fit') return fitSortRank(s);
+      return null;
+    };
+
+    const sortedSessions = [...sessions];
+    if (sessionSortState.key) {
+      const dir = sessionSortState.dir === 'asc' ? 1 : -1;
+      sortedSessions.sort((a, b) => {
+        const av = getSortValue(a, sessionSortState.key);
+        const bv = getSortValue(b, sessionSortState.key);
+        if (av == null && bv == null) return a.displayName.localeCompare(b.displayName, 'zh-Hans');
+        if (av == null) return 1;
+        if (bv == null) return -1;
+        if (typeof av === 'string' || typeof bv === 'string') {
+          const cmp = String(av).localeCompare(String(bv), 'zh-Hans');
+          if (cmp !== 0) return cmp * dir;
+          return a.displayName.localeCompare(b.displayName, 'zh-Hans');
+        }
+        if (av === bv) return a.displayName.localeCompare(b.displayName, 'zh-Hans');
+        return (av - bv) * dir;
+      });
+    }
+
+    let html = `<table class="sessions-table">
+      <thead><tr>
+        <th>${tt('Channel', '频道')}</th>
+        <th>${tt('Task', '任务')}</th>
+        <th><button type="button" class="sess-sort-btn ${sessionSortState.key === 'model' ? 'active' : ''}" onclick="toggleSessionSort('model')">${tt('Model', '模型')} <span class="sess-sort-indicator">${sessionSortIndicator('model')}</span></button></th>
+        <th title="Effective = total − HEARTBEAT_OK − NO_REPLY"><button type="button" class="sess-sort-btn ${sessionSortState.key === 'messages' ? 'active' : ''}" onclick="toggleSessionSort('messages')">${tt('Messages', '消息')} ⓘ <span class="sess-sort-indicator">${sessionSortIndicator('messages')}</span></button></th>
+        <th><button type="button" class="sess-sort-btn ${sessionSortState.key === 'tokens' ? 'active' : ''}" onclick="toggleSessionSort('tokens')">Tokens <span class="sess-sort-indicator">${sessionSortIndicator('tokens')}</span></button></th>
+        <th><button type="button" class="sess-sort-btn ${sessionSortState.key === 'cost' ? 'active' : ''}" onclick="toggleSessionSort('cost')">${tt('Cost', '花费')} <span class="sess-sort-indicator">${sessionSortIndicator('cost')}</span></button></th>
+        <th><button type="button" class="sess-sort-btn ${sessionSortState.key === 'costPerMsg' ? 'active' : ''}" onclick="toggleSessionSort('costPerMsg')">${tt('$/msg', '$/条')} <span class="sess-sort-indicator">${sessionSortIndicator('costPerMsg')}</span></button></th>
+        <th><button type="button" class="sess-sort-btn ${sessionSortState.key === 'fit' ? 'active' : ''}" onclick="toggleSessionSort('fit')">${tt('Fit', '匹配')} <span class="sess-sort-indicator">${sessionSortIndicator('fit')}</span></button></th>
+      </tr></thead><tbody>`;
+
+    for (const s of sortedSessions) {
+      const meta = channelMeta[s.displayName] || {};
+      const cn = meta.cn || '';
+      const taskTag = normalizeTaskTag(meta.task || '');
+      const eff = s.today.effectiveMessages || 0;
+      const costPerMsg = eff > 0 ? (s.today.cost / eff) : 0;
+      const costColor = costPerMsg > 1.5 ? '#f87171' : costPerMsg > 0.5 ? '#fbbf24' : 'var(--green)';
+      const fit = fitLabel(s);
+
+      const thinkingLvl = s.thinkingLevel && s.thinkingLevel !== '—' ? s.thinkingLevel : '';
+      const thinkingColor = thinkingLvl === 'low' ? 'var(--green)' : thinkingLvl === 'medium' ? '#fbbf24' : thinkingLvl === 'high' ? '#f87171' : 'var(--text2)';
+      const thinkingTag = thinkingLvl
+        ? `<span style="font-size:.58rem;padding:0 4px;border-radius:3px;border:1px solid ${thinkingColor};color:${thinkingColor};margin-left:4px;vertical-align:middle">🧠 ${escHtml(thinkingLvl)}</span>`
+        : '';
+
+      const nameHtml = cn
+        ? `<span class="sess-name">${escHtml(s.displayName)}</span>${thinkingTag}<br><span style="color:var(--text2);font-size:.65rem">${isZh() ? cn : `CN: ${cn}`}</span>`
+        : `<span class="sess-name">${escHtml(s.displayName)}</span>${thinkingTag}`;
+
+      // Model selector dropdown
+      const modelSelect = s.channelId ? buildModelSelect(s.model, s.channelId, 'session') : `<span class="sess-model" style="border-color:${getModelColor(s.model)};color:${getModelColor(s.model)}">${shortModel(s.model)}</span>`;
+
+      html += `<tr>
+        <td><span class="sess-status ${s.status}"></span>${nameHtml}</td>
+        <td style="font-size:.7rem">${taskTag}</td>
+        <td>${modelSelect}</td>
+        <td>${s.today.messages}<span style="color:var(--text2);font-size:.65rem"><br>${eff} ${tt('effective', '有效')}</span></td>
+        <td>${fmtTokens(s.today.totalTokens)}</td>
+        <td style="font-weight:600">$${s.today.cost.toFixed(2)}</td>
+        <td style="color:${costColor};font-weight:600">${eff > 0 ? '$' + costPerMsg.toFixed(2) : '—'}</td>
+        <td title="${fit.tip}">${fit.emoji} <span style="font-size:.65rem">${fit.text}</span></td>
+      </tr>`;
+    }
+    html += '</tbody></table>';
+    tableEl.innerHTML = html;
+  } catch (e) {
+    tableEl.innerHTML = `<div class="empty-state"><p>${e.message}</p></div>`;
+  }
+}
+
+
+async function loadDgxStatus() {
+  const badge = document.getElementById('dgxStatusBadge');
+  const content = document.getElementById('dgxContent');
+  if (!content) return;
+  try {
+    const d = await apiFetch('/ops/dgx-status');
+
+    // Status badge
+    if (!d.online) {
+      badge.textContent = '🔴 Offline';
+      badge.style.background = 'rgba(239,68,68,.2)';
+      badge.style.color = '#ef4444';
+      content.innerHTML = `<div style="color:var(--text2);font-size:.85rem">DGX Spark is not reachable at ${escHtml(d.baseUrl)}</div>`;
+      return;
+    }
+    if (d.isSleeping) {
+      badge.textContent = '😴 Sleeping';
+      badge.style.background = 'rgba(251,191,36,.15)';
+      badge.style.color = '#fbbf24';
+    } else {
+      badge.textContent = '🟢 Online';
+      badge.style.background = 'rgba(34,197,94,.15)';
+      badge.style.color = '#22c55e';
+    }
+
+    const m = d.model || {};
+    const s = d.slots || {};
+    const g = d.genDefaults || {};
+    const slotUsed = s.busy || 0;
+    const slotTotal = s.total || 0;
+    const slotPct = slotTotal ? Math.round(slotUsed / slotTotal * 100) : 0;
+    const slotColor = slotPct >= 75 ? '#ef4444' : slotPct >= 50 ? '#fbbf24' : '#22c55e';
+
+    // Metrics section (GPU)
+    let gpuHtml = '';
+    if (d.metricsAvailable && d.metrics) {
+      const mx = d.metrics;
+      const kvPct = mx.kvCacheUsage != null ? (mx.kvCacheUsage * 100).toFixed(1) : null;
+      const kvColor = kvPct >= 90 ? '#ef4444' : kvPct >= 70 ? '#fbbf24' : '#22c55e';
+      gpuHtml = `
+        <div class="ops-row" style="grid-template-columns:repeat(3,1fr);margin-top:12px">
+          ${kvPct != null ? `<div class="glass-card" style="padding:10px;text-align:center">
+            <div style="font-size:.7rem;color:var(--text2);margin-bottom:4px">KV Cache</div>
+            <div style="font-size:1.1rem;font-weight:700;color:${kvColor}">${kvPct}%</div>
+          </div>` : ''}
+          ${mx.promptTps != null ? `<div class="glass-card" style="padding:10px;text-align:center">
+            <div style="font-size:.7rem;color:var(--text2);margin-bottom:4px">Prompt t/s</div>
+            <div style="font-size:1.1rem;font-weight:700">${mx.promptTps.toFixed(0)}</div>
+          </div>` : ''}
+          ${mx.predictTps != null ? `<div class="glass-card" style="padding:10px;text-align:center">
+            <div style="font-size:.7rem;color:var(--text2);margin-bottom:4px">Predict t/s</div>
+            <div style="font-size:1.1rem;font-weight:700">${mx.predictTps.toFixed(0)}</div>
+          </div>` : ''}
+        </div>`;
+    } else if (d.metricsNote) {
+      gpuHtml = `<div style="margin-top:10px;padding:8px 12px;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.2);border-radius:8px;font-size:.72rem;color:#fbbf24">
+        ⚠️ ${escHtml(d.metricsNote)}
+      </div>`;
+    }
+
+    content.innerHTML = `
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+        <!-- Model Info -->
+        <div class="glass-card" style="padding:12px">
+          <div style="font-size:.7rem;color:var(--text2);margin-bottom:6px;font-weight:600">MODEL</div>
+          <div style="font-weight:600;font-size:.88rem;word-break:break-all">${escHtml(m.name || '—')}</div>
+          <div style="font-size:.73rem;color:var(--text2);margin-top:4px">
+            ${m.nParams ? `<span>${m.nParams} params</span>` : ''}
+            ${m.sizeGiB ? `<span style="margin-left:8px">${m.sizeGiB} GiB quantized</span>` : ''}
+          </div>
+          <div style="font-size:.72rem;color:var(--text2);margin-top:2px">
+            ${m.nCtxTrain ? `Train ctx: ${(m.nCtxTrain/1024).toFixed(0)}k tokens` : ''}
+          </div>
+          ${m.buildInfo ? `<div style="font-size:.68rem;color:var(--text2);margin-top:4px;opacity:.6">Build: ${escHtml(m.buildInfo)}</div>` : ''}
+        </div>
+
+        <!-- Slots -->
+        <div class="glass-card" style="padding:12px">
+          <div style="font-size:.7rem;color:var(--text2);margin-bottom:6px;font-weight:600">SLOTS & CONTEXT</div>
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+            <span style="font-size:1.3rem;font-weight:700;color:${slotColor}">${slotUsed}</span>
+            <span style="color:var(--text2);font-size:.8rem">/ ${slotTotal} slots busy</span>
+          </div>
+          <div style="height:6px;background:rgba(255,255,255,.1);border-radius:3px;overflow:hidden;margin-bottom:6px">
+            <div style="width:${slotPct}%;height:100%;background:${slotColor};border-radius:3px;transition:width .4s"></div>
+          </div>
+          <div style="font-size:.72rem;color:var(--text2)">
+            ${s.ctxPerSlot ? `${(s.ctxPerSlot/1024).toFixed(0)}k ctx/slot` : ''}
+            ${s.totalCtx ? ` · ${(s.totalCtx/1024).toFixed(0)}k total` : ''}
+          </div>
+        </div>
+      </div>
+
+      <!-- Generation Defaults -->
+      <div class="glass-card" style="padding:12px;margin-bottom:0">
+        <div style="font-size:.7rem;color:var(--text2);margin-bottom:8px;font-weight:600">GENERATION SETTINGS</div>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;font-size:.73rem">
+          ${g.temperature != null ? `<span class="pill">temp <b>${g.temperature.toFixed(2)}</b></span>` : ''}
+          ${g.topP != null ? `<span class="pill">top_p <b>${g.topP.toFixed(2)}</b></span>` : ''}
+          ${g.topK != null ? `<span class="pill">top_k <b>${g.topK}</b></span>` : ''}
+          ${g.minP != null ? `<span class="pill">min_p <b>${g.minP.toFixed(3)}</b></span>` : ''}
+          ${g.maxTokens != null && g.maxTokens > 0 ? `<span class="pill">max_tokens <b>${g.maxTokens}</b></span>` : ''}
+          ${g.reasoningFormat ? `<span class="pill" style="border-color:#818cf8;color:#818cf8">reasoning <b>${escHtml(g.reasoningFormat)}</b></span>` : ''}
+          ${g.thinkingForcedOpen ? `<span class="pill" style="border-color:#818cf8;color:#818cf8">think 🧠</span>` : ''}
+        </div>
+      </div>
+      ${gpuHtml}
+      <div style="font-size:.68rem;color:var(--text2);margin-top:8px;text-align:right">
+        ${escHtml(d.baseUrl)} · updated ${new Date(d.fetchedAt).toLocaleTimeString()}
+      </div>
+    `;
+  } catch(e) {
+    badge.textContent = '❓ Error';
+    content.innerHTML = `<div style="color:#ef4444;font-size:.8rem">${escHtml(e.message)}</div>`;
+  }
+}
+
