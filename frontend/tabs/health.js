@@ -8,14 +8,16 @@ async function loadSystemInfo() {
     if (data.registry) refreshModelOptions(data.registry);
     if (data.colors) Object.assign(MODEL_COLORS, data.colors);
     if (data.displayNames) {
-      // clear and push to avoid duplicates on refresh
       MODEL_DISPLAY_NAMES.length = 0;
       MODEL_DISPLAY_NAMES.push(...data.displayNames);
     }
   } catch(e) {}
 
-  apiFetch('/ops/system').then(sys => {
-    // Update global default model from live config
+  try {
+    const [sys, mx] = await Promise.all([
+      apiFetch('/ops/system').catch(() => ({})),
+      apiFetch('/metrics').catch(() => ({})),
+    ]);
     if (sys.models?.primary) {
       const p = sys.models.primary;
       globalDefaultModel = p.includes('/') ? p.split('/').pop() : p;
@@ -23,79 +25,207 @@ async function loadSystemInfo() {
     const el = document.getElementById('systemInfoBar');
     const c = document.getElementById('systemInfoContent');
     if (!el || !c) return;
-    const memPct = sys.memory?.usePct || '0';
-    const memColor = +memPct > 85 ? 'var(--red)' : +memPct > 60 ? 'var(--yellow)' : 'var(--green)';
-    const diskPct = parseInt(sys.disk?.usePct) || 0;
+
+    const memPct = Number(sys.memory?.usePct ?? mx.memory?.pct ?? 0);
+    const memColor = memPct > 85 ? 'var(--red)' : memPct > 60 ? 'var(--yellow)' : 'var(--green)';
+    const diskUse = sys.disk?.usePct || sys.disk?.percent || '—';
+    const diskPct = parseInt(diskUse, 10) || 0;
     const diskColor = diskPct > 80 ? 'var(--red)' : diskPct > 60 ? 'var(--yellow)' : 'var(--green)';
-    c.innerHTML = `
-      <span>🖥️ <strong>${sys.macModel || sys.hostname}</strong></span>
-      <span>🍎 ${sys.macOS || '—'}</span>
-      <span>🧮 ${sys.cpus} ${tt('cores', '核')} · Load ${sys.loadAvg?.['1m']?.toFixed(1) || '—'}</span>
-      <span style="color:${memColor}">💾 RAM ${memPct}%</span>
-      <span style="color:${diskColor}">💿 Disk ${sys.disk?.usePct || '—'}</span>
-      <span>📦 Node ${sys.nodeVersion || '—'}</span>
-      <span>🦞 v${sys.clawVersion || '—'}</span>
-    `;
+
+    const host = sys.macModel || sys.hostname || mx.hostname || 'Mac mini';
+    const cpus = sys.cpus || mx.cpu?.count || '—';
+    const load1 = Number(sys.loadAvg?.['1m'] ?? mx.cpu?.overall ?? 0).toFixed(1);
+
+    const chips = [
+      `<span>🖥️ <strong>${escHtml(host)}</strong></span>`,
+      sys.macOS ? `<span>🍎 ${escHtml(sys.macOS)}</span>` : '',
+      `<span>🧮 ${cpus} ${tt('cores', '核')} · Load ${load1}</span>`,
+      `<span style="color:${memColor}">💾 RAM ${memPct.toFixed(0)}%</span>`,
+      `<span style="color:${diskColor}">💿 Disk ${escHtml(diskUse)}</span>`,
+      sys.nodeVersion ? `<span>📦 Node ${escHtml(sys.nodeVersion)}</span>` : '',
+      sys.clawVersion ? `<span>🦞 v${escHtml(sys.clawVersion)}</span>` : '',
+    ].filter(Boolean);
+    c.innerHTML = chips.join('');
     el.style.display = '';
-  }).catch(() => {});
+  } catch (_) {
+    const el = document.getElementById('systemInfoBar');
+    const c = document.getElementById('systemInfoContent');
+    if (el && c) {
+      c.innerHTML = `<span style="color:var(--yellow)">⚠️ ${tt('Mac mini status unavailable', 'Mac mini 状态暂不可用')}</span>`;
+      el.style.display = '';
+    }
+  }
+}
+
+function inferDgxActiveJob(dgx) {
+  const slots = dgx?.snapshot?.llama?.slots || [];
+  const busySlots = slots.filter(s => s?.is_processing);
+  if (!busySlots.length) {
+    return { title: tt('Idle', '空闲'), detail: tt('No active generation', '当前无推理任务') };
+  }
+  const lead = busySlots[0] || {};
+  const candidate = lead.task || lead.job || lead.source || lead.session || lead.id_task || lead.id || '';
+  const title = candidate ? String(candidate).slice(0, 18) : tt('Generating', '推理中');
+  return {
+    title,
+    detail: `${busySlots.length}/${slots.length || busySlots.length} ${tt('slots busy', '槽位忙')}`,
+  };
+}
+
+function renderDgxInfoBar(dgx) {
+  const el = document.getElementById('dgxInfoBar');
+  const c = document.getElementById('dgxInfoContent');
+  if (!el || !c) return;
+
+  const online = !!dgx?.online;
+  const gpu = dgx?.snapshot?.gpu || {};
+  const ram = dgx?.snapshot?.ram || {};
+  const modelName = dgx?.model?.name || 'local-dgx-spark';
+  const activeTask = dgx?.activeTask;
+  const gpuUtil = gpu.gpu_util_pct;
+  const gpuTemp = gpu.gpu_temp_c;
+  const gpuPower = gpu.gpu_power_w;
+  const ramUsedPct = ram.ram_total_kb ? Math.round((Number(ram.ram_used_kb || 0) / Number(ram.ram_total_kb)) * 100) : null;
+
+  c.innerHTML = online
+    ? `
+      <span>🖥️ <strong>DGX Spark</strong></span>
+      <span style="color:var(--green)">🟢 ${tt('Online', '在线')}</span>
+      <span>🧠 ${escHtml(shortModel(modelName))}</span>
+      <span>⚙️ ${activeTask ? `running #${activeTask.taskId || activeTask.slotId}` : tt('idle', '空闲')}</span>
+      <span>🎛️ GPU ${gpuUtil != null ? Number(gpuUtil).toFixed(0) + '%' : '—'}</span>
+      <span>🌡️ ${gpuTemp != null ? Number(gpuTemp).toFixed(0) + '°C' : '—'}</span>
+      <span>⚡ ${gpuPower != null ? Number(gpuPower).toFixed(1) + 'W' : '—'}</span>
+      <span>💾 RAM ${ramUsedPct != null ? ramUsedPct + '%' : '—'}</span>
+    `
+    : `<span style="color:var(--red)">🔴 DGX Spark ${tt('offline/unreachable', '离线或不可达')}</span>`;
+
+  el.style.display = '';
 }
 
 async function renderAgentMonitor() {
-  if (!agentData) return;
-  const d = agentData;
-
   await loadSystemInfo();
 
-  // Fetch today's usage from SQLite Ledger (single source of truth)
-  apiFetch('/ops/ledger/today').then((ledger) => {
-    const rows = ledger.rows || [];
-    let totalCost = 0;
-    let totalTokens = 0; // billed_total_tokens
-    const models = {};
-    let totalCalls = 0;
+  const [ledger, dgx, sparkSnap, watchdog, sessionsData, cronData] = await Promise.all([
+    apiFetch('/ops/ledger/today').catch(() => ({ rows: [] })),
+    apiFetch('/ops/dgx-status').catch(() => ({})),
+    apiFetch('/api/spark/snapshot').catch(() => ({})),
+    apiFetch('/ops/watchdog?limit=60&windowMinutes=240').catch(() => ({})),
+    apiFetch('/ops/sessions').catch(() => ({ alerts: [] })),
+    apiFetch('/ops/cron').catch(() => ({ jobs: [] })),
+  ]);
 
-    rows.forEach(r => {
-      const cost = Number(r.cost_total || 0);
-      const billed = Number(r.billed_total_tokens || 0);
-      const m = r.model || 'unknown';
-      totalCost += cost;
-      totalTokens += billed;
-      totalCalls += Number(r.calls || 0);
-      models[m] = (models[m] || 0) + billed;
-    });
+  const dgxCombined = {
+    ...dgx,
+    snapshot: dgx?.snapshot || sparkSnap?.snapshot || null,
+    watchdog: dgx?.watchdog || sparkSnap?.watchdog || null,
+  };
 
-    // Card 1: Today Cost
-    const mainBadge = document.getElementById('mainAgentBadge');
-    const mainValue = document.getElementById('mainAgentValue');
-    const mainDetail = document.getElementById('mainAgentDetail');
-    mainBadge.className = 'agent-stat-badge active';
-    mainBadge.innerHTML = '<span class="pulse-dot"></span> today';
-    mainValue.textContent = '$' + totalCost.toFixed(2);
-    mainDetail.textContent = totalCalls + ' calls';
+  renderDgxInfoBar(dgxCombined);
 
-    // Card 2: Today Tokens — use billed_total_tokens (prompt_context + output)
-    const subVal = document.getElementById('subagentValue');
-    const subBadge = document.getElementById('subagentBadge');
-    const subDetail = document.getElementById('subagentDetail');
-    subVal.textContent = fmtTokens(totalTokens);
-    subBadge.className = 'agent-stat-badge active';
-    subBadge.innerHTML = 'today';
-    const topModel = Object.entries(models).filter(([k]) => k !== 'delivery-mirror' && k !== 'unknown').sort((a, b) => b[1] - a[1])[0];
-    subDetail.textContent = topModel ? 'Top: ' + shortModel(topModel[0]) : '—';
+  const rows = ledger.by_model || ledger.rows || [];
+  let totalCost = 0;
+  let totalTokens = 0;
+  let localTokens = 0;
+  const models = {};
+  let totalCalls = 0;
 
-    // Card 5: Model Mix — visual bars (by billed_total_tokens)
-    const sorted = Object.entries(models).filter(([k]) => k !== 'delivery-mirror' && k !== 'unknown').sort((a, b) => b[1] - a[1]);
-    const mixEl = document.getElementById('modelMixBars');
-    const totalVal5 = document.getElementById('totalValue');
-    const totalBadge5 = document.getElementById('totalBadge');
-    if (mixEl) {
-      if (!sorted.length) {
-        mixEl.innerHTML = '<div class="ops-ch-meta">No ledger data today</div>';
-        return;
-      }
+  const canonicalModel = (raw) => {
+    const n = normModelStr(raw).replace(/\.gguf$/i, '');
+    if (n.includes('qwen3-5') && n.includes('35b') && n.includes('a3b')) return 'qwen3.5 35b a3b';
+    if (n.includes('qwen3-5') && n.includes('30b')) return 'qwen3.5 30b';
+    return raw || 'unknown';
+  };
+
+  rows.forEach(r => {
+    const cost = Number(r.cost_total || 0);
+    const billed = Number(
+      r.billed_total_tokens ||
+      ((r.input_tokens || 0) + (r.output_tokens || 0) + (r.cache_read_tokens || 0) + (r.cache_write_tokens || 0))
+    );
+    const m = canonicalModel(r.model || 'unknown');
+    totalCost += cost;
+    totalTokens += billed;
+    totalCalls += Number(r.calls || 0);
+    models[m] = (models[m] || 0) + billed;
+
+    const provider = String(r.provider || '').toLowerCase();
+    const modelRaw = String(r.model || '').toLowerCase();
+    const isLocal = provider.includes('local') || modelRaw.includes('gguf') || modelRaw.includes('qwen');
+    if (isLocal) localTokens += billed;
+  });
+
+  // Card 1: Today Cost
+  const mainBadge = document.getElementById('mainAgentBadge');
+  const mainValue = document.getElementById('mainAgentValue');
+  const mainDetail = document.getElementById('mainAgentDetail');
+  mainBadge.className = 'agent-stat-badge active';
+  mainBadge.innerHTML = '<span class="pulse-dot"></span> today';
+  mainValue.textContent = '$' + totalCost.toFixed(2);
+  mainDetail.textContent = totalCalls + ' calls';
+
+  // Card 2: Today Tokens
+  const subVal = document.getElementById('subagentValue');
+  const subBadge = document.getElementById('subagentBadge');
+  const subDetail = document.getElementById('subagentDetail');
+  subVal.textContent = fmtTokens(totalTokens);
+  subBadge.className = 'agent-stat-badge active';
+  subBadge.innerHTML = 'today';
+  const topModel = Object.entries(models).filter(([k]) => k !== 'delivery-mirror' && k !== 'unknown').sort((a, b) => b[1] - a[1])[0];
+  subDetail.textContent = topModel ? 'Top: ' + shortModel(topModel[0]) : '—';
+
+  // Card 3: Alert Snapshot
+  const sessionAlerts = (sessionsData.alerts || []).length;
+  const cronErrors = (cronData.jobs || []).filter(j => {
+    const s = String(j?.lastRun?.status || '').toLowerCase();
+    return s && s !== 'ok' && s !== 'success' && s !== 'delivered';
+  }).length;
+  const watchdogDown = String(watchdog.effectiveStatus || '') === 'down' ? 1 : 0;
+  const alertTotal = sessionAlerts + cronErrors + watchdogDown;
+
+  const cronVal = document.getElementById('cronValue');
+  const cronBadge = document.getElementById('cronBadge');
+  const cronDetail = document.getElementById('cronDetail');
+  cronVal.textContent = alertTotal;
+  cronBadge.className = `agent-stat-badge ${alertTotal > 0 ? 'error' : 'active'}`;
+  cronBadge.innerHTML = alertTotal > 0 ? `⚠️ ${alertTotal} ${tt('open', '未恢复')}` : `✅ ${tt('clear', '正常')}`;
+  cronDetail.textContent = `${sessionAlerts} ${tt('session', '会话')} · ${cronErrors} cron · ${watchdogDown} watchdog`;
+
+  // Card 4: DGX Active Job
+  const hookVal = document.getElementById('hookValue');
+  const hookBadge = document.getElementById('hookBadge');
+  const hookDetail = document.getElementById('hookDetail');
+  const activeJob = inferDgxActiveJob(dgxCombined);
+  hookVal.textContent = activeJob.title;
+  hookBadge.className = `agent-stat-badge ${(dgxCombined?.online && activeJob.title !== tt('Idle', '空闲')) ? 'active' : 'idle'}`;
+  hookBadge.innerHTML = dgxCombined?.online ? tt('live', '实时') : tt('offline', '离线');
+  hookDetail.textContent = activeJob.detail;
+
+  // Card 5: DGX Spark Health
+  const sentinelValue = document.getElementById('sentinelValue');
+  const sentinelBadge = document.getElementById('sentinelBadge');
+  const sentinelDetail = document.getElementById('sentinelDetail');
+  const dgxOnline = !!dgxCombined?.online;
+  const slots = dgxCombined?.snapshot?.llama?.slots || [];
+  const busy = slots.filter(s => s?.is_processing).length;
+  sentinelValue.textContent = dgxOnline ? tt('Online', '在线') : tt('Offline', '离线');
+  sentinelBadge.className = `agent-stat-badge ${dgxOnline ? 'active' : 'error'}`;
+  sentinelBadge.innerHTML = dgxOnline ? '🟢 DGX' : '🔴 DGX';
+  sentinelDetail.textContent = dgxOnline ? `${busy}/${slots.length || 0} ${tt('slots busy', '槽位忙')}` : tt('Probe failed', '连接失败');
+
+  // Card 6: Model Mix
+  const sorted = Object.entries(models).filter(([k]) => k !== 'delivery-mirror' && k !== 'unknown').sort((a, b) => b[1] - a[1]);
+  const mixEl = document.getElementById('modelMixBars');
+  const totalVal5 = document.getElementById('totalValue');
+  const totalBadge5 = document.getElementById('totalBadge');
+  if (mixEl) {
+    if (!sorted.length) {
+      mixEl.innerHTML = '<div class="ops-ch-meta">No ledger data today</div>';
+    } else {
+      const localPct = totalTokens > 0 ? Math.round((localTokens / totalTokens) * 100) : 0;
       totalVal5.textContent = sorted.length + ' models';
       totalBadge5.className = 'agent-stat-badge active';
-      totalBadge5.innerHTML = 'today';
+      totalBadge5.innerHTML = `${localPct}% ${tt('local', '本地')}`;
       let barHtml = '<div style="display:flex;height:10px;border-radius:5px;overflow:hidden;margin-bottom:6px">';
       const colors = {};
       sorted.forEach(([m, tk]) => {
@@ -104,8 +234,7 @@ async function renderAgentMonitor() {
         colors[m] = c;
         barHtml += `<div style="width:${pct}%;background:${c};min-width:2px" title="${shortModel(m)} ${pct.toFixed(0)}%"></div>`;
       });
-      barHtml += '</div>';
-      barHtml += '<div style="display:flex;flex-wrap:wrap;gap:4px 10px;font-size:.7rem">';
+      barHtml += '</div><div style="display:flex;flex-wrap:wrap;gap:4px 10px;font-size:.7rem">';
       sorted.forEach(([m, tk]) => {
         const pct = ((tk / (totalTokens || 1)) * 100).toFixed(0);
         barHtml += `<span style="color:${colors[m]}">● ${shortModel(m)} <b>${pct}%</b></span>`;
@@ -113,29 +242,8 @@ async function renderAgentMonitor() {
       barHtml += '</div>';
       mixEl.innerHTML = barHtml;
     }
-  }).catch(() => {});
+  }
 
-  // Card 3: Cron Jobs (from agent data)
-  const cronVal = document.getElementById('cronValue');
-  const cronBadge = document.getElementById('cronBadge');
-  const cronDetail = document.getElementById('cronDetail');
-  cronVal.textContent = d.crons?.total || 0;
-  cronBadge.className = `agent-stat-badge ${d.crons?.active > 0 ? 'active' : 'idle'}`;
-  cronBadge.innerHTML = d.crons?.active > 0 ? `<span class="pulse-dot"></span> ${d.crons.active} running` : `${d.crons?.total || 0} total`;
-  cronDetail.textContent = d.crons?.active > 0 ? d.crons.active + ' running' : 'all idle';
-
-  // Card 4: Sessions
-  const hookVal = document.getElementById('hookValue');
-  const hookBadge = document.getElementById('hookBadge');
-  const hookDetail = document.getElementById('hookDetail');
-  hookVal.textContent = d.activeSessions || 0;
-  hookBadge.className = `agent-stat-badge ${d.activeSessions > 0 ? 'active' : 'idle'}`;
-  hookBadge.innerHTML = d.activeSessions + ' active';
-  hookDetail.textContent = (d.totalSessions || 0) + ' total';
-
-  // Card 5: Model Mix — rendered by /ops/sessions fetch above
-
-  // Render sessions panel
   renderSessionsPanel();
 }
 
@@ -151,26 +259,19 @@ async function loadQuality() {
   try {
     const data = await apiFetch('/ops/sessions');
     const sessions = (data.sessions || []).filter(s => s.today.messages > 0);
-    // Sort by idle rate desc
-    sessions.sort((a, b) => b.today.noReplyRate - a.today.noReplyRate);
+    sessions.sort((a, b) => (b.today.messages || 0) - (a.today.messages || 0));
 
-    let html = `<div class="glass-card" style="padding:16px;margin-bottom:12px"><div class="card-title">${tt('Session Quality (Today)', '会话质量（今日）')}</div><div class="card-sub">${tt(
-      'Silent rate = (NO_REPLY + HEARTBEAT_OK) / total messages. High silent rate means many messages need no response, so you can downgrade the model to save cost.',
-      '静默率 = (NO_REPLY 无回复 + HEARTBEAT_OK 心跳) / 总消息数。高静默率说明该频道大量消息不需要回复，可考虑降级模型节省成本。'
+    let html = `<div class="glass-card" style="padding:16px;margin-bottom:12px"><div class="card-title">${tt('Session Activity (Today)', '会话活跃度（今日）')}</div><div class="card-sub">${tt(
+      'Simplified view: channel/thread name + messages + tokens + cost.',
+      '简化视图：仅展示频道/线程名称 + 消息数 + tokens + 成本。'
     )}</div></div>`;
     html += '<div class="ops-channel-list">';
     for (const s of sessions) {
-      const barWidth = Math.min(s.today.noReplyRate, 100);
-      const color = s.today.noReplyRate > 60 ? '#f87171' : s.today.noReplyRate > 30 ? '#fbbf24' : '#34d399';
       html += `<div class="ops-channel-card">
         <div class="ops-ch-left" style="flex:1">
           <div class="ops-ch-name">${escHtml(s.displayName)}</div>
-          <div style="height:6px;background:var(--border);border-radius:3px;margin-top:4px">
-            <div style="width:${barWidth}%;height:100%;background:${color};border-radius:3px"></div>
-          </div>
-          <div class="ops-ch-meta"><span>${s.today.messages} msgs</span><span>${s.today.effectiveMessages} effective</span><span>${s.today.noReply} silent</span><span>${s.today.heartbeat} heartbeat</span></div>
+          <div class="ops-ch-meta"><span>${s.today.messages} msgs</span><span>${fmtTokens(s.today.totalTokens || 0)} tokens</span><span>$${Number(s.today.cost || 0).toFixed(2)}</span></div>
         </div>
-        <div class="ops-ch-right"><div class="ops-ch-tokens" style="color:${color}">${s.today.noReplyRate}%</div><div class="ops-ch-cost">${tt('Silent rate', '静默率')}</div></div>
       </div>`;
     }
     html += '</div>';

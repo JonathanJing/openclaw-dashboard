@@ -96,6 +96,9 @@ async function apiFetch(path, opts = {}) {
   const res = await fetch(url, { ...opts, headers });
   if (!res.ok) {
     const ct = res.headers.get('content-type') || '';
+    if (res.status === 401) {
+      throw new Error('Unauthorized — please sign in at /login (cookie-only supported).');
+    }
     if (ct.includes('json')) {
       const data = await res.json().catch(() => ({}));
       const msg = data?.error || data?.message || res.statusText;
@@ -165,8 +168,8 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     if (btn.dataset.tab === 'overview') { loadSessions(); loadTasks(true); }
     if (btn.dataset.tab === 'tasks') { loadCronEnhanced(); loadCronCosts(); }
     if (btn.dataset.tab === 'ops') { loadOpsChannels(); loadOpsAlltime(); loadOpsAudit(); }
-    if (btn.dataset.tab === 'health') { loadOperationsStatus(); loadQuality(); loadAudit(); loadDgxStatus(); }
-    if (btn.dataset.tab === 'config') { loadConfig(); loadFileList(); }
+    if (btn.dataset.tab === 'health') { loadOperationsStatus(); loadDgxStatus(); }
+    if (btn.dataset.tab === 'config') { loadConfig(); loadSkills(); loadFileList(); }
   });
 });
 
@@ -313,7 +316,7 @@ function renderWatchdogUptimeBar(tl, containerEl) {
   const bars = pts.map(p => {
     const c = COLOR[p.status] || COLOR.null;
     const label = (p.ts ? wdFmtClock(Date.parse(p.ts)) + ' · ' : '') + (p.status || '?');
-    return `<div title="${escHtml(label)}" style="flex:1;min-width:3px;height:20px;background:${c};border-radius:2px"></div>`;
+    return `<div title="${escHtml(label)}" style="flex:1 1 0;min-width:0;width:0;height:20px;background:${c};border-radius:2px"></div>`;
   }).join('');
   containerEl.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px">
@@ -450,6 +453,34 @@ function renderWatchdogStatus(data) {
           ${inc.suppressed > 0 ? `<span style="opacity:.6">${inc.suppressed} 条已抑制</span>` : ''}
         </div>
       </div>`;
+    }
+  }
+
+  // Down timeline list (explicit red windows for quick visual scan)
+  const tlPoints = Array.isArray(tl?.points) ? tl.points : [];
+  if (tlPoints.length) {
+    const downWindows = [];
+    let cur = null;
+    for (const p of tlPoints) {
+      const ts = Date.parse(p.ts || '');
+      const down = p.status === 'down';
+      if (down && !cur) cur = { start: ts, end: ts };
+      else if (down && cur) cur.end = ts;
+      else if (!down && cur) { downWindows.push(cur); cur = null; }
+    }
+    if (cur) downWindows.push(cur);
+
+    html += `<div style="font-size:.7rem;font-weight:600;color:var(--text2);margin:10px 0 6px;text-transform:uppercase;letter-spacing:.05em">Downtime Timeline (24h)</div>`;
+    if (!downWindows.length) {
+      html += `<div class="ops-ch-meta" style="padding:4px 0 8px">No red windows in the last 24h.</div>`;
+    } else {
+      html += downWindows.map((w) => {
+        const dur = wdFmtDuration(Math.max(0, Math.floor((w.end - w.start) / 1000)));
+        return `<div class="ops-channel-card" style="padding:8px 12px;margin-bottom:6px;border-left:3px solid var(--red)">
+          <div style="font-size:.72rem;color:var(--text2)">${wdFmtDateTime(w.start)} → ${wdFmtDateTime(w.end)}</div>
+          <div style="font-size:.76rem;color:var(--red);margin-top:2px">${dur}</div>
+        </div>`;
+      }).join('');
     }
   }
 

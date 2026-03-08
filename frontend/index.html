@@ -63,29 +63,29 @@
     </div>
     <div class="agent-stat stat-cron">
       <div class="agent-stat-header">
-        <span class="agent-stat-icon">⏰</span>
+        <span class="agent-stat-icon">🚨</span>
         <span class="agent-stat-badge idle" id="cronBadge">—</span>
       </div>
       <div class="agent-stat-value val-yellow" id="cronValue">0</div>
-      <div class="agent-stat-label">Cron Jobs</div>
+      <div class="agent-stat-label">Alert Snapshot</div>
       <div class="agent-stat-detail" id="cronDetail">—</div>
     </div>
     <div class="agent-stat stat-hook">
       <div class="agent-stat-header">
-        <span class="agent-stat-icon">💬</span>
+        <span class="agent-stat-icon">⚙️</span>
         <span class="agent-stat-badge idle" id="hookBadge">—</span>
       </div>
-      <div class="agent-stat-value val-blue" id="hookValue">0</div>
-      <div class="agent-stat-label">Sessions</div>
+      <div class="agent-stat-value val-blue" id="hookValue">—</div>
+      <div class="agent-stat-label">DGX Active Job</div>
       <div class="agent-stat-detail" id="hookDetail">—</div>
     </div>
     <div class="agent-stat stat-sentinel" style="--accent:var(--blue)">
       <div class="agent-stat-header">
-        <span class="agent-stat-icon">🛡️</span>
+        <span class="agent-stat-icon">🖥️</span>
         <span class="agent-stat-badge idle" id="sentinelBadge">—</span>
       </div>
       <div class="agent-stat-value val-accent" id="sentinelValue">—</div>
-      <div class="agent-stat-label" id="sentinelLabel">Sentinel</div>
+      <div class="agent-stat-label" id="sentinelLabel">DGX Spark Health</div>
       <div class="agent-stat-detail" id="sentinelDetail">—</div>
     </div>
     <div class="agent-stat stat-total">
@@ -100,8 +100,11 @@
   </div>
 
   <!-- System Info Bar (fixed, always visible) -->
-  <div id="systemInfoBar" class="glass-card" style="padding:10px 16px;margin-bottom:12px;font-size:.75rem;display:none">
+  <div id="systemInfoBar" class="glass-card" style="padding:10px 16px;margin-bottom:8px;font-size:.75rem;display:none">
     <div style="display:flex;flex-wrap:wrap;gap:6px 16px;align-items:center" id="systemInfoContent"></div>
+  </div>
+  <div id="dgxInfoBar" class="glass-card" style="padding:10px 16px;margin-bottom:12px;font-size:.75rem;display:none">
+    <div style="display:flex;flex-wrap:wrap;gap:6px 16px;align-items:center" id="dgxInfoContent"></div>
   </div>
 
   <div id="watchdogGlobalAlert" class="glass-card" style="padding:10px 14px;margin-bottom:12px;border-color:var(--red);display:none">
@@ -209,7 +212,7 @@
   <div class="tab-panel" id="panel-health">
     <div class="glass-card" style="padding:16px;margin-bottom:16px">
       <div class="card-title" style="margin-bottom:4px">System Health</div>
-      <div class="card-sub">Watchdog, runtime state, quality and audit</div>
+      <div class="card-sub">Watchdog, runtime state, quality</div>
     </div>
 
     <!-- DGX Spark Status Card -->
@@ -223,15 +226,15 @@
       </div>
       <div id="dgxContent"><div class="skeleton skeleton-card" style="height:80px"></div></div>
     </div>
-    <div class="glass-card" style="padding:16px;margin-bottom:16px">
+    <div class="glass-card" style="padding:16px;margin-bottom:16px;display:none" id="qualityCardHidden">
       <div class="card-title" style="margin-bottom:4px">Quality</div>
-      <div class="card-sub" style="margin-bottom:10px">Session quality and silence ratios</div>
-      <div id="qualityContent"><div class="skeleton skeleton-card"></div></div>
+      <div class="card-sub" style="margin-bottom:10px">Hidden in v2.6</div>
+      <div id="qualityContent"></div>
     </div>
-    <div class="glass-card" style="padding:16px;margin-bottom:16px">
+    <div class="glass-card" style="padding:16px;margin-bottom:16px;display:none" id="auditCardHidden">
       <div class="card-title" style="margin-bottom:4px">Audit</div>
-      <div class="card-sub" style="margin-bottom:10px">Model fit suggestions and configuration checks</div>
-      <div id="auditContent2"><div class="skeleton skeleton-card"></div></div>
+      <div class="card-sub" style="margin-bottom:10px">Temporarily hidden in v2.6</div>
+      <div id="auditContent2"></div>
     </div>
     <div class="glass-card" style="padding:16px">
       <div class="card-title" style="margin-bottom:4px">⚙️ Operations Management</div>
@@ -278,6 +281,11 @@
       <div class="card-title" style="margin-bottom:4px">Config</div>
       <div class="card-sub" style="margin-bottom:10px">Server capabilities and loaded configuration files</div>
       <div id="configContent"><div class="skeleton skeleton-card"></div></div>
+    </div>
+    <div class="glass-card" style="padding:16px;margin-bottom:16px">
+      <div class="card-title" style="margin-bottom:4px">Skills</div>
+      <div class="card-sub" style="margin-bottom:10px">Installed skills from workspace and system directories</div>
+      <div id="skillsContent"><div class="skeleton skeleton-card"></div></div>
     </div>
     <div class="glass-card" style="padding:16px">
       <div class="card-title" style="margin-bottom:4px">Documents</div>

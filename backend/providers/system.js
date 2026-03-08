@@ -2,11 +2,49 @@
 /**
  * System Provider — disk, uptime, LaunchAgent status.
  */
+const os = require('os');
 const { execFileSync, execSync } = require('child_process');
-const { jsonReply, bytesHuman, formatDuration } = require('../lib/http-helpers');
+const { jsonReply } = require('../lib/http-helpers');
 
 function getSystemInfo() {
-  const info = {};
+  const info = {
+    hostname: os.hostname(),
+    cpus: os.cpus().length,
+    loadAvg: { '1m': os.loadavg()[0], '5m': os.loadavg()[1], '15m': os.loadavg()[2] },
+    nodeVersion: process.version.replace(/^v/, ''),
+    memory: {},
+  };
+
+  // macOS version/model
+  try {
+    info.macOS = execFileSync('sw_vers', ['-productVersion'], { encoding: 'utf8', timeout: 3000 }).trim();
+  } catch {}
+  try {
+    info.macModel = execFileSync('sysctl', ['-n', 'hw.model'], { encoding: 'utf8', timeout: 3000 }).trim();
+  } catch {}
+
+  // App version
+  try {
+    info.clawVersion = execFileSync('openclaw', ['--version'], { encoding: 'utf8', timeout: 3000 }).trim().replace(/^v/, '');
+  } catch {}
+  if (!info.clawVersion) {
+    try {
+      info.clawVersion = JSON.parse(require('fs').readFileSync('/opt/homebrew/lib/node_modules/openclaw/package.json', 'utf8')).version;
+    } catch {}
+  }
+
+  // Memory
+  try {
+    const total = os.totalmem();
+    const free = os.freemem();
+    const usedPct = ((total - free) / total) * 100;
+    info.memory = {
+      total,
+      free,
+      used: total - free,
+      usePct: Number(usedPct.toFixed(1)),
+    };
+  } catch {}
 
   // Disk
   try {
@@ -19,6 +57,7 @@ function getSystemInfo() {
         used: parts[2],
         available: parts[3],
         percent: parts[4],
+        usePct: parts[4],
       };
     }
   } catch {}
@@ -53,6 +92,10 @@ function getSystemInfo() {
 
 function register(router) {
   router.add('GET', '/api/system', (_req, res) => {
+    jsonReply(res, 200, getSystemInfo());
+  });
+  // Legacy compat
+  router.add('GET', '/ops/system', (_req, res) => {
     jsonReply(res, 200, getSystemInfo());
   });
 }

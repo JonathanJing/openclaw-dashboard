@@ -175,12 +175,24 @@ async function loadOpsAlltime(days) {
     if (subEl) subEl.textContent = `${fmtTokens(totalTokens)} tokens · $${totalCost.toFixed(2)} · ${rangeLabel}`;
 
     // Today's model breakdown (from /api/ledger/today → by_model)
-    const todayModels = (today.by_model || []).map(r => ({
-      name: r.model,
-      tokens: Number((r.input_tokens || 0) + (r.output_tokens || 0) + (r.cache_read_tokens || 0) + (r.cache_write_tokens || 0)),
-      cost: Number(r.cost_total || 0),
-      messages: Number(r.calls || 0),
-    }));
+    // Normalize aliases (especially local Qwen variants) to avoid duplicate rows.
+    function canonicalModelName(raw) {
+      const n = normModelStr(raw).replace(/\.gguf$/i, '');
+      if (n.includes('qwen3-5') && n.includes('35b') && n.includes('a3b')) return 'qwen3.5 35b a3b';
+      if (n.includes('qwen3-5') && n.includes('30b')) return 'qwen3.5 30b';
+      return shortModel(raw).toLowerCase();
+    }
+
+    const todayAgg = new Map();
+    for (const r of (today.by_model || [])) {
+      const key = canonicalModelName(r.model || 'unknown');
+      const prev = todayAgg.get(key) || { name: key, raw: r.model || key, tokens: 0, cost: 0, messages: 0 };
+      prev.tokens += Number((r.input_tokens || 0) + (r.output_tokens || 0) + (r.cache_read_tokens || 0) + (r.cache_write_tokens || 0));
+      prev.cost += Number(r.cost_total || 0);
+      prev.messages += Number(r.calls || 0);
+      todayAgg.set(key, prev);
+    }
+    const todayModels = Array.from(todayAgg.values()).sort((a, b) => b.tokens - a.tokens);
     const todayTotal = { tokens: todayModels.reduce((a, m) => a + m.tokens, 0) };
 
     modelsEl.innerHTML = todayModels.length ? todayModels.map(m => {
@@ -188,8 +200,8 @@ async function loadOpsAlltime(days) {
       return `<div class="ops-channel-card">
         <div class="ops-ch-left">
           <div class="ops-ch-name" style="font-size:.85rem">
-            <span class="ops-model-dot" style="background:${getModelColor(m.name)};display:inline-block;margin-right:6px"></span>
-            ${shortModel(m.name)}
+            <span class="ops-model-dot" style="background:${getModelColor(m.raw || m.name)};display:inline-block;margin-right:6px"></span>
+            ${shortModel(m.raw || m.name)}
           </div>
           <div class="ops-ch-meta"><span>${m.messages} msgs</span><span>${pct}%</span></div>
         </div>

@@ -41,6 +41,36 @@ async function loadConfig() {
   } catch (e) { el.innerHTML = `<p>${e.message}</p>`; }
 }
 
+async function loadSkills() {
+  const el = document.getElementById('skillsContent');
+  if (!el) return;
+  try {
+    const data = await apiFetch('/skills');
+    const skills = Array.isArray(data?.skills) ? data.skills : [];
+    if (!skills.length) {
+      el.innerHTML = `<div class="ops-ch-meta">No skills found.</div>`;
+      return;
+    }
+
+    const sorted = [...skills].sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
+    const chips = sorted.map((s) => {
+      const desc = s.description || s.summary || '';
+      const title = `${s.name || 'unknown'}${desc ? ' — ' + desc : ''}`;
+      return `<div class="pill" title="${escHtml(title)}" style="max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(s.name || 'unknown')}</div>`;
+    }).join('');
+
+    el.innerHTML = `
+      <div class="ops-cost-row" style="margin-bottom:10px">
+        <span class="ops-cost-label">Installed</span>
+        <span class="ops-cost-value">${sorted.length}</span>
+      </div>
+      <div class="skills-grid">${chips}</div>
+    `;
+  } catch (e) {
+    el.innerHTML = `<div class="ops-ch-meta" style="color:var(--red)">Failed to load skills: ${escHtml(e.message)}</div>`;
+  }
+}
+
 // ─── Enhanced Cron ───
 
 async function loadFileList() {

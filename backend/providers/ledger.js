@@ -8,14 +8,9 @@ const { sqliteJson } = require('../lib/sqlite-helper');
 const { jsonReply } = require('../lib/http-helpers');
 const gt = require('./ground-truth');
 
-function getTodayPstStartIso() {
+function getTodayPstDateString() {
   const now = new Date();
   const pst = new Date(now.toLocaleString('en-US', { timeZone: 'America/Los_Angeles' }));
-  pst.setHours(0, 0, 0, 0);
-  // Convert back to UTC ISO
-  const offset = now.getTime() - pst.getTime();
-  const utcStart = new Date(now.getTime() - (now.getTime() - pst.getTime()) + (pst.getTimezoneOffset() * 60000));
-  // Simpler: use date string
   const y = pst.getFullYear();
   const m = String(pst.getMonth() + 1).padStart(2, '0');
   const d = String(pst.getDate()).padStart(2, '0');
@@ -23,7 +18,7 @@ function getTodayPstStartIso() {
 }
 
 function handleToday(_req, res) {
-  const todayDate = getTodayPstStartIso();
+  const todayDate = getTodayPstDateString();
   const rows = sqliteJson(cfg.LEDGER_DB, `
     SELECT provider, model, channel, chat_id,
       count(*) as calls,
@@ -33,7 +28,7 @@ function handleToday(_req, res) {
       sum(cache_write_tokens) as cache_write_tokens,
       round(sum(cost_total), 6) as cost_total
     FROM calls
-    WHERE date(ts) >= '${todayDate}'
+    WHERE date(ts, 'localtime') >= '${todayDate}'
     GROUP BY provider, model, channel, chat_id
     ORDER BY cost_total DESC
   `);
@@ -65,12 +60,12 @@ function handleToday(_req, res) {
 function handleHistory(req, res, query) {
   const days = parseInt(query.days || '30', 10);
   const rows = sqliteJson(cfg.LEDGER_DB, `
-    SELECT date(ts) as day, provider, model,
+    SELECT date(ts, 'localtime') as day, provider, model,
       count(*) as calls,
       sum(input_tokens + output_tokens + cache_read_tokens + cache_write_tokens) as total_tokens,
       round(sum(cost_total), 6) as cost_total
     FROM calls
-    WHERE ts >= date('now', '-${days} days')
+    WHERE date(ts, 'localtime') >= date('now', 'localtime', '-${days} days')
     GROUP BY day, provider, model
     ORDER BY day ASC, cost_total DESC
   `);
@@ -86,7 +81,7 @@ function handleByChannel(req, res, query) {
       sum(input_tokens + output_tokens) as total_tokens,
       round(sum(cost_total), 6) as cost_total
     FROM calls
-    WHERE ts >= date('now', '-${days} days') AND chat_id IS NOT NULL
+    WHERE date(ts, 'localtime') >= date('now', 'localtime', '-${days} days') AND chat_id IS NOT NULL
     GROUP BY chat_id
     ORDER BY cost_total DESC
   `);
@@ -100,12 +95,12 @@ function handleDrift(req, res, query) {
   const days = parseInt(query.days || '30', 10);
   const provider = query.provider || 'anthropic';
   const rows = sqliteJson(cfg.LEDGER_DB, `
-    SELECT date(ts) as day,
+    SELECT date(ts, 'localtime') as day,
       sum(input_tokens) as ledger_input,
       sum(output_tokens) as ledger_output,
       round(sum(cost_total), 6) as ledger_cost
     FROM calls
-    WHERE provider = '${provider}' AND ts >= date('now', '-${days} days')
+    WHERE provider = '${provider}' AND date(ts, 'localtime') >= date('now', 'localtime', '-${days} days')
     GROUP BY day ORDER BY day
   `);
   jsonReply(res, 200, { provider, days, rows });

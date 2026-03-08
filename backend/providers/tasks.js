@@ -118,6 +118,86 @@ function register(router) {
     } catch (e) { errorReply(res, 400, e.message); }
   });
 
+  // Get task by id
+  router.add('GET', '/tasks/:id', (req, res) => {
+    const id = req.params?.id;
+    const tasks = readTasks();
+    const task = tasks.find(t => t.id === id);
+    if (!task) return errorReply(res, 404, 'Task not found');
+    return jsonReply(res, 200, task);
+  });
+
+  // Update task by id
+  router.add('PATCH', '/tasks/:id', async (req, res) => {
+    try {
+      const id = req.params?.id;
+      const body = await readJsonBody(req);
+      const tasks = readTasks();
+      const idx = tasks.findIndex(t => t.id === id);
+      if (idx < 0) return errorReply(res, 404, 'Task not found');
+
+      const task = tasks[idx];
+      const allowed = ['title', 'description', 'content', 'status', 'priority', 'assignee', 'dueDate', 'source'];
+      for (const k of allowed) {
+        if (Object.prototype.hasOwnProperty.call(body, k)) task[k] = body[k];
+      }
+      task.updatedAt = new Date().toISOString();
+      tasks[idx] = task;
+      writeTasks(tasks);
+      return jsonReply(res, 200, task);
+    } catch (e) {
+      return errorReply(res, 400, e.message);
+    }
+  });
+
+  // Delete task by id
+  router.add('DELETE', '/tasks/:id', (req, res) => {
+    const id = req.params?.id;
+    const tasks = readTasks();
+    const idx = tasks.findIndex(t => t.id === id);
+    if (idx < 0) return errorReply(res, 404, 'Task not found');
+    const [deleted] = tasks.splice(idx, 1);
+    writeTasks(tasks);
+    return jsonReply(res, 200, { ok: true, deleted: { id: deleted.id, title: deleted.title } });
+  });
+
+  // Add note
+  router.add('POST', '/tasks/:id/notes', async (req, res) => {
+    try {
+      const id = req.params?.id;
+      const body = await readJsonBody(req);
+      const text = (body?.text || body?.content || '').trim();
+      if (!text) return errorReply(res, 400, 'text required');
+
+      const tasks = readTasks();
+      const idx = tasks.findIndex(t => t.id === id);
+      if (idx < 0) return errorReply(res, 404, 'Task not found');
+
+      const note = {
+        id: uuid(),
+        text: sanitizeUntrustedText(text, 10000),
+        createdAt: new Date().toISOString(),
+      };
+      tasks[idx].notes = Array.isArray(tasks[idx].notes) ? tasks[idx].notes : [];
+      tasks[idx].notes.push(note);
+      tasks[idx].updatedAt = new Date().toISOString();
+      writeTasks(tasks);
+      return jsonReply(res, 201, note);
+    } catch (e) {
+      return errorReply(res, 400, e.message);
+    }
+  });
+
+  // Trigger sub-agent execution for one task
+  router.add('POST', '/tasks/:id/spawn', (req, res) => {
+    const id = req.params?.id;
+    const tasks = readTasks();
+    const task = tasks.find(t => t.id === id);
+    if (!task) return errorReply(res, 404, 'Task not found');
+    triggerTaskExecution(task);
+    return jsonReply(res, 200, { ok: true, id: task.id, queued: true });
+  });
+
   // Logs (task history + memory logs)
   router.add('GET', '/logs', (_req, res) => {
     try {

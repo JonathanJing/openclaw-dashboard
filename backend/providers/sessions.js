@@ -10,6 +10,47 @@ const { jsonReply } = require('../lib/http-helpers');
 const { sqliteJson } = require('../lib/sqlite-helper');
 const gt = require('./ground-truth');
 
+function loadCronNameMap() {
+  try {
+    const raw = JSON.parse(fs.readFileSync(cfg.CRON_STORE_PATH, 'utf8'));
+    const jobs = Array.isArray(raw) ? raw : (raw.jobs || []);
+    const map = new Map();
+    for (const j of jobs) {
+      const id = String(j.id || j.jobId || '');
+      if (!id) continue;
+      map.set(id, j.name || id);
+    }
+    return map;
+  } catch {
+    return new Map();
+  }
+}
+
+function prettifySessionName(entry, key, chatId, channelNames, cronNameMap) {
+  const rawDisplay = String(entry?.displayName || '').trim();
+  const groupChannel = String(entry?.groupChannel || '').trim();
+  const groupSubject = String(entry?.groupSubject || '').trim();
+
+  // Cron sessions: resolve job id to human-friendly cron name
+  const cronMatch = String(key).match(/:cron:([a-f0-9-]{8,36})/i);
+  if (cronMatch) {
+    const cronId = cronMatch[1];
+    const cronName = cronNameMap.get(cronId) || cronId;
+    return `Cron · ${cronName}`;
+  }
+
+  // Prefer thread/channel names captured by OpenClaw session metadata
+  if (rawDisplay && !/^discord:g-/i.test(rawDisplay)) return rawDisplay;
+  if (groupChannel) return groupChannel;
+  if (groupSubject) return groupSubject;
+
+  // Fall back to static channel mapping, then readable id
+  if (chatId && channelNames[chatId]) return channelNames[chatId];
+  if (chatId) return `#${chatId}`;
+
+  return rawDisplay || key;
+}
+
 function readSessions() {
   try {
     return JSON.parse(fs.readFileSync(cfg.SESSIONS_FILE, 'utf8'));
@@ -29,6 +70,7 @@ function readSubagentRuns() {
 function handleSessions(_req, res) {
   const raw = readSessions();
   const channelNames = gt.parse().channelNames;
+  const cronNameMap = loadCronNameMap();
 
   // Get today's date in PST
   const now = new Date();
@@ -46,7 +88,7 @@ function handleSessions(_req, res) {
         sum(cache_read_tokens + cache_write_tokens) as cache_tokens,
         sum(input_tokens + output_tokens + cache_read_tokens + cache_write_tokens) as totalTokens,
         round(sum(cost_total), 6) as cost
-      FROM calls WHERE date(ts) >= '${todayDate}'
+      FROM calls WHERE date(ts, 'localtime') >= '${todayDate}'
       GROUP BY session_key
     `);
     for (const r of rows) todayStats[r.session_key] = r;
@@ -57,7 +99,7 @@ function handleSessions(_req, res) {
     const origin = entry.origin || {};
     const chatId = extractChatId(key, origin);
     const channel = origin.provider || origin.surface || 'unknown';
-    const displayName = chatId ? (channelNames[chatId] || `#${chatId}`) : (entry.displayName || entry.groupChannel || key);
+    const displayName = prettifySessionName(entry, key, chatId, channelNames, cronNameMap);
     const daysSinceUpdate = entry.updatedAt ? ((Date.now() - entry.updatedAt) / 86400000) : 99;
 
     // Match ledger stats by session_key pattern
@@ -148,6 +190,7 @@ function register(router) {
   router.add('GET', '/api/sessions',   (req, res) => handleSessions(req, res));
   router.add('GET', '/api/subagents',  (req, res) => handleSubagents(req, res));
   // Legacy compat
+  router.add('GET', '/ops/sessions',   (req, res) => handleSessions(req, res));
 }
 
 module.exports = { register, readSessions };

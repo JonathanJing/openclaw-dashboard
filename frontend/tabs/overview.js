@@ -3,11 +3,11 @@
 
 async function loadAgentMonitor() {
   try {
-    agentData = await apiFetch('/agents');
-    renderAgentMonitor();
+    agentData = await apiFetch('/agents').catch(() => null);
+    await renderAgentMonitor();
   } catch(e) {
     // Silently fail - monitor is non-critical
-    console.warn('Agent monitor fetch failed:', e.message);
+    console.warn('Agent monitor render failed:', e.message);
   }
 }
 
@@ -204,15 +204,23 @@ async function loadDgxStatus() {
   try {
     const d = await apiFetch('/ops/dgx-status');
 
+    const snap = d.snapshot || {};
+    const llama = snap.llama || {};
+    const modelFromSnap = llama.model || {};
+
+    const online = !!d.online;
+    const isSleeping = !!d.isSleeping;
+    const baseUrl = d.baseUrl || d?.config?.metricsUrl || 'unknown';
+
     // Status badge
-    if (!d.online) {
+    if (!online) {
       badge.textContent = '🔴 Offline';
       badge.style.background = 'rgba(239,68,68,.2)';
       badge.style.color = '#ef4444';
-      content.innerHTML = `<div style="color:var(--text2);font-size:.85rem">DGX Spark is not reachable at ${escHtml(d.baseUrl)}</div>`;
+      content.innerHTML = `<div style="color:var(--text2);font-size:.85rem">DGX Spark is not reachable at ${escHtml(baseUrl)}</div>`;
       return;
     }
-    if (d.isSleeping) {
+    if (isSleeping) {
       badge.textContent = '😴 Sleeping';
       badge.style.background = 'rgba(251,191,36,.15)';
       badge.style.color = '#fbbf24';
@@ -222,9 +230,33 @@ async function loadDgxStatus() {
       badge.style.color = '#22c55e';
     }
 
-    const m = d.model || {};
-    const s = d.slots || {};
-    const g = d.genDefaults || {};
+    // Backward + forward compatible field mapping
+    const m = d.model || {
+      name: modelFromSnap.model_path || modelFromSnap.name || 'Qwen3.5-35B',
+      nParams: modelFromSnap.n_params_human || modelFromSnap.n_params || null,
+      sizeGiB: modelFromSnap.size_gib || null,
+      nCtxTrain: modelFromSnap.n_ctx_train || null,
+      buildInfo: llama.version || null,
+    };
+    const slotsObj = d.slots || {};
+    const slotList = Array.isArray(llama.slots) ? llama.slots : [];
+    const slotBusyFallback = slotList.filter(x => x.is_processing).length;
+    const slotTotalFallback = slotList.length;
+    const ctxPerSlotFallback = slotList[0]?.n_ctx || null;
+    const s = {
+      busy: slotsObj.busy ?? slotBusyFallback,
+      total: slotsObj.total ?? slotTotalFallback,
+      ctxPerSlot: slotsObj.ctxPerSlot ?? ctxPerSlotFallback,
+      totalCtx: slotsObj.totalCtx ?? ((slotTotalFallback && ctxPerSlotFallback) ? slotTotalFallback * ctxPerSlotFallback : null),
+    };
+    const g = d.genDefaults || {
+      temperature: llama.default_generation_settings?.temperature,
+      topP: llama.default_generation_settings?.top_p,
+      topK: llama.default_generation_settings?.top_k,
+      minP: llama.default_generation_settings?.min_p,
+      maxTokens: llama.default_generation_settings?.n_predict,
+      reasoningFormat: llama.default_generation_settings?.reasoning_format,
+    };
     const slotUsed = s.busy || 0;
     const slotTotal = s.total || 0;
     const slotPct = slotTotal ? Math.round(slotUsed / slotTotal * 100) : 0;
@@ -305,7 +337,7 @@ async function loadDgxStatus() {
       </div>
       ${gpuHtml}
       <div style="font-size:.68rem;color:var(--text2);margin-top:8px;text-align:right">
-        ${escHtml(d.baseUrl)} · updated ${new Date(d.fetchedAt).toLocaleTimeString()}
+        ${escHtml(baseUrl)} · updated ${new Date(d.fetchedAt || Date.now()).toLocaleTimeString()}
       </div>
     `;
   } catch(e) {

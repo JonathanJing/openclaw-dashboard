@@ -75,34 +75,8 @@ function proxyToOld(req, res) {
   req.pipe(proxyReq);
 }
 
-// Routes that still need the old server
-const LEGACY_ROUTES = [
-  // Ops views
-  '/ops/sessions',
-  '/ops/channels',
-  '/ops/alltime',
-  '/ops/cron-costs',
-  '/ops/audit',
-  '/ops/secaudit',
-  '/ops/dgx-status',
-  '/ops/models',
-  '/ops/session-model',
-  '/ops/cron-model',
-  '/ops/update-openclaw',
-  '/ops/restart',
-  '/ops/config',
-  // Agent monitor
-  '/agents',
-  // Cron CRUD (old)
-  '/cron',
-  '/cron/status',
-  // Others
-  '/backup',
-  '/backup/load',
-  '/memory',
-  '/metrics',
-  '/vision/stats',
-];
+// v2.6: legacy proxy is optional fallback only. Keep list as metadata for emergency rollback.
+const LEGACY_ROUTES = [];
 
 // ── Stub handlers for routes not yet fully migrated ─────────────────
 const fs = require('fs');
@@ -128,7 +102,7 @@ function handleOpsChannels(_req, res) {
       SELECT channel, chat_id, count(*) as messages,
         sum(input_tokens + output_tokens + cache_read_tokens + cache_write_tokens) as totalTokens,
         round(sum(cost_total), 6) as cost
-      FROM calls WHERE date(ts) >= date('now')
+      FROM calls WHERE date(ts, 'localtime') >= date('now', 'localtime')
       GROUP BY channel, chat_id ORDER BY cost DESC
     `);
     jsonReply(res, 200, { channels: rows });
@@ -202,28 +176,61 @@ function register(router) {
     const gt = spark.readGroundTruth();
     const dgxBase = gt?.metricsUrl?.replace('/metrics', '') || 'http://192.168.1.152:8000';
 
-    // Quick probe
-    let online = false;
     const nodeHttp = require('http');
-    try {
-      online = await new Promise((resolve) => {
-        const t = setTimeout(() => resolve(false), 4000);
-        nodeHttp.get(`${dgxBase}/health`, (r) => {
-          let body = '';
-          r.on('data', d => body += d);
-          r.on('end', () => { clearTimeout(t); try { resolve(JSON.parse(body)?.status === 'ok'); } catch { resolve(false); } });
-        }).on('error', () => { clearTimeout(t); resolve(false); });
+    const fetchJson = (path, timeoutMs = 3000) => new Promise((resolve) => {
+      const t = setTimeout(() => resolve(null), timeoutMs);
+      nodeHttp.get(`${dgxBase}${path}`, (r) => {
+        let body = '';
+        r.on('data', d => body += d);
+        r.on('end', () => {
+          clearTimeout(t);
+          try { resolve(JSON.parse(body)); } catch { resolve(null); }
+        });
+      }).on('error', () => {
+        clearTimeout(t);
+        resolve(null);
       });
-    } catch {}
+    });
+
+    // Quick probe + richer runtime data
+    const health = await fetchJson('/health', 3500);
+    const props = await fetchJson('/props', 3500);
+    const slots = await fetchJson('/slots', 3500);
+    const models = await fetchJson('/v1/models', 3500);
+
+    const online = health?.status === 'ok';
 
     // Use watchdog status as fallback for online determination
     const watchdogUp = watchdog?.status === 'up';
     const effectiveOnline = online || watchdogUp;
 
+    const slotList = Array.isArray(slots) ? slots : [];
+    const busySlots = slotList.filter(s => s?.is_processing);
+    const activeTask = busySlots[0] ? {
+      slotId: busySlots[0].id,
+      taskId: busySlots[0].id_task || null,
+      promptTokens: busySlots[0].n_prompt_tokens || null,
+      generatedTokens: busySlots[0].n_decoded || null,
+    } : null;
+    const modelName =
+      props?.model_path ||
+      props?.model ||
+      props?.model_name ||
+      models?.data?.[0]?.id ||
+      models?.models?.[0]?.name ||
+      'local-dgx-spark (configured)';
+
     jsonReply(res, 200, {
       online: effectiveOnline,
       isSleeping: false,
       baseUrl: dgxBase,
+      model: modelName ? { name: modelName } : null,
+      activeTask,
+      slots: {
+        total: slotList.length,
+        busy: busySlots.length,
+        list: slotList,
+      },
       snapshot: snapshot ? {
         gpu: snapshot.gpu,
         ram: snapshot.ram,

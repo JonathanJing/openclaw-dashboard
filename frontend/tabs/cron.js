@@ -63,10 +63,19 @@ const MODEL_COLORS = {};
 // Allows "claude-opus-4-6" to match key "opus-4.6", and "Qwen3.5-35B" to match "qwen3-5-35b"
 function normModelStr(s) { return (s || '').toLowerCase().replace(/[.\-]/g, '-'); }
 
+function _hashColor(str) {
+  let h = 0;
+  for (let i = 0; i < str.length; i++) h = ((h << 5) - h) + str.charCodeAt(i);
+  const hue = Math.abs(h) % 360;
+  return `hsl(${hue} 72% 58%)`;
+}
+
 function getModelColor(model) {
   const mNorm = normModelStr(model);
   const key = Object.keys(MODEL_COLORS).find(k => mNorm.includes(normModelStr(k)));
-  return key ? MODEL_COLORS[key] : '#6b7280';
+  if (key) return MODEL_COLORS[key];
+  if (!mNorm) return '#6b7280';
+  return _hashColor(mNorm);
 }
 
 function shortModel(m) {
