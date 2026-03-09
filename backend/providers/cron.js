@@ -115,28 +115,186 @@ function handleCronRuns(req, res, query) {
 }
 
 function handleCronCosts(_req, res) {
-  // Get cron session costs from ledger (source_kind = 'cron' in turns table)
-  const rows = sqliteJson(cfg.LEDGER_DB, `
-    SELECT session_key, model, provider,
+  const jobs = dedupeJobs(loadCronStore());
+
+  // ── Per-job run stats from JSONL files ────────────────────────────
+  const DAYS = 30;
+  const cutoff = Date.now() - DAYS * 86400 * 1000;
+
+  const jobStats = jobs.map(job => {
+    const id = job.id || job.jobId;
+    const runs = loadCronRuns(id, 200); // up to 200 runs for stats
+    const recentRuns = runs.filter(r => Date.parse(r.finishedAt || r.startedAt || '') >= cutoff);
+
+    // Aggregate by day
+    const byDay = {};
+    for (const r of recentRuns) {
+      const ts = Date.parse(r.finishedAt || r.startedAt || '');
+      if (!Number.isFinite(ts)) continue;
+      const day = new Date(ts).toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' }); // YYYY-MM-DD
+      if (!byDay[day]) byDay[day] = { date: day, runs: 0, tokens: 0, cost: 0 };
+      byDay[day].runs++;
+      byDay[day].tokens += r.tokens || 0;
+      byDay[day].cost += r.costUsd || 0;
+    }
+    const daily = Object.values(byDay).sort((a, b) => a.date < b.date ? -1 : 1);
+    for (const d of daily) {
+      d.tokensPerRun = d.runs > 0 ? Math.round(d.tokens / d.runs) : 0;
+      d.costPerRun = d.runs > 0 ? d.cost / d.runs : 0;
+    }
+
+    const totalRuns = recentRuns.length;
+    const totalTokens = recentRuns.reduce((s, r) => s + (r.tokens || 0), 0);
+    const totalCost = recentRuns.reduce((s, r) => s + (r.costUsd || 0), 0);
+    const totalDurationMs = recentRuns.reduce((s, r) => s + (r.durationMs || 0), 0);
+
+    // Detect missing usage (cost = 0 but run finished)
+    const runsWithoutUsage = recentRuns.filter(r => !r.tokens && r.status === 'ok').length;
+    const runsWithZeroTokens = recentRuns.filter(r => (r.tokens || 0) === 0).length;
+
+    return {
+      id,
+      name: job.name || id,
+      model: job.payload?.model || null,
+      runs: totalRuns,
+      totalTokens,
+      totalCost,
+      avgDurationSec: totalRuns > 0 ? totalDurationMs / totalRuns / 1000 : 0,
+      tokensPerRun: totalRuns > 0 ? Math.round(totalTokens / totalRuns) : 0,
+      costPerRun: totalRuns > 0 ? totalCost / totalRuns : 0,
+      avgDailyCost: daily.length > 0 ? totalCost / daily.length : 0,
+      today: (() => {
+        const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
+        const todayData = byDay[todayStr] || { runs: 0, tokens: 0, cost: 0 };
+        return { runs: todayData.runs, tokens: todayData.tokens, cost: todayData.cost };
+      })(),
+      daily,
+      _review: { runsWithoutUsage, runsWithZeroTokens },
+    };
+  }).filter(j => j.runs > 0); // only jobs that have run at all
+
+  // ── Summary ───────────────────────────────────────────────────────
+  const totalRuns = jobStats.reduce((s, j) => s + j.runs, 0);
+  const totalCronCost = jobStats.reduce((s, j) => s + j.totalCost, 0);
+  const totalCronTokens = jobStats.reduce((s, j) => s + j.totalTokens, 0);
+
+  // Interactive (non-cron) cost from ledger
+  const interactiveRows = sqliteJson(cfg.LEDGER_DB, `
+    SELECT date(ts, 'localtime') as day,
       count(*) as calls,
-      sum(input_tokens + output_tokens) as total_tokens,
-      round(sum(cost_total), 6) as cost_total,
-      min(ts) as first_call,
-      max(ts) as last_call
+      sum(input_tokens + output_tokens + cache_read_tokens + cache_write_tokens) as tokens,
+      round(sum(cost_total), 6) as cost
     FROM calls
-    WHERE session_key LIKE '%:cron:%'
-    GROUP BY session_key
-    ORDER BY cost_total DESC
-    LIMIT 50
+    WHERE session_key NOT LIKE '%:cron:%'
+      AND date(ts, 'localtime') >= date('now', 'localtime', '-${DAYS} days')
+    GROUP BY day ORDER BY day
   `);
 
-  // Extract cron job IDs from session keys
-  for (const r of rows) {
-    const m = r.session_key.match(/:cron:([a-f0-9-]+)/);
-    r.cron_job_id = m ? m[1] : null;
-  }
+  // Cron cost from ledger per day (for daily trend, since JSONL has no cost)
+  const cronLedgerRows = sqliteJson(cfg.LEDGER_DB, `
+    SELECT date(ts, 'localtime') as day,
+      count(*) as calls,
+      sum(input_tokens + output_tokens + cache_read_tokens + cache_write_tokens) as tokens,
+      round(sum(cost_total), 6) as cost
+    FROM calls
+    WHERE session_key LIKE '%:cron:%'
+      AND date(ts, 'localtime') >= date('now', 'localtime', '-${DAYS} days')
+    GROUP BY day ORDER BY day
+  `);
 
-  jsonReply(res, 200, { rows });
+  const cronByDay = {};
+  for (const r of cronLedgerRows) cronByDay[r.day] = r;
+
+  const interByDay = {};
+  for (const r of interactiveRows) interByDay[r.day] = r;
+
+  // ── Daily trend ───────────────────────────────────────────────────
+  // Build last N days
+  const allDays = new Set([
+    ...Object.keys(cronByDay),
+    ...Object.keys(interByDay),
+  ]);
+  const dailyTrend = [...allDays].sort().map(day => {
+    const cron = cronByDay[day] || {};
+    const inter = interByDay[day] || {};
+    const cronCost = Number(cron.cost || 0);
+    const interCost = Number(inter.cost || 0);
+    const totalCost = cronCost + interCost;
+    // Simplified: cron = "fixed baseline", interactive = "variable"
+    return {
+      date: day,
+      fixedBaselineCost: cronCost,      // cron jobs
+      workloadVariableCost: 0,          // reserved
+      interactiveCost: interCost,
+      cronCost,
+      interCost,
+      totalCost,
+      fixedCostSharePct: totalCost > 0 ? Math.round((cronCost / totalCost) * 100) : 0,
+    };
+  });
+
+  const avgDailyCronCost = dailyTrend.length > 0
+    ? dailyTrend.reduce((s, d) => s + d.cronCost, 0) / dailyTrend.length
+    : 0;
+  const avgDailyInterCost = dailyTrend.length > 0
+    ? dailyTrend.reduce((s, d) => s + d.interCost, 0) / dailyTrend.length
+    : 0;
+
+  const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
+  const todayCron = cronByDay[todayStr] || {};
+  const todayInter = interByDay[todayStr] || {};
+
+  // ── Review / data quality ─────────────────────────────────────────
+  const totalRunsWithoutUsage = jobStats.reduce((s, j) => s + j._review.runsWithoutUsage, 0);
+  const totalRunsWithZeroTokens = jobStats.reduce((s, j) => s + j._review.runsWithZeroTokens, 0);
+  const daysWithCron = Object.keys(cronByDay).length;
+  const daysWithInteractive = Object.keys(interByDay).length;
+  const interactiveMsgsWithUsage = interactiveRows.reduce((s, r) => s + Number(r.calls || 0), 0);
+  const notes = [];
+  if (totalRunsWithZeroTokens > 0) notes.push(`${totalRunsWithZeroTokens} cron runs have 0 tokens — may be HEARTBEAT_OK / NO_REPLY only runs`);
+
+  // Clean up internal review fields
+  const cleanJobs = jobStats.map(({ _review, ...rest }) => rest);
+
+  jsonReply(res, 200, {
+    summary: {
+      totalRuns,
+      totalCronCost,
+      totalCronTokens,
+      avgDailyCronCost,
+      avgDailyInterCost,
+      avgFixedBaselineCost: avgDailyCronCost,
+      avgWorkloadVariableCost: 0,
+      avgInteractiveVariableCost: avgDailyInterCost,
+      days: DAYS,
+      today: {
+        cronCost: Number(todayCron.cost || 0),
+        cronTokens: Number(todayCron.tokens || 0),
+        interactiveCost: Number(todayInter.cost || 0),
+      },
+    },
+    jobs: cleanJobs,
+    dailyTrend,
+    review: {
+      cron: {
+        finishedRuns: totalRuns,
+        runsWithoutUsage: totalRunsWithoutUsage,
+        runsWithZeroTokens: totalRunsWithZeroTokens,
+      },
+      interactive: {
+        messagesWithUsage: interactiveMsgsWithUsage,
+      },
+      coverage: {
+        daysWithCron,
+        daysWithInteractive,
+        interactiveCoveragePct: daysWithCron > 0
+          ? Math.round((daysWithInteractive / daysWithCron) * 100) : 0,
+      },
+      notes,
+    },
+    // Legacy raw rows for any caller that still uses { rows }
+    rows: [],
+  });
 }
 
 function handleCronToday(_req, res) {

@@ -81,9 +81,11 @@ module.exports = {
   MAX_UNTRUSTED_PROMPT_FIELD: 800,
   MAX_CRON_MESSAGE_LENGTH: 3000,
 
-  // Tasks
-  TASKS_FILE: path.join(__dirname, '..', '..', 'tasks.json'),
-  ATTACHMENTS_DIR: path.join(__dirname, '..', '..', 'attachments'),
+  // Tasks — stored outside skill dir to avoid Git tracking user data
+  TASKS_FILE: process.env.OPENCLAW_DASHBOARD_TASKS
+    || path.join(DOT_OPENCLAW, 'dashboard', 'tasks.json'),
+  ATTACHMENTS_DIR: process.env.OPENCLAW_DASHBOARD_ATTACHMENTS
+    || path.join(DOT_OPENCLAW, 'dashboard', 'attachments'),
   SKILLS_DIR: path.join(
     process.env.OPENCLAW_WORKSPACE || path.join(DOT_OPENCLAW, 'workspace'),
     'skills'

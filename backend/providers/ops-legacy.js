@@ -110,14 +110,33 @@ function handleOpsChannels(_req, res) {
 }
 
 function handleOpsModels(_req, res) {
-  // Build model registry from Ground Truth + hardcoded pricing
+  // Build model registry from Ground Truth.
+  // Returns { registry: { alias: { id, label } }, colors, models: [...] }
+  // frontend health.js expects data.registry (object keyed by alias)
+  // frontend cron.js refreshModelOptions() iterates Object.entries(registry)
   const gt = require('./ground-truth');
-  const models = gt.getModelRegistry();
-  const registry = models.map(m => ({
-    id: m.id, alias: m.alias, available: true,
-  }));
+  const modelList = gt.getModelRegistry();
   const colors = gt.getModelColorMap();
-  jsonReply(res, 200, { models: registry, colors, source: 'ground-truth' });
+
+  // registry: object { alias → { id, label } } for refreshModelOptions()
+  const registry = {};
+  for (const m of modelList) {
+    registry[m.alias] = { id: m.id, label: m.alias };
+  }
+
+  // displayNames: [ [pattern, shortLabel], ... ] for shortModel()
+  const displayNames = modelList.map(m => {
+    const short = m.alias.replace(/-preview$/, '');
+    return [m.alias, short];
+  });
+
+  jsonReply(res, 200, {
+    registry,          // object — for refreshModelOptions()
+    colors,            // object — for MODEL_COLORS
+    displayNames,      // array  — for MODEL_DISPLAY_NAMES
+    models: modelList, // array  — legacy callers
+    source: 'ground-truth',
+  });
 }
 
 function handleOpsAlltime(_req, res) {

@@ -5,7 +5,15 @@ A real-time operations dashboard for OpenClaw — built for teams running multi-
 It helps you answer, fast:
 - Is the system healthy right now?
 - Where are tokens and cost going?
-- Which cron/agent needs intervention first?
+- Which cron job or agent needs attention first?
+
+---
+
+## Screenshots
+
+| Overview | Cost | Cron | Health |
+|---|---|---|---|
+| ![Overview](screenshots/overview.jpg) | ![Cost](screenshots/cost.jpg) | ![Cron](screenshots/cron.jpg) | ![Health](screenshots/health.jpg) |
 
 ---
 
@@ -13,90 +21,158 @@ It helps you answer, fast:
 
 Most AI dashboards stop at pretty charts.  
 OpenClaw Dashboard is designed for **operational decisions**:
-- top-level decision signals (cost, tokens, alerts, model mix, infra state)
+- top-level signals (cost, tokens, alerts, model mix, infra state)
 - deep drill-down per session / channel / cron job
-- architecture that is readable by both humans and agents
+- architecture readable by both humans and agents
 
 ---
 
-## Architecture (Technical Direction)
+## Architecture (v2.0)
 
-We moved from monolithic scripts to a **plug-in provider architecture**.
+v2.0 replaced the monolithic `api-server.js` + `agent-dashboard.html` with a **modular backend + tab-based frontend**.
 
-### Core ideas
-- **Provider-first backend**: one provider = one clear data boundary
-- **Tab-modular frontend**: each tab is independently evolvable
-- **Ground Truth driven mapping**: channels/models/cron metadata from a single source
-- **Backward compatibility**: legacy layer preserved for safe migrations
+```
+backend/
+  server.js              ← thin HTTP router shell
+  lib/
+    config.js            ← all paths and env vars
+    http-helpers.js      ← auth, CORS, JSON helpers
+    sqlite-helper.js     ← safe SQLite query wrapper
+  providers/
+    sessions.js          ← /ops/sessions — session stats + model
+    ledger.js            ← /ops/ledger/* — token/cost from SQLite
+    cron.js              ← /ops/cron, /ops/cron-costs, /cron/today
+    watchdog.js          ← /ops/watchdog — health timeline
+    spark.js             ← /ops/dgx-status — local inference node
+    system.js            ← /ops/system — CPU/RAM/disk
+    ground-truth.js      ← /ops/models — model registry + colors
+    tasks.js             ← /tasks — task CRUD + notes
+    config.js            ← /ops/config, /files, /skills
+    ops-legacy.js        ← /ops/* remaining — audit, channels, restart
 
-### Current structure
-- `backend/server.js` — modular API entrypoint
-- `backend/providers/*` — sessions, ledger, cron, watchdog, system, spark, tasks, config
-- `frontend/tabs/*` + `frontend/shared/*` — modular UI
-- `agent-dashboard.html` + `api-server.js` — legacy compatibility path
+frontend/
+  index.html             ← shell (loads tabs as <script> modules)
+  shared/
+    api.js               ← auth, apiFetch(), watchdog renderers, toast, markdown
+    ui-utils.js          ← timeSince(), task state
+    boot.js              ← init, charts, confirm dialog
+    styles.css           ← dark theme
+  tabs/
+    overview.js          ← Sessions table + Tasks list
+    cost.js              ← Channel breakdown + all-time charts
+    cron.js              ← Cron jobs + cost analysis + trend chart
+    health.js            ← System info + DGX Spark + Watchdog
+    config.js            ← Config viewer + file editor + Skills
 
-This design makes changes safer, faster, and easier for AI agents to patch correctly.
+~/.openclaw/dashboard/   ← runtime data (NOT in Git)
+  tasks.json
+  attachments/
+```
 
 ---
 
 ## Key Capabilities
 
-### 1) Operations Overview
-- Today cost / token usage
-- Model mix distribution (including local vs cloud share)
-- Alert snapshot (session/cron/watchdog)
-- DGX Spark runtime visibility
+### Overview
+- Today cost / token usage + model mix
+- Alert snapshot (sessions / cron / watchdog)
+- DGX Spark active job + slot visibility
+- Session table: model, tokens, cost, per-channel
 
-### 2) Cost Intelligence
-- model-level usage and spend
-- channel-level breakdown
-- time-range analysis (7d/30d/90d/all)
+### Cost Tab
+- Model-level token + cost breakdown
+- Channel-level drill-down
+- Weekly/monthly charts with model stacking
+- Cost heatmap (model × day)
 
-### 3) Cron & Reliability
-- cron status and run history
-- failure visibility and incident-oriented ops signals
-- watchdog timeline and recovery context
+### Cron Tab
+- All cron jobs with last-run status and model selector
+- Today's run timeline
+- Per-job cost analysis: tokens/run, $/run, daily breakdown
+- Fixed vs variable cost trend chart (30 days)
 
-### 4) System & Infra Readability
-- host status (macOS, CPU, memory, disk, runtime versions)
-- Spark node status (model/runtime/slot or GPU metrics depending on source)
+### Health Tab
+- Host status: macOS, CPU, RAM, disk, Node, OpenClaw version
+- DGX Spark: GPU util, temp, power, RAM, slot busy/total
+- Watchdog: 24h uptime bar, incidents, downtime windows
+- Operations: backup, restore, update, restart
+
+### Config Tab
+- Live config viewer (core / keys / personality files)
+- Workspace file browser + markdown editor
+- Installed skills list
 
 ---
 
 ## Quick Start
 
 ```bash
+# 1. Install (or update)
+clawhub install openclaw-dashboard
+
+# 2. Configure
 cd ~/.openclaw/workspace/skills/openclaw-dashboard
 cp env.example .env
-# set OPENCLAW_AUTH_TOKEN
+# Edit .env and set OPENCLAW_AUTH_TOKEN
+
+# 3. Start
 node backend/server.js
 ```
 
 Open: `http://127.0.0.1:18791/`
 
-Legacy mode (if needed):
-```bash
-node api-server.js
+First visit redirects to `/login` — paste your token once, then cookie auth takes over.
+
+---
+
+## Environment Variables
+
+| Variable | Default | Description |
+|---|---|---|
+| `DASHBOARD_PORT` | `18791` | Port to listen on |
+| `DASHBOARD_HOST` | `127.0.0.1` | Bind address |
+| `OPENCLAW_AUTH_TOKEN` | *(none)* | Auth token (required for non-loopback) |
+| `OPENCLAW_DASHBOARD_TASKS` | `~/.openclaw/dashboard/tasks.json` | Task data path |
+| `OPENCLAW_ENABLE_MUTATING_OPS` | `0` | Enable model switch, backup, update ops |
+| `OPENCLAW_ENABLE_CONFIG_ENDPOINT` | `0` | Expose `/ops/config` |
+| `DASHBOARD_CORS_ORIGINS` | loopback only | Comma-separated allowed origins |
+
+See `env.example` for the full list.
+
+---
+
+## Runtime Data
+
+Task data and attachments are stored **outside the skill directory** so they are never accidentally committed:
+
 ```
+~/.openclaw/dashboard/
+  tasks.json        ← task list
+  attachments/      ← file uploads
+```
+
+Override with `OPENCLAW_DASHBOARD_TASKS` env var if needed.
 
 ---
 
 ## Security
 
-- local-first binding by default
-- token-based auth
-- optional mutating ops behind explicit flags
-- no hardcoded secrets in source
+- **Local-first**: binds to `127.0.0.1` by default
+- **Token auth**: HttpOnly cookie after first login; `Authorization: Bearer` header also accepted
+- **Mutating ops disabled** by default: model switches, backup, update require `OPENCLAW_ENABLE_MUTATING_OPS=1`
+- **No secrets in source**: all sensitive values via env vars
+- **CORS**: loopback-only by default; use `DASHBOARD_CORS_ORIGINS` for Tailscale/remote access
 
 ---
 
-## Who this is for
+## Who This Is For
 
-- builders running always-on agent systems
-- operators managing cron-heavy AI workflows
-- teams needing both observability and controllability
+- Builders running always-on agent systems
+- Operators managing cron-heavy AI workflows
+- Teams needing both observability and operational control
 
 ---
 
 ## License
+
 MIT

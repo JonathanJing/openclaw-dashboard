@@ -67,7 +67,8 @@ function readSubagentRuns() {
   }
 }
 
-function handleSessions(_req, res) {
+function handleSessions(req, res, query) {
+  const hideStale = String((query || {}).hideStale || '0') === '1';
   const raw = readSessions();
   const channelNames = gt.parse().channelNames;
   const cronNameMap = loadCronNameMap();
@@ -142,16 +143,21 @@ function handleSessions(_req, res) {
   const statusOrder = { error: 0, active: 1, idle: 2, stale: 3 };
   sessions.sort((a, b) => (statusOrder[a.status] || 9) - (statusOrder[b.status] || 9) || b.today.cost - a.today.cost);
 
+  // Apply hideStale filter (7+ days no activity)
+  const visibleSessions = hideStale
+    ? sessions.filter(s => parseFloat(s.daysSinceUpdate) < 7)
+    : sessions;
+
   // Build summary
-  const active = sessions.filter(s => s.status === 'active').length;
-  const todayCostTotal = sessions.reduce((s, r) => s + r.today.cost, 0);
-  const todayMsgTotal = sessions.reduce((s, r) => s + r.today.messages, 0);
+  const active = visibleSessions.filter(s => s.status === 'active').length;
+  const todayCostTotal = visibleSessions.reduce((s, r) => s + r.today.cost, 0);
+  const todayMsgTotal = visibleSessions.reduce((s, r) => s + r.today.messages, 0);
 
   jsonReply(res, 200, {
-    sessions,
+    sessions: visibleSessions,
     alerts: [],
     summary: {
-      total: sessions.length,
+      total: visibleSessions.length,
       active,
       errors: 0,
       todayCost: todayCostTotal,
@@ -187,10 +193,10 @@ function extractChatId(sessionKey, origin) {
 }
 
 function register(router) {
-  router.add('GET', '/api/sessions',   (req, res) => handleSessions(req, res));
+  router.add('GET', '/api/sessions',   (req, res, q) => handleSessions(req, res, q));
   router.add('GET', '/api/subagents',  (req, res) => handleSubagents(req, res));
   // Legacy compat
-  router.add('GET', '/ops/sessions',   (req, res) => handleSessions(req, res));
+  router.add('GET', '/ops/sessions',   (req, res, q) => handleSessions(req, res, q));
 }
 
 module.exports = { register, readSessions };

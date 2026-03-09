@@ -118,8 +118,8 @@ function isAllowedPath(p) {
   if (parts.length === 2 && parts[0] === 'memory' && parts[1].endsWith('.md')) return true;
   // channels/*.md
   if (parts.length === 2 && parts[0] === 'channels' && parts[1].endsWith('.md')) return true;
-  // refs/*.md
-  if (parts.length === 2 && parts[0] === 'refs' && parts[1].endsWith('.md')) return true;
+  // refs/**/*.md (new layered structure: ground-truth/systems/playbooks/archive)
+  if (parts.length >= 2 && parts[0] === 'refs' && parts[parts.length - 1].endsWith('.md')) return true;
   return false;
 }
 
