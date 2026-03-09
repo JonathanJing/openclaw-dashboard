@@ -41,7 +41,29 @@ const WATCHDOG_DIR = process.env.OPENCLAW_WATCHDOG_DIR || path.join(HOME_DIR, '.
 const WATCHDOG_STATE_FILE = path.join(WATCHDOG_DIR, 'state.json');
 const WATCHDOG_EVENTS_FILE = path.join(WATCHDOG_DIR, 'events.jsonl');
 const OPENCLAW_CONFIG_FILE = process.env.OPENCLAW_CONFIG_FILE || path.join(HOME_DIR, '.openclaw', 'openclaw.json');
-const LEDGER_DB_FILE = process.env.OPENCLAW_LEDGER_DB || path.join(HOME_DIR, '.openclaw', 'ledger.db');
+const LEDGER_DB_FILE =
+  process.env.LEDGER_DB_PATH ||
+  process.env.OPENCLAW_LEDGER_DB ||
+  path.join(HOME_DIR, '.openclaw', 'ledger.db');
+
+function runSqliteJson(dbFile, sql) {
+  if (!fs.existsSync(dbFile)) {
+    const err = new Error(`Ledger DB not found: ${dbFile}`);
+    err.code = 'LEDGER_DB_NOT_FOUND';
+    throw err;
+  }
+  try {
+    const rows = runSqliteJson(dbFile, sql);
+    return out && out.trim() ? JSON.parse(out) : [];
+  } catch (e) {
+    const msg = (e && (e.stderr || e.message)) ? String(e.stderr || e.message) : 'sqlite3 failed';
+    const err = new Error(msg.trim());
+    err.code = 'SQLITE3_FAILED';
+    err.dbFile = dbFile;
+    throw err;
+  }
+}
+
 const OPENCLAW_CONFIG_BASELINE_FILE = process.env.OPENCLAW_CONFIG_BASELINE_FILE || path.join(HOME_DIR, '.openclaw', 'openclaw.json.good');
 
 // --- Spark Metrics (DGX Spark observability) ---
@@ -261,7 +283,7 @@ function readSparkSnapshot(gt) {
 }
 
 function sqliteJsonFile(dbFile, sql) {
-  const out = execFileSync('sqlite3', [dbFile, '-json', sql], { encoding: 'utf8' });
+  const rows = runSqliteJson(dbFile, sql);
   if (!out || !out.trim()) return [];
   return JSON.parse(out);
 }
@@ -3566,7 +3588,7 @@ function handleOpsCronModel(req, res, method) {
 // ─── Ledger helpers ───────────────────────────────────────────────
 function sqliteJson(sql) {
   try {
-    const out = execFileSync('sqlite3', [LEDGER_DB_FILE, '-json', sql], { encoding: 'utf8' });
+    const rows = runSqliteJson(LEDGER_DB_FILE, sql);
     if (!out || !out.trim()) return [];
     return JSON.parse(out);
   } catch (e) {

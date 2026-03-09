@@ -112,17 +112,27 @@ async function loadCronRuns() {
       return;
     }
 
-    // Sort by last run time descending
-    runs.sort((a, b) => (b.last?.endedAt || b.last?.startedAt || 0) - (a.last?.endedAt || a.last?.startedAt || 0));
+    // Sort by last run time descending (timeline newest first)
+    runs.sort((a, b) => {
+      const ta = Date.parse(a?.last?.endedAt || a?.last?.startedAt || '');
+      const tb = Date.parse(b?.last?.endedAt || b?.last?.startedAt || '');
+      return (Number.isFinite(tb) ? tb : 0) - (Number.isFinite(ta) ? ta : 0);
+    });
 
     body.innerHTML = runs.map(r => {
       const last = r.last || {};
       const name = r.name || r.id?.slice(0, 8) || '—';
       const status = last.status === 'ok' ? '✅' : last.status === 'error' ? '❌' : '⏳';
       const time = last.endedAt ? new Date(last.endedAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'America/Los_Angeles' }) : (last.startedAt ? new Date(last.startedAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'America/Los_Angeles' }) : '—');
-      const dur = (last.endedAt && last.startedAt) ? ((last.endedAt - last.startedAt) / 1000).toFixed(1) + 's' : '';
-      const model = last.model ? shortModel(last.model) : '';
-      const tokens = Number.isFinite(last.tokens) ? (fmtTokens(last.tokens) + ' tok') : '';
+      const startMs = Date.parse(last.startedAt || '');
+      const endMs = Date.parse(last.endedAt || '');
+      const dur = (Number.isFinite(startMs) && Number.isFinite(endMs) && endMs >= startMs)
+        ? ((endMs - startMs) / 1000).toFixed(1) + 's'
+        : (Number.isFinite(Number(last.durationMs)) ? (Number(last.durationMs) / 1000).toFixed(1) + 's' : '');
+      const modelRaw = last.model || r.model || '';
+      const model = modelRaw ? shortModel(modelRaw) : '';
+      const isLocalModel = /local-|qwen|gguf|local-dgx-spark/i.test(String(modelRaw));
+      const tokens = (isLocalModel && Number.isFinite(Number(last.tokens))) ? (fmtTokens(Number(last.tokens)) + ' tok') : '';
       const cost = Number.isFinite(last.costUsd) ? fmtUsd(last.costUsd, 3) : '';
       const detail = [model, tokens, cost, dur].filter(Boolean).join(' · ');
 

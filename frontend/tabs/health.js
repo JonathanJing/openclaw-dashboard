@@ -206,12 +206,17 @@ async function renderAgentMonitor() {
   const sentinelBadge = document.getElementById('sentinelBadge');
   const sentinelDetail = document.getElementById('sentinelDetail');
   const dgxOnline = !!dgxCombined?.online;
-  const slots = dgxCombined?.snapshot?.llama?.slots || [];
-  const busy = slots.filter(s => s?.is_processing).length;
+  const slots = Array.isArray(dgxCombined?.snapshot?.llama?.slots) ? dgxCombined.snapshot.llama.slots : [];
+  const busyFromArray = slots.filter(s => s?.is_processing).length;
+  const totalFromArray = slots.length;
+  const busyFromObj = Number(dgxCombined?.slots?.busy);
+  const totalFromObj = Number(dgxCombined?.slots?.total);
+  const busy = Number.isFinite(busyFromObj) ? busyFromObj : busyFromArray;
+  const total = Number.isFinite(totalFromObj) ? totalFromObj : totalFromArray;
   sentinelValue.textContent = dgxOnline ? tt('Online', '在线') : tt('Offline', '离线');
   sentinelBadge.className = `agent-stat-badge ${dgxOnline ? 'active' : 'error'}`;
   sentinelBadge.innerHTML = dgxOnline ? '🟢 DGX' : '🔴 DGX';
-  sentinelDetail.textContent = dgxOnline ? `${busy}/${slots.length || 0} ${tt('slots busy', '槽位忙')}` : tt('Probe failed', '连接失败');
+  sentinelDetail.textContent = dgxOnline ? `${busy}/${total || 0} ${tt('slots busy', '槽位忙')}` : tt('Probe failed', '连接失败');
 
   // Card 6: Model Mix
   const sorted = Object.entries(models).filter(([k]) => k !== 'delivery-mirror' && k !== 'unknown').sort((a, b) => b[1] - a[1]);

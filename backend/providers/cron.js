@@ -19,6 +19,16 @@ function loadCronStore() {
   }
 }
 
+function dedupeJobs(jobs) {
+  const byId = new Map();
+  for (const job of (jobs || [])) {
+    const id = job?.id || job?.jobId;
+    if (!id) continue;
+    byId.set(id, job); // keep latest definition when duplicated
+  }
+  return Array.from(byId.values());
+}
+
 function loadCronRuns(jobId, limit = 10) {
   // Read JSONL file at ~/.openclaw/cron/runs/{jobId}.jsonl
   const runsFile = path.join(cfg.CRON_RUNS_DIR, `${jobId}.jsonl`);
@@ -31,18 +41,27 @@ function loadCronRuns(jobId, limit = 10) {
         const record = JSON.parse(line);
         if (record.action === 'finished') {
           // Normalize fields to match expected format
+          const provider = record.provider || null;
+          const modelRaw = record.model || null;
+          const model = provider && modelRaw ? `${provider}/${modelRaw}` : (modelRaw || provider || null);
           runs.push({
             status: record.status || 'unknown',
             startedAt: new Date(record.runAtMs).toISOString(),
             finishedAt: new Date(record.ts).toISOString(),
             durationMs: record.durationMs || 0,
-            model: record.model || null,
+            model,
+            provider,
             tokens: record.usage?.total_tokens || 0,
             costUsd: 0, // Not available in JSONL
           });
         }
       } catch {}
     }
+    runs.sort((a, b) => {
+      const ta = Date.parse(a.finishedAt || a.startedAt || 0);
+      const tb = Date.parse(b.finishedAt || b.startedAt || 0);
+      return tb - ta;
+    });
     return runs.slice(0, limit);
   } catch {
     return [];
@@ -55,7 +74,7 @@ function loadLastCronRun(jobId) {
 }
 
 function handleCronList(_req, res) {
-  const jobs = loadCronStore();
+  const jobs = dedupeJobs(loadCronStore());
   const channelNames = gt.parse().channelNames;
 
   const enriched = jobs.map(job => {
@@ -121,32 +140,37 @@ function handleCronCosts(_req, res) {
 }
 
 function handleCronToday(_req, res) {
-  const jobs = loadCronStore();
+  const jobs = dedupeJobs(loadCronStore());
   const now = new Date();
   const todayStart = new Date(now.toLocaleString('en-US', { timeZone: 'America/Los_Angeles' }));
   todayStart.setHours(0, 0, 0, 0);
   const channelNames = gt.parse().channelNames;
 
-  const todayJobs = jobs.filter(j => j.enabled !== false).map(job => {
-    const id = job.id || job.jobId;
-    const lastRun = loadLastCronRun(id);
-    // Check if job ran today by looking at lastRun timestamp
-    const ranToday = lastRun && new Date(lastRun.startedAt || lastRun.finishedAt) >= todayStart;
-    return {
-      id,
-      name: job.name,
-      model: job.payload?.model || null,
-      last: lastRun ? {
-        status: lastRun.status,
-        startedAt: lastRun.startedAt,
-        endedAt: lastRun.finishedAt,
-        durationMs: lastRun.durationMs,
-        tokens: lastRun.tokens || 0,
-        costUsd: lastRun.costUsd || 0,
-      } : null,
-      ranToday,
-    };
-  });
+  const todayJobs = jobs
+    .filter(j => j.enabled !== false)
+    .map(job => {
+      const id = job.id || job.jobId;
+      const lastRun = loadLastCronRun(id);
+      const runTs = Date.parse(lastRun?.startedAt || lastRun?.finishedAt || '');
+      const ranToday = Number.isFinite(runTs) && runTs >= todayStart.getTime();
+      return {
+        id,
+        name: job.name,
+        model: job.payload?.model || null,
+        last: lastRun ? {
+          status: lastRun.status,
+          startedAt: lastRun.startedAt,
+          endedAt: lastRun.finishedAt,
+          durationMs: lastRun.durationMs,
+          model: lastRun.model || null,
+          provider: lastRun.provider || null,
+          tokens: lastRun.tokens || 0,
+          costUsd: lastRun.costUsd || 0,
+        } : null,
+        ranToday,
+      };
+    })
+    .filter(j => j.ranToday);
 
   // Return with todayJobs key to match frontend expectation
   jsonReply(res, 200, { date: todayStart.toISOString().split('T')[0], todayJobs });
