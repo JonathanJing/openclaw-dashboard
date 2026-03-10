@@ -106,8 +106,9 @@ function renderDgxInfoBar(dgx) {
 async function renderAgentMonitor() {
   await loadSystemInfo();
 
-  const [ledger, dgx, sparkSnap, watchdog, sessionsData, cronData] = await Promise.all([
+  const [ledger, ledger7d, dgx, sparkSnap, watchdog, sessionsData, cronData] = await Promise.all([
     apiFetch('/ops/ledger/today').catch(() => ({ rows: [] })),
+    apiFetch('/api/ledger/history?days=7').catch(() => ({ rows: [] })),
     apiFetch('/ops/dgx-status').catch(() => ({})),
     apiFetch('/api/spark/snapshot').catch(() => ({})),
     apiFetch('/ops/watchdog?limit=60&windowMinutes=240').catch(() => ({})),
@@ -238,6 +239,26 @@ async function renderAgentMonitor() {
   sentinelDetail.textContent = dgxOnline ? `${busy}/${total || 0} ${tt('slots busy', '槽位忙')}` : tt('Probe failed', '连接失败');
 
   // Card 6: Model Mix
+  // If today has no local usage, compute 7d local% as context
+  let localPctLabel = '0% local';
+  {
+    const rows7d = ledger7d.rows || [];
+    let local7d = 0, total7d = 0;
+    for (const r of rows7d) {
+      const p = (r.provider || '').toLowerCase();
+      const t = Number(r.total_tokens || 0);
+      total7d += t;
+      if (p.includes('local') || p.includes('ollama')) local7d += t;
+    }
+    if (localTokens > 0) {
+      const pct = totalTokens > 0 ? Math.round((localTokens / totalTokens) * 100) : 0;
+      localPctLabel = `${pct}% ${tt('local', '本地')}`;
+    } else if (total7d > 0) {
+      const pct7d = Math.round((local7d / total7d) * 100);
+      localPctLabel = `${pct7d}% ${tt('local (7d)', '本地 7d')}`;
+    }
+  }
+
   const sorted = Object.entries(models).filter(([k]) => k !== 'delivery-mirror' && k !== 'unknown').sort((a, b) => b[1] - a[1]);
   const mixEl = document.getElementById('modelMixBars');
   const totalVal5 = document.getElementById('totalValue');
@@ -246,10 +267,9 @@ async function renderAgentMonitor() {
     if (!sorted.length) {
       mixEl.innerHTML = '<div class="ops-ch-meta">No ledger data today</div>';
     } else {
-      const localPct = totalTokens > 0 ? Math.round((localTokens / totalTokens) * 100) : 0;
       totalVal5.textContent = sorted.length + ' models';
       totalBadge5.className = 'agent-stat-badge active';
-      totalBadge5.innerHTML = `${localPct}% ${tt('local', '本地')}`;
+      totalBadge5.innerHTML = localPctLabel;
       let barHtml = '<div style="display:flex;height:10px;border-radius:5px;overflow:hidden;margin-bottom:6px">';
       const resolvedColors = {};
       sorted.forEach(([m, tk]) => {
