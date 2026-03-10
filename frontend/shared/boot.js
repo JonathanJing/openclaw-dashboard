@@ -326,14 +326,21 @@ function drawDailyCostChart(canvas, daily) {
   const cW = W - pad.left - pad.right;
   const cH = H - pad.top - pad.bottom;
 
-  // Collect models: paid (cost>0) for main bars + local (cost=0, tokens>0) for overlay
+  // Collect models: paid (cost>0) for main bars + local (is_local, cost=0) for overlay
+  // Prefer d.localModels (set by frontend cost.js from is_local flag) over heuristic fallback
   const paidModels = new Set();
   const localModels = new Set();
   daily.forEach(d => {
     Object.keys(d.modelCosts || {}).forEach(m => { if ((d.modelCosts[m] || 0) > 0) paidModels.add(m); });
-    Object.keys(d.models || {}).forEach(m => {
-      if ((d.modelCosts?.[m] || 0) === 0 && (d.models[m] || 0) > 0) localModels.add(m);
-    });
+    // Use localModels map if populated by cost.js (from is_local API field)
+    if (d.localModels && Object.keys(d.localModels).length > 0) {
+      Object.keys(d.localModels).forEach(m => { if ((d.localModels[m] || 0) > 0) localModels.add(m); });
+    } else {
+      // fallback: any model with tokens but zero cost
+      Object.keys(d.models || {}).forEach(m => {
+        if ((d.modelCosts?.[m] || 0) === 0 && (d.models[m] || 0) > 0) localModels.add(m);
+      });
+    }
   });
   const modelList = [...paidModels].sort((a, b) => {
     const ta = daily.reduce((s, d) => s + (d.modelCosts?.[a] || 0), 0);
@@ -342,9 +349,10 @@ function drawDailyCostChart(canvas, daily) {
   });
 
   const maxCost = Math.max(...daily.map(d => d.cost || 0), 1);
-  // For local token bars: scale so max local tokens = 20% of chart height
+  // For local token bars: use d.localTokens (from API daily_totals) or sum localModels
   const maxLocalToks = Math.max(...daily.map(d =>
-    [...localModels].reduce((s, m) => s + (d.models?.[m] || 0), 0)
+    d.localTokens != null ? d.localTokens :
+    [...localModels].reduce((s, m) => s + (d.localModels?.[m] || d.models?.[m] || 0), 0)
   ), 1);
   const barW = Math.max(4, (cW / daily.length) - 2);
 
@@ -376,14 +384,16 @@ function drawDailyCostChart(canvas, daily) {
 
     // Local model overlay: semi-transparent hatched bar at bottom of chart
     // Height = up to 20% of cH, proportional to local token usage
-    const localToks = [...localModels].reduce((s, m) => s + (d.models?.[m] || 0), 0);
+    // Use authoritative localTokens from API if available
+    const localToks = d.localTokens != null ? d.localTokens :
+      [...localModels].reduce((s, m) => s + (d.localModels?.[m] || d.models?.[m] || 0), 0);
     if (localToks > 0) {
       const localH = Math.max(3, (localToks / maxLocalToks) * (cH * 0.2));
       const localY = pad.top + cH - localH;
-      // Draw striped/semi-transparent bar for each local model
+      // Draw semi-transparent bar for each local model
       let lOffset = pad.top + cH;
       [...localModels].forEach(m => {
-        const mt = d.models?.[m] || 0;
+        const mt = d.localModels?.[m] || d.models?.[m] || 0;
         if (mt <= 0) return;
         const mH = Math.max(2, (mt / maxLocalToks) * (cH * 0.2));
         lOffset -= mH;

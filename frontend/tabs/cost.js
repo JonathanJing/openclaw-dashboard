@@ -281,18 +281,32 @@ async function loadOpsAlltime(days) {
       : '<div class="ops-ch-meta" style="padding:8px 0">No usage data in this range.</div>';
 
     // ── Daily chart data ──────────────────────────────────────────────
+    // Use daily_totals from API (pre-split local vs paid) when available,
+    // fall back to building from rows for per-model color breakdown.
     const dailyMap = {};
     for (const r of dayRows) {
       const d = r.day;
-      if (!dailyMap[d]) dailyMap[d] = { date: d, tokens: 0, cost: 0, models: {}, modelCosts: {} };
+      if (!dailyMap[d]) dailyMap[d] = { date: d, tokens: 0, cost: 0, localTokens: 0, paidTokens: 0, models: {}, modelCosts: {}, localModels: {} };
       const toks = Number(r.total_tokens || 0);
       const cost = Number(r.cost_total   || 0);
-      // Use canonical key for chart legend so Qwen variants merge
       const alias = canonicalKey(r.provider, r.model);
-      dailyMap[d].tokens              += toks;
-      dailyMap[d].cost                += cost;
-      dailyMap[d].models[alias]        = (dailyMap[d].models[alias]       || 0) + toks;
-      dailyMap[d].modelCosts[alias]    = (dailyMap[d].modelCosts[alias]   || 0) + cost;
+      dailyMap[d].tokens           += toks;
+      dailyMap[d].cost             += cost;
+      dailyMap[d].models[alias]     = (dailyMap[d].models[alias]    || 0) + toks;
+      dailyMap[d].modelCosts[alias] = (dailyMap[d].modelCosts[alias]|| 0) + cost;
+      if (r.is_local) {
+        dailyMap[d].localTokens      += toks;
+        dailyMap[d].localModels[alias] = (dailyMap[d].localModels[alias] || 0) + toks;
+      } else {
+        dailyMap[d].paidTokens += toks;
+      }
+    }
+    // Overlay authoritative daily_totals from API (avoids any front-end grouping drift)
+    for (const dt of (hist.daily_totals || [])) {
+      if (dailyMap[dt.day]) {
+        dailyMap[dt.day].localTokens = dt.local_tokens || dailyMap[dt.day].localTokens;
+        dailyMap[dt.day].paidTokens  = dt.paid_tokens  || dailyMap[dt.day].paidTokens;
+      }
     }
     const allDaily = Object.values(dailyMap).sort((a, b) => a.date < b.date ? -1 : 1);
     if (allDaily.length > 0) initWeekNav(allDaily);
