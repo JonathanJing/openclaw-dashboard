@@ -77,7 +77,8 @@ const providers = [
   require('./providers/system'),
   require('./providers/config'),
   require('./providers/tasks'),
-  require('./providers/ops-legacy'),  // proxy remaining routes to old api-server.js
+  require('./providers/local-api-hub'), // Local API Hub health + proxy
+  require('./providers/ops-legacy'),    // proxy remaining routes to old api-server.js
 ];
 
 const opsLegacy = require('./providers/ops-legacy');

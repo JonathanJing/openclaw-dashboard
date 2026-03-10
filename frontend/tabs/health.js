@@ -429,4 +429,55 @@ async function loadAudit() {
 
 // timeSince() is defined in shared/ui-utils.js
 
+// ─── Local API Hub Status ────────────────────────────────────────────────────
+async function loadLocalApiHubStatus() {
+  const card    = document.getElementById('localApiHubCard');
+  const badge   = document.getElementById('localApiHubBadge');
+  const content = document.getElementById('localApiHubContent');
+  if (!card || !content) return;
+
+  try {
+    const data = await apiFetch('/ops/local-api-hub');
+
+    if (data.reachable) {
+      badge.textContent = '🟢 Online';
+      badge.style.background = 'rgba(63,185,80,.15)';
+      badge.style.color = 'var(--green)';
+    } else {
+      badge.textContent = '🔴 Offline';
+      badge.style.background = 'rgba(248,81,73,.15)';
+      badge.style.color = 'var(--red)';
+    }
+
+    // Route list
+    const routes = data.routes;
+    const routeHtml = routes && typeof routes === 'object'
+      ? Object.entries(routes).map(([method, paths]) => {
+          const list = Array.isArray(paths) ? paths : [paths];
+          return list.map(p =>
+            `<span style="font-family:var(--mono);font-size:.68rem;padding:2px 8px;border-radius:6px;background:rgba(255,255,255,.06);color:var(--text2)">
+              <span style="color:var(--accent2)">${escHtml(method)}</span> ${escHtml(p)}
+            </span>`
+          ).join('');
+        }).join('')
+      : '';
+
+    content.innerHTML = `
+      <div style="display:flex;flex-wrap:wrap;gap:6px 14px;margin-bottom:8px;font-size:.75rem">
+        <span>🌐 <strong>${escHtml(data.hubUrl || '—')}</strong></span>
+        ${data.reachable
+          ? `<span style="color:var(--green)">✓ ${data.latencyMs}ms</span>`
+          : `<span style="color:var(--red)">${escHtml(data.error || 'Unreachable')}</span>`
+        }
+        ${data.module ? `<span style="color:var(--text2)">module: ${escHtml(data.module)}</span>` : ''}
+      </div>
+      ${routeHtml ? `<div style="display:flex;flex-wrap:wrap;gap:4px">${routeHtml}</div>` : ''}
+    `;
+  } catch (e) {
+    badge.textContent = '⚠ Error';
+    badge.style.color = 'var(--yellow)';
+    content.innerHTML = `<div style="font-size:.76rem;color:var(--text2)">${escHtml(e.message)}</div>`;
+  }
+}
+
 // ─── Config Viewer ───

@@ -75,6 +75,13 @@ module.exports = {
   GATEWAY_HOOKS_URL: 'http://127.0.0.1:18789/hooks',
   HOOK_TOKEN: process.env.OPENCLAW_HOOK_TOKEN || '',
 
+  // Local API Hub
+  LOCAL_API_HUB_PORT: parseInt(process.env.LOCAL_API_HUB_PORT || '3456', 10),
+  LOCAL_API_HUB_HOST: process.env.LOCAL_API_HUB_HOST || '127.0.0.1',
+  get LOCAL_API_HUB_URL() {
+    return `http://${this.LOCAL_API_HUB_HOST}:${this.LOCAL_API_HUB_PORT}`;
+  },
+
   // Limits
   MAX_BODY:   1 * 1024 * 1024,
   MAX_UPLOAD: 20 * 1024 * 1024,

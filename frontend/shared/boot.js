@@ -439,10 +439,12 @@ checkConnection();
 })();
 loadAgentMonitor();
 pollWatchdogStatus();
+loadLocalApiHubStatus(); // Initial check on page load
 startLivePolling(); // Auto-poll tasks every 3s for live updates
 setInterval(checkConnection, 30000);
-setInterval(loadAgentMonitor, 60000); // was 15s, reduced to 60s // Refresh agent monitor every 15s
+setInterval(loadAgentMonitor, 60000);
 setInterval(pollWatchdogStatus, 10000);
+setInterval(loadLocalApiHubStatus, 60000); // Refresh Local API Hub status every 60s
 
 // Kanban mobile resize handler
 window.addEventListener('resize', () => {

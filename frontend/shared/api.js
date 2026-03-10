@@ -168,7 +168,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     if (btn.dataset.tab === 'overview') { loadSessions(); loadTasks(true); }
     if (btn.dataset.tab === 'tasks') { loadCronEnhanced(); loadCronCosts(); }
     if (btn.dataset.tab === 'ops') { loadOpsChannels(); loadOpsAlltime(); loadOpsAudit(); }
-    if (btn.dataset.tab === 'health') { loadOperationsStatus(); loadDgxStatus(); }
+    if (btn.dataset.tab === 'health') { loadOperationsStatus(); loadDgxStatus(); loadLocalApiHubStatus(); }
     if (btn.dataset.tab === 'config') { loadConfig(); loadSkills(); loadFileList(); }
   });
 });
