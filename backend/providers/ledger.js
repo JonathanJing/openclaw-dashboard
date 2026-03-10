@@ -63,13 +63,29 @@ function handleHistory(req, res, query) {
     SELECT date(ts, 'localtime') as day, provider, model,
       count(*) as calls,
       sum(input_tokens + output_tokens + cache_read_tokens + cache_write_tokens) as total_tokens,
-      round(sum(cost_total), 6) as cost_total
+      sum(input_tokens + output_tokens + cache_read_tokens + cache_write_tokens) as tokens,
+      round(sum(cost_total), 6) as cost_total,
+      round(sum(cost_total), 6) as cost,
+      CASE WHEN lower(provider) LIKE '%local%' OR lower(provider) LIKE '%ollama%'
+           OR lower(model) LIKE '%.gguf%' THEN 1 ELSE 0 END as is_local
     FROM calls
     WHERE date(ts, 'localtime') >= date('now', 'localtime', '-${days} days')
     GROUP BY day, provider, model
     ORDER BY day ASC, cost_total DESC
   `);
-  jsonReply(res, 200, { days, rows });
+
+  // Aggregate summary per day: paid_cost, local_tokens, total_tokens
+  const dayTotals = {};
+  for (const r of rows) {
+    const d = r.day;
+    if (!dayTotals[d]) dayTotals[d] = { day: d, total_tokens: 0, local_tokens: 0, paid_tokens: 0, cost: 0 };
+    dayTotals[d].total_tokens += r.total_tokens || 0;
+    dayTotals[d].cost         += r.cost_total   || 0;
+    if (r.is_local) dayTotals[d].local_tokens += r.total_tokens || 0;
+    else            dayTotals[d].paid_tokens  += r.total_tokens || 0;
+  }
+
+  jsonReply(res, 200, { days, rows, daily_totals: Object.values(dayTotals).sort((a,b) => a.day < b.day ? -1 : 1) });
 }
 
 function handleByChannel(req, res, query) {
