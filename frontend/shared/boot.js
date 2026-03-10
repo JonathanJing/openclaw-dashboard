@@ -326,16 +326,26 @@ function drawDailyCostChart(canvas, daily) {
   const cW = W - pad.left - pad.right;
   const cH = H - pad.top - pad.bottom;
 
-  // Collect models sorted by total cost
-  const allModels = new Set();
-  daily.forEach(d => Object.keys(d.modelCosts || {}).forEach(m => { if ((d.modelCosts[m] || 0) > 0) allModels.add(m); }));
-  const modelList = [...allModels].sort((a, b) => {
+  // Collect models: paid (cost>0) for main bars + local (cost=0, tokens>0) for overlay
+  const paidModels = new Set();
+  const localModels = new Set();
+  daily.forEach(d => {
+    Object.keys(d.modelCosts || {}).forEach(m => { if ((d.modelCosts[m] || 0) > 0) paidModels.add(m); });
+    Object.keys(d.models || {}).forEach(m => {
+      if ((d.modelCosts?.[m] || 0) === 0 && (d.models[m] || 0) > 0) localModels.add(m);
+    });
+  });
+  const modelList = [...paidModels].sort((a, b) => {
     const ta = daily.reduce((s, d) => s + (d.modelCosts?.[a] || 0), 0);
     const tb = daily.reduce((s, d) => s + (d.modelCosts?.[b] || 0), 0);
     return tb - ta;
   });
 
   const maxCost = Math.max(...daily.map(d => d.cost || 0), 1);
+  // For local token bars: scale so max local tokens = 20% of chart height
+  const maxLocalToks = Math.max(...daily.map(d =>
+    [...localModels].reduce((s, m) => s + (d.models?.[m] || 0), 0)
+  ), 1);
   const barW = Math.max(4, (cW / daily.length) - 2);
 
   ctx.clearRect(0, 0, W, H);
@@ -348,7 +358,7 @@ function drawDailyCostChart(canvas, daily) {
     ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(W - pad.right, y); ctx.stroke();
   }
 
-  // Stacked cost bars
+  // Stacked cost bars (paid models)
   daily.forEach((d, i) => {
     const x = pad.left + (i * cW / daily.length) + 1;
     let yOffset = pad.top + cH;
@@ -364,12 +374,40 @@ function drawDailyCostChart(canvas, daily) {
       ctx.fill();
     });
 
+    // Local model overlay: semi-transparent hatched bar at bottom of chart
+    // Height = up to 20% of cH, proportional to local token usage
+    const localToks = [...localModels].reduce((s, m) => s + (d.models?.[m] || 0), 0);
+    if (localToks > 0) {
+      const localH = Math.max(3, (localToks / maxLocalToks) * (cH * 0.2));
+      const localY = pad.top + cH - localH;
+      // Draw striped/semi-transparent bar for each local model
+      let lOffset = pad.top + cH;
+      [...localModels].forEach(m => {
+        const mt = d.models?.[m] || 0;
+        if (mt <= 0) return;
+        const mH = Math.max(2, (mt / maxLocalToks) * (cH * 0.2));
+        lOffset -= mH;
+        ctx.globalAlpha = 0.55;
+        ctx.fillStyle = getModelColor(m);
+        ctx.beginPath();
+        ctx.roundRect(x, lOffset, barW, mH, 1);
+        ctx.fill();
+        ctx.globalAlpha = 1.0;
+      });
+      // Small "local" label
+      ctx.fillStyle = '#818cf8';
+      ctx.font = '7px -apple-system, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('≈' + (localToks >= 1e6 ? (localToks/1e6).toFixed(0)+'M' : (localToks/1e3).toFixed(0)+'K'), x + barW / 2, lOffset - 2);
+    }
+
     // Total cost label above bar
+    const topY = yOffset;
     if ((d.cost || 0) > 0) {
       ctx.fillStyle = '#c9d1d9';
       ctx.font = 'bold 9px -apple-system, sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText('$' + (d.cost).toFixed(0), x + barW / 2, yOffset - 3);
+      ctx.fillText('$' + (d.cost).toFixed(0), x + barW / 2, topY - 3);
     }
 
     // Date label
@@ -389,12 +427,16 @@ function drawDailyCostChart(canvas, daily) {
     ctx.fillText('$' + val.toFixed(0), pad.left - 6, y);
   }
 
-  // Legend
+  // Legend: paid models + local models
   const legendEl = canvas.parentElement?.querySelector('.chart-cost-legend');
   if (legendEl) {
-    legendEl.innerHTML = modelList.map(m =>
+    const paidItems = modelList.map(m =>
       `<span class="ops-model-legend-item"><span class="ops-model-dot" style="background:${getModelColor(m)}"></span>${shortModel(m)}</span>`
-    ).join('');
+    );
+    const localItems = [...localModels].map(m =>
+      `<span class="ops-model-legend-item"><span class="ops-model-dot" style="background:${getModelColor(m)};opacity:.55"></span>${shortModel(m)} <span style="font-size:.65rem;color:var(--green)">local $0</span></span>`
+    );
+    legendEl.innerHTML = [...paidItems, ...localItems].join('');
   }
 }
 
