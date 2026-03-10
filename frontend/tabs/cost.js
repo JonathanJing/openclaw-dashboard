@@ -156,81 +156,124 @@ async function loadOpsAlltime(days) {
   else _costRangeDays = days;
 
   const modelsEl = document.getElementById('alltimeModels');
-  const subEl = document.getElementById('alltimeSub');
+  const subEl    = document.getElementById('alltimeSub');
   if (!modelsEl) return;
 
   _ensureCostRangeFilter();
 
   try {
-    // Fetch history (time-range filtered) and today's breakdown
     const apiDays = days >= 9999 ? 9999 : days;
-    const hist  = await apiFetch(`/api/ledger/history?days=${apiDays}`);
-    const today = await apiFetch('/api/ledger/today');
-
+    const hist = await apiFetch(`/api/ledger/history?days=${apiDays}`);
     const dayRows = hist.rows || [];
-    const totalCost   = dayRows.reduce((a, r) => a + Number(r.cost_total   || 0), 0);
-    const totalTokens = dayRows.reduce((a, r) => a + Number(r.total_tokens || 0), 0);
+
+    // ── Totals ────────────────────────────────────────────────────────
+    let totalCost   = 0;
+    let totalTokens = 0;
+    for (const r of dayRows) {
+      totalCost   += Number(r.cost_total   || 0);
+      totalTokens += Number(r.total_tokens || 0);
+    }
 
     const rangeLabel = days >= 9999 ? 'all time' : `last ${hist.days || days} days`;
-    if (subEl) subEl.textContent = `${fmtTokens(totalTokens)} tokens · $${totalCost.toFixed(2)} · ${rangeLabel}`;
+    if (subEl) subEl.textContent =
+      `${fmtTokens(totalTokens)} tokens · $${totalCost.toFixed(2)} · ${rangeLabel}`;
 
-    // Today's model breakdown (from /api/ledger/today → by_model)
-    // Normalize aliases (especially local Qwen variants) to avoid duplicate rows.
-    function canonicalModelName(raw) {
-      const n = normModelStr(raw).replace(/\.gguf$/i, '');
-      if (n.includes('qwen3-5') && n.includes('35b') && n.includes('a3b')) return 'qwen3.5 35b a3b';
-      if (n.includes('qwen3-5') && n.includes('30b')) return 'qwen3.5 30b';
-      return shortModel(raw).toLowerCase();
+    // ── Model aggregation from HISTORY (not just today) ───────────────
+    // Normalise local-model name variants so Qwen gguf rows don't appear
+    // as separate entries for each filename/provider variant.
+    function canonicalKey(provider, model) {
+      const p = (provider || '').toLowerCase();
+      const m = (model || '').toLowerCase().replace(/\.gguf$/i, '');
+      // local-dgx-spark Qwen variants → single canonical key
+      if ((p.includes('local') || p.includes('ollama')) &&
+          m.includes('qwen') && m.includes('35b')) return 'local/qwen3.5-35b';
+      if ((p.includes('local') || p.includes('ollama')) &&
+          m.includes('qwen') && m.includes('30b')) return 'local/qwen3.5-30b';
+      // anthropic/anthropic/… double-prefix artifact
+      const cleanProvider = p.replace(/^anthropic\//, '');
+      return `${cleanProvider}/${model || 'unknown'}`;
     }
 
-    const todayAgg = new Map();
-    for (const r of (today.by_model || [])) {
-      const key = canonicalModelName(r.model || 'unknown');
-      const prev = todayAgg.get(key) || { name: key, raw: r.model || key, tokens: 0, cost: 0, messages: 0 };
-      prev.tokens += Number((r.input_tokens || 0) + (r.output_tokens || 0) + (r.cache_read_tokens || 0) + (r.cache_write_tokens || 0));
-      prev.cost += Number(r.cost_total || 0);
-      prev.messages += Number(r.calls || 0);
-      todayAgg.set(key, prev);
+    const modelAgg = new Map(); // key → { key, displayName, provider, rawModel, tokens, cost, messages, isLocal }
+
+    for (const r of dayRows) {
+      const key   = canonicalKey(r.provider, r.model);
+      const toks  = Number(r.total_tokens || 0);
+      const cost  = Number(r.cost_total   || 0);
+      const calls = Number(r.calls        || 0);
+      const prev  = modelAgg.get(key);
+      const prov  = (r.provider || '').toLowerCase();
+      const isLocal = prov.includes('local') || prov.includes('ollama') ||
+                      (r.model || '').toLowerCase().includes('gguf');
+      if (prev) {
+        prev.tokens   += toks;
+        prev.cost     += cost;
+        prev.messages += calls;
+      } else {
+        modelAgg.set(key, {
+          key,
+          displayName: key.startsWith('local/') ? `🖥 ${key.slice(6)}` : shortModel(r.model || key),
+          provider: r.provider || 'unknown',
+          rawModel: r.model || key,
+          tokens:   toks,
+          cost,
+          messages: calls,
+          isLocal,
+        });
+      }
     }
-    const todayModels = Array.from(todayAgg.values()).sort((a, b) => b.tokens - a.tokens);
-    const todayTotal = { tokens: todayModels.reduce((a, m) => a + m.tokens, 0) };
 
-    modelsEl.innerHTML = todayModels.length ? todayModels.map(m => {
-      const pct = todayTotal.tokens > 0 ? ((m.tokens / todayTotal.tokens) * 100).toFixed(1) : '0';
-      return `<div class="ops-channel-card">
-        <div class="ops-ch-left">
-          <div class="ops-ch-name" style="font-size:.85rem">
-            <span class="ops-model-dot" style="background:${getModelColor(m.raw || m.name)};display:inline-block;margin-right:6px"></span>
-            ${shortModel(m.raw || m.name)}
-          </div>
-          <div class="ops-ch-meta"><span>${m.messages} msgs</span><span>${pct}%</span></div>
-        </div>
-        <div class="ops-ch-right">
-          <div class="ops-ch-tokens">${fmtTokens(m.tokens)}</div>
-          <div class="ops-ch-cost">$${(m.cost || 0).toFixed(2)}</div>
-        </div>
-      </div>`;
-    }).join('')
-    : '<div class="ops-ch-meta" style="padding:8px 0">No usage today yet.</div>';
+    // Sort: local models by token desc, cloud models by cost desc, then interleave
+    const cloudModels = [...modelAgg.values()].filter(m => !m.isLocal)
+      .sort((a, b) => b.cost - a.cost);
+    const localModels = [...modelAgg.values()].filter(m => m.isLocal)
+      .sort((a, b) => b.tokens - a.tokens);
+    const sortedModels = [...cloudModels, ...localModels];
 
-    // Build daily data for week charts from hist.rows
-    // Group by day
+    const grandTokens = sortedModels.reduce((s, m) => s + m.tokens, 0);
+
+    modelsEl.innerHTML = sortedModels.length
+      ? sortedModels.map(m => {
+          const pct = grandTokens > 0 ? ((m.tokens / grandTokens) * 100).toFixed(1) : '0';
+          const costStr = m.isLocal
+            ? `<span style="color:var(--green);font-size:.7rem">local $0</span>`
+            : `$${m.cost.toFixed(2)}`;
+          return `<div class="ops-channel-card">
+            <div class="ops-ch-left">
+              <div class="ops-ch-name" style="font-size:.85rem">
+                <span class="ops-model-dot" style="background:${getModelColor(m.rawModel)};display:inline-block;margin-right:6px"></span>
+                ${escHtml(m.displayName)}
+                ${m.isLocal ? '<span style="font-size:.65rem;margin-left:4px;padding:1px 6px;border-radius:8px;background:rgba(63,185,80,.15);color:var(--green)">local</span>' : ''}
+              </div>
+              <div class="ops-ch-meta">
+                <span>${m.messages.toLocaleString()} msgs</span>
+                <span>${pct}% of tokens</span>
+              </div>
+            </div>
+            <div class="ops-ch-right">
+              <div class="ops-ch-tokens">${fmtTokens(m.tokens)}</div>
+              <div class="ops-ch-cost">${costStr}</div>
+            </div>
+          </div>`;
+        }).join('')
+      : '<div class="ops-ch-meta" style="padding:8px 0">No usage data in this range.</div>';
+
+    // ── Daily chart data ──────────────────────────────────────────────
     const dailyMap = {};
     for (const r of dayRows) {
       const d = r.day;
       if (!dailyMap[d]) dailyMap[d] = { date: d, tokens: 0, cost: 0, models: {}, modelCosts: {} };
       const toks = Number(r.total_tokens || 0);
-      const cost = Number(r.cost_total || 0);
-      const modelAlias = r.model || 'unknown';
-      dailyMap[d].tokens += toks;
-      dailyMap[d].cost   += cost;
-      dailyMap[d].models[modelAlias]      = (dailyMap[d].models[modelAlias]      || 0) + toks;
-      dailyMap[d].modelCosts[modelAlias]  = (dailyMap[d].modelCosts[modelAlias]  || 0) + cost;
+      const cost = Number(r.cost_total   || 0);
+      // Use canonical key for chart legend so Qwen variants merge
+      const alias = canonicalKey(r.provider, r.model);
+      dailyMap[d].tokens              += toks;
+      dailyMap[d].cost                += cost;
+      dailyMap[d].models[alias]        = (dailyMap[d].models[alias]       || 0) + toks;
+      dailyMap[d].modelCosts[alias]    = (dailyMap[d].modelCosts[alias]   || 0) + cost;
     }
     const allDaily = Object.values(dailyMap).sort((a, b) => a.date < b.date ? -1 : 1);
-    if (allDaily.length > 0) {
-      initWeekNav(allDaily);
-    }
+    if (allDaily.length > 0) initWeekNav(allDaily);
 
   } catch (e) {
     modelsEl.innerHTML = `<div class="empty-state"><p>${e.message}</p></div>`;

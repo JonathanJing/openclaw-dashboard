@@ -130,20 +130,25 @@ async function renderAgentMonitor() {
   const models = {};
   let totalCalls = 0;
 
-  const canonicalModel = (raw) => {
-    const n = normModelStr(raw).replace(/\.gguf$/i, '');
-    if (n.includes('qwen3-5') && n.includes('35b') && n.includes('a3b')) return 'qwen3.5 35b a3b';
-    if (n.includes('qwen3-5') && n.includes('30b')) return 'qwen3.5 30b';
+  // Canonical key: merge local Qwen variants + fix double-prefix artifacts
+  const canonicalModel = (provider, raw) => {
+    const p = (provider || '').toLowerCase();
+    const n = (raw || '').toLowerCase().replace(/\.gguf$/i, '');
+    if ((p.includes('local') || p.includes('ollama')) && n.includes('qwen') && n.includes('35b')) return 'qwen3.5-35b (local)';
+    if ((p.includes('local') || p.includes('ollama')) && n.includes('qwen') && n.includes('30b')) return 'qwen3.5-30b (local)';
+    // Fix anthropic/anthropic/... double prefix
+    if (p.startsWith('anthropic/')) return raw || 'unknown';
     return raw || 'unknown';
   };
 
   rows.forEach(r => {
     const cost = Number(r.cost_total || 0);
+    // Always compute from individual token fields — billed_total_tokens may be 0 for local models
     const billed = Number(
-      r.billed_total_tokens ||
-      ((r.input_tokens || 0) + (r.output_tokens || 0) + (r.cache_read_tokens || 0) + (r.cache_write_tokens || 0))
+      (r.input_tokens || 0) + (r.output_tokens || 0) +
+      (r.cache_read_tokens || 0) + (r.cache_write_tokens || 0)
     );
-    const m = canonicalModel(r.model || 'unknown');
+    const m = canonicalModel(r.provider, r.model || 'unknown');
     totalCost += cost;
     totalTokens += billed;
     totalCalls += Number(r.calls || 0);
@@ -151,7 +156,7 @@ async function renderAgentMonitor() {
 
     const provider = String(r.provider || '').toLowerCase();
     const modelRaw = String(r.model || '').toLowerCase();
-    const isLocal = provider.includes('local') || modelRaw.includes('gguf') || modelRaw.includes('qwen');
+    const isLocal = provider.includes('local') || provider.includes('ollama') || modelRaw.includes('gguf');
     if (isLocal) localTokens += billed;
   });
 
