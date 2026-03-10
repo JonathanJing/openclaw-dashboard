@@ -181,17 +181,38 @@ async function loadOpsAlltime(days) {
     // ── Model aggregation from HISTORY (not just today) ───────────────
     // Normalise local-model name variants so Qwen gguf rows don't appear
     // as separate entries for each filename/provider variant.
+    // Map raw (provider, model) from ledger → stable display key + metadata
+    // Must match the LEDGER_ALIAS_MAP in backend/providers/ground-truth.js
     function canonicalKey(provider, model) {
       const p = (provider || '').toLowerCase();
       const m = (model || '').toLowerCase().replace(/\.gguf$/i, '');
-      // local-dgx-spark Qwen variants → single canonical key
-      if ((p.includes('local') || p.includes('ollama')) &&
-          m.includes('qwen') && m.includes('35b')) return 'local/qwen3.5-35b';
-      if ((p.includes('local') || p.includes('ollama')) &&
-          m.includes('qwen') && m.includes('30b')) return 'local/qwen3.5-30b';
-      // anthropic/anthropic/… double-prefix artifact
-      const cleanProvider = p.replace(/^anthropic\//, '');
-      return `${cleanProvider}/${model || 'unknown'}`;
+      // All local Qwen3.5 35B variants (dgx-spark + macbook + ollama-remote) → single key
+      if (m.includes('qwen') && m.includes('35b') &&
+          (p.includes('local') || p.includes('ollama'))) {
+        // Distinguish mac vs spark
+        if (p.includes('macbook') || p.includes('mac-pro') || p.includes('mac pro')) return 'local/qwen-mac';
+        return 'local/qwen-spark';
+      }
+      if (m.includes('qwen') && m.includes('30b') &&
+          (p.includes('local') || p.includes('ollama'))) return 'local/qwen3.5-30b';
+      // anthropic/anthropic/... double prefix artifact → clean
+      if (p.startsWith('anthropic/')) return `anthropic/${model || 'unknown'}`;
+      return `${p}/${model || 'unknown'}`;
+    }
+
+    // Display name for the canonical key
+    function canonicalDisplayName(key, rawModel) {
+      if (key === 'local/qwen-spark') return 'Qwen3.5-35B (DGX Spark)';
+      if (key === 'local/qwen-mac')   return 'Qwen3.5-35B (MacBook)';
+      if (key === 'local/qwen3.5-30b') return 'Qwen3.5-30B (local)';
+      return shortModel(rawModel || key);
+    }
+
+    // Color lookup key for getModelColor(): prefer full "provider/model" id
+    function colorKey(key, rawModel) {
+      if (key === 'local/qwen-spark') return 'local-dgx-spark/Qwen3.5-35B-A3B-UD-Q4_K_XL.gguf';
+      if (key === 'local/qwen-mac')   return 'local-macbook-pro/qwen3.5:35b-a3b';
+      return rawModel || key;
     }
 
     const modelAgg = new Map(); // key → { key, displayName, provider, rawModel, tokens, cost, messages, isLocal }
@@ -212,12 +233,13 @@ async function loadOpsAlltime(days) {
       } else {
         modelAgg.set(key, {
           key,
-          displayName: key.startsWith('local/') ? `🖥 ${key.slice(6)}` : shortModel(r.model || key),
-          provider: r.provider || 'unknown',
-          rawModel: r.model || key,
-          tokens:   toks,
+          displayName: canonicalDisplayName(key, r.model),
+          colorRef:    colorKey(key, r.model),
+          provider:    r.provider || 'unknown',
+          rawModel:    r.model || key,
+          tokens:      toks,
           cost,
-          messages: calls,
+          messages:    calls,
           isLocal,
         });
       }
@@ -241,7 +263,7 @@ async function loadOpsAlltime(days) {
           return `<div class="ops-channel-card">
             <div class="ops-ch-left">
               <div class="ops-ch-name" style="font-size:.85rem">
-                <span class="ops-model-dot" style="background:${getModelColor(m.rawModel)};display:inline-block;margin-right:6px"></span>
+                <span class="ops-model-dot" style="background:${getModelColor(m.colorRef || m.rawModel)};display:inline-block;margin-right:6px"></span>
                 ${escHtml(m.displayName)}
                 ${m.isLocal ? '<span style="font-size:.65rem;margin-left:4px;padding:1px 6px;border-radius:8px;background:rgba(63,185,80,.15);color:var(--green)">local</span>' : ''}
               </div>

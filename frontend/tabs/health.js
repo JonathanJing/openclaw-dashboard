@@ -130,29 +130,43 @@ async function renderAgentMonitor() {
   const models = {};
   let totalCalls = 0;
 
-  // Canonical key: merge local Qwen variants + fix double-prefix artifacts
-  const canonicalModel = (provider, raw) => {
+  // Canonical key: merge local Qwen variants, fix double-prefix, return stable display key.
+  // colorRef: the full "provider/model" string to pass to getModelColor()
+  const modelMeta = (provider, raw) => {
     const p = (provider || '').toLowerCase();
     const n = (raw || '').toLowerCase().replace(/\.gguf$/i, '');
-    if ((p.includes('local') || p.includes('ollama')) && n.includes('qwen') && n.includes('35b')) return 'qwen3.5-35b (local)';
-    if ((p.includes('local') || p.includes('ollama')) && n.includes('qwen') && n.includes('30b')) return 'qwen3.5-30b (local)';
+    if (p.includes('local') || p.includes('ollama')) {
+      if (n.includes('qwen') && n.includes('35b')) {
+        const isMac = p.includes('macbook') || p.includes('mac-pro');
+        return {
+          key: isMac ? 'Qwen3.5-35B (MacBook)' : 'Qwen3.5-35B (DGX Spark)',
+          colorRef: isMac
+            ? 'local-macbook-pro/qwen3.5:35b-a3b'
+            : 'local-dgx-spark/Qwen3.5-35B-A3B-UD-Q4_K_XL.gguf',
+        };
+      }
+    }
     // Fix anthropic/anthropic/... double prefix
-    if (p.startsWith('anthropic/')) return raw || 'unknown';
-    return raw || 'unknown';
+    if (p.startsWith('anthropic/')) return { key: raw || 'unknown', colorRef: raw || 'unknown' };
+    return { key: raw || 'unknown', colorRef: `${provider}/${raw}` };
   };
+
+  // Track colorRef per canonical key so mix bar uses correct color
+  const modelColors = {}; // canonicalKey → colorRef
 
   rows.forEach(r => {
     const cost = Number(r.cost_total || 0);
-    // Always compute from individual token fields — billed_total_tokens may be 0 for local models
+    // Always use individual token fields (billed_total_tokens is 0 for local models)
     const billed = Number(
       (r.input_tokens || 0) + (r.output_tokens || 0) +
       (r.cache_read_tokens || 0) + (r.cache_write_tokens || 0)
     );
-    const m = canonicalModel(r.provider, r.model || 'unknown');
-    totalCost += cost;
+    const { key: m, colorRef } = modelMeta(r.provider, r.model || 'unknown');
+    totalCost   += cost;
     totalTokens += billed;
-    totalCalls += Number(r.calls || 0);
-    models[m] = (models[m] || 0) + billed;
+    totalCalls  += Number(r.calls || 0);
+    models[m]        = (models[m] || 0) + billed;
+    modelColors[m]   = colorRef; // last write wins (all variants map to same colorRef)
 
     const provider = String(r.provider || '').toLowerCase();
     const modelRaw = String(r.model || '').toLowerCase();
@@ -237,17 +251,18 @@ async function renderAgentMonitor() {
       totalBadge5.className = 'agent-stat-badge active';
       totalBadge5.innerHTML = `${localPct}% ${tt('local', '本地')}`;
       let barHtml = '<div style="display:flex;height:10px;border-radius:5px;overflow:hidden;margin-bottom:6px">';
-      const colors = {};
+      const resolvedColors = {};
       sorted.forEach(([m, tk]) => {
         const pct = ((tk / (totalTokens || 1)) * 100);
-        const c = getModelColor(m);
-        colors[m] = c;
-        barHtml += `<div style="width:${pct}%;background:${c};min-width:2px" title="${shortModel(m)} ${pct.toFixed(0)}%"></div>`;
+        // Use modelColors[m] (colorRef) for proper color lookup, fallback to key itself
+        const c = getModelColor(modelColors[m] || m);
+        resolvedColors[m] = c;
+        barHtml += `<div style="width:${pct}%;background:${c};min-width:2px" title="${escHtml(m)} ${pct.toFixed(0)}%"></div>`;
       });
       barHtml += '</div><div style="display:flex;flex-wrap:wrap;gap:4px 10px;font-size:.7rem">';
       sorted.forEach(([m, tk]) => {
         const pct = ((tk / (totalTokens || 1)) * 100).toFixed(0);
-        barHtml += `<span style="color:${colors[m]}">● ${shortModel(m)} <b>${pct}%</b></span>`;
+        barHtml += `<span style="color:${resolvedColors[m]}">● ${escHtml(m)} <b>${pct}%</b></span>`;
       });
       barHtml += '</div>';
       mixEl.innerHTML = barHtml;

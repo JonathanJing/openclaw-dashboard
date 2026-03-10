@@ -143,12 +143,54 @@ function _colorHash(str) {
   return `hsl(${Math.abs(h) % 360},65%,62%)`;
 }
 
+// Known ledger aliases that don't appear in MODEL_GROUND_TRUTH.md
+// but exist in historical ledger.db rows. Map them to the canonical alias color.
+const LEDGER_ALIAS_MAP = {
+  // qwen-spark variants
+  'local-dgx-spark/Qwen3.5-35B-A3B-UD-Q4_K_XL.gguf': 'qwen-spark',
+  'local-dgx-spark/Qwen3.5-35B-A3B':                  'qwen-spark',
+  'local-dgx-spark/qwen3.5:35b-a3b':                  'qwen-spark',
+  // qwen-mac variants
+  'local-macbook-pro/qwen3.5:35b-a3b':                 'qwen-mac',
+  // ollama-remote (treated as qwen-spark color — same model)
+  'ollama-remote/qwen3.5:35b-a3b':                     'qwen-spark',
+  // anthropic double-prefix artifact
+  'anthropic/anthropic/claude-sonnet-4-6':             'sonnet-4.6',
+  // openai-codex provider
+  'openai-codex/gpt-5.4':                              'gpt-5.4',
+};
+
 function getModelColorMap() {
   const gt = parse();
   const colors = {};
+
+  // 1. Alias → color (for refreshModelOptions / cron selects)
   for (const m of gt.models) {
     colors[m.alias] = MODEL_PALETTE[m.alias] || _colorHash(m.alias);
   }
+
+  // 2. Full model id → same color (for getModelColor(rawModel) in cost/health tabs)
+  for (const m of gt.models) {
+    if (m.id) {
+      const alias = m.alias;
+      const color = MODEL_PALETTE[alias] || _colorHash(alias);
+      // id format: "provider/model"
+      colors[m.id] = color;
+      // Also key by model-name-only part (after /)
+      const modelPart = m.id.includes('/') ? m.id.split('/').slice(1).join('/') : m.id;
+      if (modelPart) colors[modelPart] = color;
+    }
+  }
+
+  // 3. Historical ledger orphan variants
+  for (const [rawKey, aliasRef] of Object.entries(LEDGER_ALIAS_MAP)) {
+    const color = MODEL_PALETTE[aliasRef] || _colorHash(aliasRef);
+    colors[rawKey] = color;
+    // Also key by model part only
+    const modelPart = rawKey.includes('/') ? rawKey.split('/').slice(1).join('/') : rawKey;
+    if (modelPart) colors[modelPart] = color;
+  }
+
   return colors;
 }
 
