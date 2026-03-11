@@ -149,7 +149,9 @@ async function renderAgentMonitor() {
     }
     // Fix anthropic/anthropic/... double prefix
     if (p.startsWith('anthropic/')) return { key: raw || 'unknown', colorRef: raw || 'unknown' };
-    return { key: raw || 'unknown', colorRef: `${provider}/${raw}` };
+    // Normalize display key: strip known provider prefix if embedded in model name
+    const displayKey = (raw || 'unknown').replace(/^(anthropic|openai|google|moonshot|volcengine|openai-codex)\//i, '');
+    return { key: displayKey || 'unknown', colorRef: `${provider}/${raw}` };
   };
 
   // Track colorRef per canonical key so mix bar uses correct color
@@ -259,7 +261,7 @@ async function renderAgentMonitor() {
     }
   }
 
-  const sorted = Object.entries(models).filter(([k]) => k !== 'delivery-mirror' && k !== 'unknown').sort((a, b) => b[1] - a[1]);
+  const sorted = Object.entries(models).filter(([k, v]) => k !== 'delivery-mirror' && k !== 'unknown' && v > 0).sort((a, b) => b[1] - a[1]);
   const mixEl = document.getElementById('modelMixBars');
   const totalVal5 = document.getElementById('totalValue');
   const totalBadge5 = document.getElementById('totalBadge');

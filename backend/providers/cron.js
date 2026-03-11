@@ -117,6 +117,43 @@ function handleCronRuns(req, res, query) {
 function handleCronCosts(_req, res) {
   const jobs = dedupeJobs(loadCronStore());
 
+  // ── Ledger: token/cost per job (remote models — JSONL has no usage) ─
+  // session_key format: agent:main:cron:{jobId}:run:{runId}
+  const todayLedger   = {}; // jobId → { tokens, cost }         (today)
+  const historyLedger = {}; // jobId → { tokens, cost, runs }   (last 30d)
+  try {
+    const todayStr30 = new Date(Date.now() - 30 * 86400 * 1000)
+      .toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
+    const ledgerRows = sqliteJson(cfg.LEDGER_DB, `
+      SELECT
+        substr(session_key,
+          instr(session_key,':cron:')+6,
+          instr(session_key,':run:')-instr(session_key,':cron:')-6
+        ) as job_id,
+        date(ts,'localtime') as day,
+        sum(input_tokens+output_tokens+cache_read_tokens+cache_write_tokens) as tokens,
+        round(sum(cost_total),6) as cost,
+        count(DISTINCT session_key) as runs
+      FROM calls
+      WHERE session_key LIKE '%:cron:%'
+        AND date(ts,'localtime') >= '${todayStr30}'
+      GROUP BY job_id, day
+    `);
+    const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
+    for (const r of ledgerRows) {
+      if (!r.job_id) continue;
+      // history
+      if (!historyLedger[r.job_id]) historyLedger[r.job_id] = { tokens: 0, cost: 0, runs: 0 };
+      historyLedger[r.job_id].tokens += r.tokens || 0;
+      historyLedger[r.job_id].cost   += r.cost   || 0;
+      historyLedger[r.job_id].runs   += r.runs   || 0;
+      // today
+      if (r.day === todayStr) {
+        todayLedger[r.job_id] = { tokens: r.tokens || 0, cost: r.cost || 0 };
+      }
+    }
+  } catch (_) { /* ledger unavailable — degrade gracefully */ }
+
   // ── Per-job run stats from JSONL files ────────────────────────────
   const DAYS = 30;
   const cutoff = Date.now() - DAYS * 86400 * 1000;
@@ -144,8 +181,11 @@ function handleCronCosts(_req, res) {
     }
 
     const totalRuns = recentRuns.length;
-    const totalTokens = recentRuns.reduce((s, r) => s + (r.tokens || 0), 0);
-    const totalCost = recentRuns.reduce((s, r) => s + (r.costUsd || 0), 0);
+    const jsonlTokens = recentRuns.reduce((s, r) => s + (r.tokens || 0), 0);
+    const jsonlCost   = recentRuns.reduce((s, r) => s + (r.costUsd || 0), 0);
+    const ledgerHist  = historyLedger[id] || { tokens: 0, cost: 0 };
+    const totalTokens = jsonlTokens || ledgerHist.tokens;  // JSONL first, ledger fallback
+    const totalCost   = jsonlCost   || ledgerHist.cost;
     const totalDurationMs = recentRuns.reduce((s, r) => s + (r.durationMs || 0), 0);
 
     // Detect missing usage (cost = 0 but run finished)
@@ -155,7 +195,7 @@ function handleCronCosts(_req, res) {
     return {
       id,
       name: job.name || id,
-      model: job.payload?.model || null,
+      model: job.model || job.payload?.model || null,
       runs: totalRuns,
       totalTokens,
       totalCost,
@@ -165,13 +205,47 @@ function handleCronCosts(_req, res) {
       avgDailyCost: daily.length > 0 ? totalCost / daily.length : 0,
       today: (() => {
         const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
-        const todayData = byDay[todayStr] || { runs: 0, tokens: 0, cost: 0 };
-        return { runs: todayData.runs, tokens: todayData.tokens, cost: todayData.cost };
+        const jsonlDay = byDay[todayStr] || { runs: 0, tokens: 0, cost: 0 };
+        const ledger   = todayLedger[id]  || { tokens: 0, cost: 0 };
+        return {
+          runs:   jsonlDay.runs,
+          tokens: jsonlDay.tokens || ledger.tokens,   // prefer JSONL; fallback to ledger
+          cost:   jsonlDay.cost   || ledger.cost,
+        };
       })(),
       daily,
       _review: { runsWithoutUsage, runsWithZeroTokens },
     };
   }).filter(j => j.runs > 0); // only jobs that have run at all
+
+  // ── Per-model aggregation ─────────────────────────────────────────
+  const byModel = new Map();
+  for (const j of jobStats) {
+    const model = j.model || 'unknown';
+    if (!byModel.has(model)) {
+      byModel.set(model, {
+        model,
+        runs: 0,
+        totalTokens: 0,
+        totalCost: 0,
+        jobs: [],
+      });
+    }
+    const m = byModel.get(model);
+    m.runs += j.runs;
+    m.totalTokens += j.totalTokens;
+    m.totalCost += j.totalCost;
+    m.jobs.push({
+      id: j.id,
+      name: j.name,
+      runs: j.runs,
+      totalTokens: j.totalTokens,
+      totalCost: j.totalCost,
+    });
+  }
+  const modelStats = Array.from(byModel.values()).sort((a, b) =>
+    b.totalCost !== a.totalCost ? b.totalCost - a.totalCost : b.totalTokens - a.totalTokens
+  );
 
   // ── Summary ───────────────────────────────────────────────────────
   const totalRuns = jobStats.reduce((s, j) => s + j.runs, 0);
@@ -274,6 +348,7 @@ function handleCronCosts(_req, res) {
       },
     },
     jobs: cleanJobs,
+    modelStats,
     dailyTrend,
     review: {
       cron: {

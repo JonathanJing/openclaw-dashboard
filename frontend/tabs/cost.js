@@ -32,14 +32,20 @@ async function loadOpsChannels() {
         return;
       }
       listEl.innerHTML = rawChannels.map(ch => {
-        const icon = ch.channel === 'discord' ? '🎮' : (ch.channel === 'whatsapp' ? '📱' : '💬');
-        const name = (ch.chat_id || ch.channel || '?');
+        const isCron = ch.isCron || ch.chat_id === '__cron__';
+        const icon = isCron ? '⚙️' : (ch.channel === 'discord' ? '🎮' : (ch.channel === 'whatsapp' ? '📱' : '💬'));
+        const name = isCron
+          ? tt('Cron Jobs', 'Cron 任务（合计）')
+          : (ch.displayName || ch.chat_id || ch.channel || '?');
+        const meta = isCron
+          ? tt('all scheduled jobs · today', '今日全部定时任务')
+          : (ch.channel || '—');
         return `<div class="ops-channel-card">
           <div class="ops-ch-left">
             <div class="ops-ch-name">${icon} ${escHtml(name)}</div>
             <div class="ops-ch-meta">
-              <span>${ch.messages || 0} msgs</span>
-              <span>${ch.channel || '—'}</span>
+              <span>${ch.messages || 0} ${tt('msgs', '条消息')}</span>
+              <span>${escHtml(meta)}</span>
             </div>
           </div>
           <div class="ops-ch-right">

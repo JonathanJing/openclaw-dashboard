@@ -98,13 +98,28 @@ function handleOpsChannels(_req, res) {
   // Redirect to new ledger by-channel endpoint data format
   const { sqliteJson } = require('../lib/sqlite-helper');
   try {
+    // Group cron sessions (session_key LIKE '%:cron:%') into a single synthetic row;
+    // all other sessions keep their normal channel/chat_id grouping.
     const rows = sqliteJson(cfg.LEDGER_DB || path.join(os.homedir(), '.openclaw/ledger.db'), `
-      SELECT channel, chat_id, count(*) as messages,
+      SELECT
+        CASE WHEN session_key LIKE '%:cron:%' THEN 'cron' ELSE channel END AS channel,
+        CASE WHEN session_key LIKE '%:cron:%' THEN '__cron__' ELSE chat_id END AS chat_id,
+        count(*) as messages,
         sum(input_tokens + output_tokens + cache_read_tokens + cache_write_tokens) as totalTokens,
         round(sum(cost_total), 6) as cost
       FROM calls WHERE date(ts, 'localtime') >= date('now', 'localtime')
-      GROUP BY channel, chat_id ORDER BY cost DESC
+      GROUP BY
+        CASE WHEN session_key LIKE '%:cron:%' THEN 'cron' ELSE channel END,
+        CASE WHEN session_key LIKE '%:cron:%' THEN '__cron__' ELSE chat_id END
+      ORDER BY cost DESC, totalTokens DESC
     `);
+    // Mark cron row for frontend labeling
+    for (const r of rows) {
+      if (r.chat_id === '__cron__') {
+        r.isCron = true;
+        r.displayName = 'Cron Jobs';
+      }
+    }
     jsonReply(res, 200, { channels: rows });
   } catch (e) { jsonReply(res, 200, { channels: [], error: e.message }); }
 }
@@ -304,62 +319,36 @@ function register(router) {
     jsonReply(res, 200, { total: 0, byCategory: {}, note: 'Vision stats not available in modular backend yet' });
   });
 
-  // ── Mutating ops (require OPENCLAW_ENABLE_MUTATING_OPS=1) ─────────
-  const { requireMutatingOps, readJsonBody } = require('../lib/http-helpers');
+  // ── Control ops: only restart + doctor --fix are allowed ──────────
+  // Dashboard is read-only except for these two explicit control actions.
+  const { readJsonBody } = require('../lib/http-helpers');
 
+  // POST /ops/restart — restart OpenClaw gateway via `openclaw gateway restart`
   router.add('POST', '/ops/restart', (req, res) => {
-    if (!requireMutatingOps(req, res, 'ops restart')) return;
-    const nodeHttp = require('http');
-    const hookToken = process.env.OPENCLAW_HOOK_TOKEN || '';
-    const postData = JSON.stringify({ action: 'restart', token: hookToken });
-    const gwReq = nodeHttp.request({
-      hostname: '127.0.0.1', port: 18789, path: '/hooks', method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(postData) },
-      timeout: 10000,
-    }, (gwRes) => {
-      let body = '';
-      gwRes.on('data', c => body += c);
-      gwRes.on('end', () => {
-        if (gwRes.statusCode < 300) return jsonReply(res, 200, { ok: true, message: 'Restart signal sent.' });
-        errorReply(res, gwRes.statusCode || 502, body || 'Gateway error');
-      });
+    const { execFile } = require('child_process');
+    // Use absolute paths — LaunchAgent PATH may not include /opt/homebrew/bin
+    const bin = process.env.OPENCLAW_BIN || '/opt/homebrew/bin/openclaw';
+    const nodeBin = process.execPath; // same node that runs this server
+    const env = { ...process.env, PATH: `/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:${process.env.PATH || ''}` };
+    execFile(bin, ['gateway', 'restart'], { timeout: 15000, encoding: 'utf8', env }, (err, stdout, stderr) => {
+      if (err && !stdout) return errorReply(res, 500, stderr || err.message);
+      jsonReply(res, 200, { ok: true, message: 'Restart signal sent.', output: (stdout || '').trim() });
     });
-    gwReq.on('error', e => errorReply(res, 502, `Gateway unreachable: ${e.message}`));
-    gwReq.write(postData);
-    gwReq.end();
   });
 
-  router.add('POST', '/ops/update-openclaw', (req, res) => {
-    if (!requireMutatingOps(req, res, 'ops update-openclaw')) return;
-    errorReply(res, 501, 'OpenClaw update must be triggered via CLI or cron. Use: openclaw update');
+  // POST /ops/doctor — run `openclaw doctor --fix` and stream result
+  router.add('POST', '/ops/doctor', (req, res) => {
+    const { execFile } = require('child_process');
+    const bin = process.env.OPENCLAW_BIN || '/opt/homebrew/bin/openclaw';
+    const env = { ...process.env, PATH: `/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:${process.env.PATH || ''}` };
+    execFile(bin, ['doctor', '--fix'], { timeout: 60000, encoding: 'utf8', env }, (err, stdout, stderr) => {
+      if (err && !stdout) return errorReply(res, 500, stderr || err.message);
+      jsonReply(res, 200, { ok: !err, output: (stdout || '') + (stderr || '') });
+    });
   });
 
-  router.add('POST', '/ops/session-model', async (req, res) => {
-    if (!requireMutatingOps(req, res, 'ops session-model')) return;
-    errorReply(res, 501, 'Session model override not yet available in modular backend. Use /status in Discord.');
-  });
-
-  router.add('POST', '/ops/cron-model', async (req, res) => {
-    if (!requireMutatingOps(req, res, 'ops cron-model')) return;
-    errorReply(res, 501, 'Cron model override not yet available in modular backend.');
-  });
-
-  router.add('POST', '/backup', (req, res) => {
-    if (!requireMutatingOps(req, res, 'backup')) return;
-    const { execFileSync } = require('child_process');
-    const ws = process.env.OPENCLAW_WORKSPACE || path.join(os.homedir(), '.openclaw/workspace');
-    try {
-      execFileSync('git', ['-C', ws, 'add', '-A'], { timeout: 20000 });
-      execFileSync('git', ['-C', ws, 'commit', '-m', 'auto-backup', '--allow-empty'], { timeout: 20000 });
-      const pushResult = execFileSync('git', ['-C', ws, 'push'], { encoding: 'utf8', timeout: 45000 });
-      jsonReply(res, 200, { ok: true, output: pushResult });
-    } catch (e) { errorReply(res, 500, e.message); }
-  });
-
-  router.add('POST', '/backup/load', (req, res) => {
-    if (!requireMutatingOps(req, res, 'backup load')) return;
-    errorReply(res, 501, 'Backup restore not yet available in modular backend.');
-  });
+  // All other mutating routes removed — dashboard is read-only.
+  // Removed: /ops/update-openclaw, /ops/session-model, /ops/cron-model, /backup, /backup/load
 }
 
 // Export the proxy function for the catch-all

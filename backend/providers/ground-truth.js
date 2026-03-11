@@ -132,6 +132,8 @@ const MODEL_PALETTE = {
   'gpt-5.3-codex':          '#fb923c',  // orange
   'gpt-5-mini':             '#fbbf24',  // amber
   'gpt-5.3-instant-latest': '#ef4444',  // red
+  'gpt-5.4':                '#f97316',  // deep orange
+  'Kimi':                   '#22d3ee',  // cyan  (moonshot/kimi-k2.5)
   'doubao-seed-2-0-pro':    '#a78bfa',  // violet
   'qwen-mac':               '#38bdf8',  // sky
   'qwen-spark':             '#818cf8',  // indigo
@@ -156,8 +158,15 @@ const LEDGER_ALIAS_MAP = {
   'ollama-remote/qwen3.5:35b-a3b':                     'qwen-spark',
   // anthropic double-prefix artifact
   'anthropic/anthropic/claude-sonnet-4-6':             'sonnet-4.6',
+  // dirty ledger rows: provider="" model="anthropic/..."
+  'anthropic/claude-sonnet-4-6':                       'sonnet-4.6',
+  'anthropic/claude-opus-4-6':                         'opus-4.6',
   // openai-codex provider
   'openai-codex/gpt-5.4':                              'gpt-5.4',
+  'openai-codex/gpt-5.3-codex':                        'gpt-5.3-codex',
+  'openai-codex/gpt-5.3-chat-latest':                  'gpt-5.3-instant-latest',
+  // moonshot
+  'moonshot/kimi-k2.5':                                'Kimi',
 };
 
 function getModelColorMap() {

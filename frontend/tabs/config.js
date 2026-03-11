@@ -184,25 +184,9 @@ function toggleEditMode() {
   }
 }
 
-async function saveFile() {
-  if (!currentFile) return;
-  const btn = document.getElementById('saveBtn');
-  const content = document.getElementById('editorTextarea').value;
-  btn.disabled = true;
-  btn.textContent = 'Saving…';
-  try {
-    await apiFetch(`/files?path=${encodeURIComponent(currentFile)}`, {
-      method: 'PUT',
-      body: JSON.stringify({ content })
-    });
-    currentFileContent = content;
-    toast('File saved successfully', 'success');
-  } catch(e) {
-    toast(`Save failed: ${e.message}`, 'error');
-  } finally {
-    btn.disabled = false;
-    btn.textContent = 'Save';
-  }
+function saveFile() {
+  // Dashboard is read-only. Edit files via Discord or CLI.
+  toast('Dashboard is read-only. Edit files via Discord or CLI.', 'info');
 }
 
 
@@ -361,24 +345,14 @@ function toggleTask(id) {
   openDetailModal(id);
 }
 
-async function updateTaskStatus(id, status) {
-  try {
-    await apiFetch(`/tasks/${id}`, { method: 'PATCH', body: JSON.stringify({ status }) });
-    toast(`Task updated to ${statusLabel(status)}`, 'success');
-    loadTasks(true);
-  } catch(e) { toast(`Failed: ${e.message}`, 'error'); }
+function updateTaskStatus(_id, _status) {
+  // Dashboard is read-only. Update task status via Discord or CLI.
+  toast('Dashboard is read-only. Update tasks via Discord or CLI.', 'info');
 }
 
-async function addNote(taskId) {
-  const input = document.getElementById(`note-${taskId}`);
-  const text = input?.value?.trim();
-  if (!text) return;
-  try {
-    await apiFetch(`/tasks/${taskId}/notes`, { method: 'POST', body: JSON.stringify({ text }) });
-    input.value = '';
-    toast('Note added', 'success');
-    loadTasks(true);
-  } catch(e) { toast(`Failed: ${e.message}`, 'error'); }
+function addNote(_taskId) {
+  // Dashboard is read-only. Add notes via Discord or CLI.
+  toast('Dashboard is read-only. Add notes via Discord or CLI.', 'info');
 }
 
 // Filters (guarded for Ops view)
@@ -413,36 +387,10 @@ function closeCreateModal() {
   document.getElementById('newAssignee').value = 'main';
 }
 
-async function createTask() {
-  const title = document.getElementById('newTitle').value.trim();
-  if (!title) { toast('Title is required', 'error'); return; }
-
-  const btn = document.getElementById('createTaskBtn');
-  btn.disabled = true;
-  btn.textContent = 'Creating…';
-
-  const payload = {
-    title,
-    description: document.getElementById('newDesc').value.trim(),
-    content: document.getElementById('newContent').value.trim(),
-    priority: document.getElementById('newPriority').value,
-    assignee: document.getElementById('newAssignee').value,
-    status: 'new'
-  };
-  const due = document.getElementById('newDueDate').value;
-  if (due) payload.dueDate = due;
-
-  try {
-    await apiFetch('/tasks', { method: 'POST', body: JSON.stringify(payload) });
-    toast('Task created!', 'success');
-    closeCreateModal();
-    loadTasks(true);
-  } catch(e) {
-    toast(`Failed: ${e.message}`, 'error');
-  } finally {
-    btn.disabled = false;
-    btn.textContent = 'Create Task';
-  }
+function createTask() {
+  // Dashboard is read-only. Create tasks via Discord or CLI.
+  closeCreateModal();
+  toast('Dashboard is read-only. Create tasks via Discord or CLI.', 'info');
 }
 
 // Close modal on overlay click
@@ -565,14 +513,8 @@ async function kanbanDrop(e) {
   if (!taskId || !newStatus) return;
   const task = allTasks.find(t => t.id === taskId);
   if (!task || (task.status || 'new') === newStatus) return;
-  try {
-    await apiFetch(`/tasks/${taskId}`, { method: 'PATCH', body: JSON.stringify({ status: newStatus }) });
-    task.status = newStatus;
-    toast(`Task moved to ${statusLabel(newStatus)}`, 'success');
-    renderKanban();
-  } catch(err) {
-    toast(`Failed: ${err.message}`, 'error');
-  }
+  // Dashboard is read-only. Update tasks via Discord or CLI.
+  toast('Dashboard is read-only. Update tasks via Discord or CLI.', 'info');
 }
 
 function kanbanCardClick(taskId) {
@@ -745,40 +687,19 @@ function closeDetailModal() {
   isContentEditing = false;
 }
 
-async function detailUpdateStatus(newStatus) {
-  if (!detailTaskId) return;
-  try {
-    await apiFetch('/tasks/' + detailTaskId, { method: 'PATCH', body: JSON.stringify({ status: newStatus }) });
-    toast('Task updated to ' + statusLabel(newStatus), 'success');
-    await loadTasks(true);
-    // Detail modal will be auto-refreshed by loadTasks when detailTaskId is set
-  } catch(e) { toast('Failed: ' + e.message, 'error'); }
+function detailUpdateStatus(_newStatus) {
+  // Dashboard is read-only. Update tasks via Discord or CLI.
+  toast('Dashboard is read-only. Update tasks via Discord or CLI.', 'info');
 }
 
-async function addDetailNote() {
-  if (!detailTaskId) return;
-  const input = document.getElementById('detailNoteInput');
-  const text = input?.value?.trim();
-  if (!text) return;
-  try {
-    await apiFetch('/tasks/' + detailTaskId + '/notes', { method: 'POST', body: JSON.stringify({ text }) });
-    input.value = '';
-    toast('Comment added', 'success');
-    await loadTasks(true);
-    setTimeout(() => {
-      const body = document.getElementById('detailBody');
-      if (body) body.scrollTop = body.scrollHeight;
-    }, 100);
-  } catch(e) { toast('Failed: ' + e.message, 'error'); }
+function addDetailNote() {
+  // Dashboard is read-only. Add notes via Discord or CLI.
+  toast('Dashboard is read-only. Add notes via Discord or CLI.', 'info');
 }
 
-async function deleteTask(taskId) {
-  try {
-    await apiFetch('/tasks/' + taskId, { method: 'DELETE' });
-    toast('Task deleted', 'success');
-    closeDetailModal();
-    loadTasks(true);
-  } catch(e) { toast('Failed: ' + e.message, 'error'); }
+function deleteTask(_taskId) {
+  // Dashboard is read-only. Delete tasks via Discord or CLI.
+  toast('Dashboard is read-only. Delete tasks via Discord or CLI.', 'info');
 }
 
 function toggleNoteExpand(noteId, btn) {
@@ -826,29 +747,10 @@ function toggleContentEdit() {
   }
 }
 
-async function saveTaskContent() {
-  if (!detailTaskId) return;
-  const textarea = document.getElementById('detailContentTextarea');
-  const content = textarea.value;
-  const saveBtn = document.getElementById('contentSaveBtn');
-  saveBtn.textContent = 'Saving…';
-  saveBtn.disabled = true;
-  try {
-    await apiFetch('/tasks/' + detailTaskId, { method: 'PATCH', body: JSON.stringify({ content }) });
-    toast('Content saved!', 'success');
-    // Update local task data
-    const task = allTasks.find(t => t.id === detailTaskId);
-    if (task) task.content = content;
-    // Switch back to preview
-    if (isContentEditing) toggleContentEdit();
-    // Refresh the list/kanban behind the modal
-    if (taskView === 'kanban') renderKanban(); else renderTasks();
-  } catch(e) {
-    toast('Save failed: ' + e.message, 'error');
-  } finally {
-    saveBtn.textContent = 'Save';
-    saveBtn.disabled = false;
-  }
+function saveTaskContent() {
+  // Dashboard is read-only. Edit task content via Discord or CLI.
+  toast('Dashboard is read-only. Edit tasks via Discord or CLI.', 'info');
+  if (isContentEditing) toggleContentEdit();
 }
 
 function timeAgo(date) {

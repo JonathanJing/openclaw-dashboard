@@ -97,6 +97,7 @@ async function handleHubStatus(_req, res) {
       hubUrl: HUB_URL,
       service: body?.service || 'local-api-hub',
       module:  body?.module  || null,
+      modules: body?.modules || [],
       port:    body?.port    || cfg.LOCAL_API_HUB_PORT,
       routes:  routes        || null,
     });
@@ -122,27 +123,60 @@ function register(router) {
 
   // Transparent proxy — all methods, dynamic path
   // Matches /local-api-hub, /local-api-hub/, /local-api-hub/content/write, etc.
-  const PROXY_PATHS = [
+  // Read-only proxy paths (GET only — dashboard is read-only)
+  // Write paths (content/write, content/upsert, channel/:id/write|upsert) removed.
+  const READ_PROXY_PATHS = [
+    // Core
     '/local-api-hub/health',
     '/local-api-hub/targets',
     '/local-api-hub/schemas',
     '/local-api-hub/routes',
     '/local-api-hub/channels',
     '/local-api-hub/content/preview',
-    '/local-api-hub/content/write',
-    '/local-api-hub/content/upsert',
+    // Spark
+    '/local-api-hub/models/spark',
+    '/local-api-hub/models/spark/health',
+    '/local-api-hub/models/spark/status',
+    '/local-api-hub/models/spark/metrics',
+    // Model Routing
+    '/local-api-hub/models/routing',
+    '/local-api-hub/models/routing/active',
+    '/local-api-hub/models/routing/history',
+    '/local-api-hub/models/usage',
+    // Ops
+    '/local-api-hub/health/system',
+    '/local-api-hub/ops/sessions',
+    '/local-api-hub/ops/cron',
+    // Dashboard
+    '/local-api-hub/dashboard/summary',
+    '/local-api-hub/dashboard/activity',
+    '/local-api-hub/dashboard/metrics',
+    '/local-api-hub/dashboard/alerts',
+    // Memory
+    '/local-api-hub/memory/stats',
+    '/local-api-hub/memory/today',
+    '/local-api-hub/memory/recent',
+    // Ledger
+    '/local-api-hub/ledger/summary',
+    '/local-api-hub/ledger/today',
+    '/local-api-hub/ledger/daily',
+    '/local-api-hub/ledger/models',
+    // Notify (read-only)
+    '/local-api-hub/notify/queue',
   ];
-  for (const p of PROXY_PATHS) {
-    router.add('GET',  p, hubProxy);
-    router.add('POST', p, hubProxy);
+  for (const p of READ_PROXY_PATHS) {
+    router.add('GET', p, hubProxy);
   }
 
-  // Dynamic channel routes: /local-api-hub/channel/:channelId/route[/:lane]
-  // and /local-api-hub/channel/:channelId/(write|upsert|preview)
-  // Handled via dynamic pattern registration
-  router.add('GET',  '/local-api-hub/channel/:channelId/route',       hubProxy);
-  router.add('GET',  '/local-api-hub/channel/:channelId/route/:lane', hubProxy);
-  router.add('POST', '/local-api-hub/channel/:channelId/:mode',       hubProxy);
+  // Dynamic routes
+  // Channel routes (read-only)
+  router.add('GET', '/local-api-hub/channel/:channelId/route',       hubProxy);
+  router.add('GET', '/local-api-hub/channel/:channelId/route/:lane', hubProxy);
+  // Ops detail routes
+  router.add('GET', '/local-api-hub/ops/sessions/:key', hubProxy);
+  router.add('GET', '/local-api-hub/ops/cron/:id', hubProxy);
+  // Memory detail routes
+  router.add('GET', '/local-api-hub/memory/:date', hubProxy);
 }
 
 module.exports = { register };

@@ -132,6 +132,7 @@
     <button class="tab-btn" data-tab="ops"><span id="tabCostLabel">Cost</span></button>
     <button class="tab-btn" data-tab="tasks"><span id="tabCronLabel">Cron</span></button>
     <button class="tab-btn" data-tab="health"><span id="tabHealthLabel">Health</span></button>
+    <button class="tab-btn" data-tab="spark"><span id="tabSparkLabel">Spark</span></button>
     <button class="tab-btn" data-tab="config"><span id="tabConfigLabel">Config</span></button>
   </div>
 
@@ -249,28 +250,18 @@
       <div id="auditContent2"></div>
     </div>
     <div class="glass-card" style="padding:16px">
-      <div class="card-title" style="margin-bottom:4px">⚙️ Operations Management</div>
-      <div class="card-sub" style="margin-bottom:16px">Backup/restore, restart and safe OpenClaw update workflow</div>
+      <div class="card-title" style="margin-bottom:4px">⚙️ Operations Control</div>
+      <div class="card-sub" style="margin-bottom:16px">Dashboard is read-only · Only restart and doctor --fix are allowed</div>
       <div class="ops-mgmt-grid">
-        <button class="ops-mgmt-btn" id="btnBackup" onclick="opsAction('backup')">
-          <span class="btn-icon">💾</span>
-          <span class="btn-label">Backup + Push Repo</span>
-          <span class="btn-badge" id="badgeBackup"></span>
-        </button>
-        <button class="ops-mgmt-btn" id="btnRestore" onclick="opsAction('restore')">
-          <span class="btn-icon">📂</span>
-          <span class="btn-label">Load from Backup</span>
-          <span class="btn-badge" id="badgeRestore"></span>
-        </button>
-        <button class="ops-mgmt-btn" id="btnUpdateOpenClaw" onclick="opsAction('updateOpenClaw')">
-          <span class="btn-icon">⬆️</span>
-          <span class="btn-label">Update OpenClaw</span>
-          <span class="btn-badge" id="badgeUpdateOpenClaw"></span>
-        </button>
         <button class="ops-mgmt-btn" id="btnRestart" onclick="opsAction('restart')">
           <span class="btn-icon">🔄</span>
           <span class="btn-label">Restart OpenClaw</span>
           <span class="btn-badge" id="badgeRestart"></span>
+        </button>
+        <button class="ops-mgmt-btn" id="btnDoctor" onclick="opsAction('doctor')">
+          <span class="btn-icon">🩺</span>
+          <span class="btn-label">Doctor --fix</span>
+          <span class="btn-badge" id="badgeDoctor"></span>
         </button>
       </div>
       <div id="opsMgmtResult" style="margin-top:14px;display:none">
@@ -284,6 +275,88 @@
       <div style="margin-top:6px;font-size:.7rem;color:var(--text2)" id="watchdogWindowLabel">Showing last 24h · auto-refresh every 10s</div>
       <div id="watchdogTimeline" style="margin-top:10px"></div>
       <div id="watchdogEventsList" class="ops-channel-list" style="margin-top:10px"></div>
+    </div>
+  </div>
+
+  <!-- ═══ Spark Monitor Panel ═══ -->
+  <div class="tab-panel" id="panel-spark">
+    <div class="glass-card" style="padding:16px;margin-bottom:16px">
+      <div class="card-title" style="margin-bottom:4px">⚡ Spark Monitor</div>
+      <div class="card-sub">DGX Spark Agent — 任务调度 · GPU 利用率 · PR Hunter</div>
+    </div>
+
+    <!-- Today Summary Row -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:16px" id="sparkSummaryCards">
+      <div class="glass-card" style="padding:14px;text-align:center">
+        <div style="font-size:1.6rem;font-weight:700;color:var(--accent)" id="sparkTasksDone">—</div>
+        <div class="card-sub" style="margin-top:4px">Tasks Done Today</div>
+      </div>
+      <div class="glass-card" style="padding:14px;text-align:center">
+        <div style="font-size:1.6rem;font-weight:700;color:var(--green)" id="sparkTasksRunning">—</div>
+        <div class="card-sub" style="margin-top:4px">Running Now</div>
+      </div>
+      <div class="glass-card" style="padding:14px;text-align:center">
+        <div style="font-size:1.6rem;font-weight:700;color:var(--red)" id="sparkTasksError">—</div>
+        <div class="card-sub" style="margin-top:4px">Errors Today</div>
+      </div>
+      <div class="glass-card" style="padding:14px;text-align:center">
+        <div style="font-size:1.6rem;font-weight:700;color:var(--text1)" id="sparkGpuAvg">—</div>
+        <div class="card-sub" style="margin-top:4px">Avg GPU % Today</div>
+      </div>
+      <div class="glass-card" style="padding:14px;text-align:center">
+        <div style="font-size:1.6rem;font-weight:700;color:var(--text1)" id="sparkTokensTotal">—</div>
+        <div class="card-sub" style="margin-top:4px">Tokens Today</div>
+      </div>
+    </div>
+
+    <!-- GPU Timeline -->
+    <div class="glass-card" style="padding:16px;margin-bottom:16px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+        <div>
+          <div class="card-title" style="margin-bottom:2px">🎛️ GPU Utilization Timeline</div>
+          <div class="card-sub">Last 24h · updates every 5 min</div>
+        </div>
+        <select id="sparkGpuHours" onchange="loadSparkGpuTimeline()" style="background:var(--glass);border:1px solid var(--border);color:var(--text1);padding:4px 8px;border-radius:6px;font-size:.75rem">
+          <option value="6">6h</option>
+          <option value="24" selected>24h</option>
+          <option value="72">3d</option>
+        </select>
+      </div>
+      <div id="sparkGpuChart" style="height:100px;position:relative">
+        <div class="skeleton" style="height:100px;border-radius:6px"></div>
+      </div>
+    </div>
+
+    <!-- Recent Tasks -->
+    <div class="glass-card" style="padding:16px;margin-bottom:16px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+        <div>
+          <div class="card-title" style="margin-bottom:2px">📋 Recent Tasks</div>
+          <div class="card-sub">All Spark agent task runs</div>
+        </div>
+        <div style="display:flex;gap:6px">
+          <select id="sparkTaskTypeFilter" onchange="loadSparkTaskList()" style="background:var(--glass);border:1px solid var(--border);color:var(--text1);padding:4px 8px;border-radius:6px;font-size:.75rem">
+            <option value="">All Types</option>
+            <option value="pr_hunter">PR Hunter</option>
+            <option value="gpu_reporter">GPU Reporter</option>
+            <option value="community_watcher">Community</option>
+          </select>
+          <select id="sparkTaskStatusFilter" onchange="loadSparkTaskList()" style="background:var(--glass);border:1px solid var(--border);color:var(--text1);padding:4px 8px;border-radius:6px;font-size:.75rem">
+            <option value="">All Status</option>
+            <option value="running">Running</option>
+            <option value="done">Done</option>
+            <option value="error">Error</option>
+          </select>
+        </div>
+      </div>
+      <div id="sparkTaskList"><div class="skeleton skeleton-card" style="height:120px"></div></div>
+    </div>
+
+    <!-- PR Hunter Results -->
+    <div class="glass-card" style="padding:16px">
+      <div class="card-title" style="margin-bottom:4px">🔍 PR Hunter — Latest Analysis</div>
+      <div class="card-sub" style="margin-bottom:12px">OpenClaw merged PR 趋势分析 · Qwen 本地生成</div>
+      <div id="sparkPrHunterContent"><div class="skeleton skeleton-card" style="height:180px"></div></div>
     </div>
   </div>
 
@@ -416,6 +489,7 @@
 <script src="/frontend/tabs/cost.js?v=20260307c"></script>
 <script src="/frontend/tabs/cron.js?v=20260307c"></script>
 <script src="/frontend/tabs/health.js?v=20260307c"></script>
+<script src="/frontend/tabs/spark-monitor.js?v=20260310a"></script>
 <script src="/frontend/tabs/config.js?v=20260307c"></script>
 <script src="/frontend/shared/boot.js?v=20260307c"></script>
 </body>

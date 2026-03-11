@@ -1,13 +1,10 @@
 
 /* Boot & Init — runs after all tab modules loaded */
 
+// Dashboard is read-only. Only restart and doctor --fix are allowed as control actions.
 async function opsAction(action) {
-  if (!DASHBOARD_CAPS.mutatingOpsEnabled && ['backup', 'restore', 'updateOpenClaw'].includes(action)) {
-    toast('This operation is disabled by server policy.', 'error');
-    return;
-  }
-  const btnMap = { backup: 'btnBackup', restore: 'btnRestore', updateOpenClaw: 'btnUpdateOpenClaw', restart: 'btnRestart' };
-  const badgeMap = { backup: 'badgeBackup', restore: 'badgeRestore', updateOpenClaw: 'badgeUpdateOpenClaw', restart: 'badgeRestart' };
+  const btnMap  = { restart: 'btnRestart', doctor: 'btnDoctor' };
+  const badgeMap = { restart: 'badgeRestart', doctor: 'badgeDoctor' };
   const btn = document.getElementById(btnMap[action]);
   const badge = document.getElementById(badgeMap[action]);
   const resultBox = document.getElementById('opsMgmtResult');
@@ -26,46 +23,15 @@ async function opsAction(action) {
       if (badge) badge.textContent = '✅';
       html = '<span style="color:var(--green)">✅ Restart signal sent to OpenClaw gateway.</span>';
 
-    } else if (action === 'backup') {
-      const data = await apiFetch('/backup', { method: 'POST' });
-      if (!data.ok) throw new Error(data.error || data.push?.error || 'backup failed');
-      if (badge) badge.textContent = '✅';
-      html = `<span style="color:var(--green)">✅ Backup + push completed.</span>
-        <div class="ops-cost-row"><span class="ops-cost-label">Remote</span><span class="ops-cost-value">${escHtml(data.push?.remote || 'n/a')}</span></div>
-        <div class="ops-cost-row"><span class="ops-cost-label">Branch</span><span class="ops-cost-value">${escHtml(data.push?.branch || 'n/a')}</span></div>
-        <pre style="margin-top:8px;font-size:.75rem;color:var(--text2);white-space:pre-wrap;word-break:break-all">${escHtml(data.output || '')}</pre>`;
+    } else if (action === 'doctor') {
+      if (badge) badge.textContent = '🩺';
+      const data = await apiFetch('/ops/doctor', { method: 'POST' });
+      if (badge) badge.textContent = data?.ok ? '✅' : '⚠️';
+      html = `<span style="color:${data?.ok ? 'var(--green)' : 'var(--yellow)'}">${data?.ok ? '✅' : '⚠️'} openclaw doctor --fix</span>
+        <pre style="margin-top:8px;font-size:.72rem;color:var(--text2);white-space:pre-wrap;word-break:break-all;max-height:200px;overflow:auto">${escHtml(data?.output || 'No output.')}</pre>`;
 
-    } else if (action === 'restore') {
-      const ok = await confirmDialog('Load latest auto-backup now? This will overwrite current workspace changes.');
-      if (!ok) {
-        if (badge) badge.textContent = '';
-        html = '<span style="color:var(--text2)">Canceled.</span>';
-      } else {
-        const data = await apiFetch('/backup/load', { method: 'POST' });
-        if (badge) badge.textContent = '✅';
-        html = `<span style="color:var(--green)">✅ Backup loaded.</span>
-          <div class="ops-cost-row"><span class="ops-cost-label">Commit</span><span class="ops-cost-value">${escHtml((data.restoredCommit || '').slice(0, 12) || 'n/a')}</span></div>
-          <pre style="margin-top:8px;font-size:.75rem;color:var(--text2);white-space:pre-wrap;word-break:break-all">${escHtml(data.output || '')}</pre>`;
-      }
-    } else if (action === 'updateOpenClaw') {
-      const ok = await confirmDialog('Run OpenClaw update now? This will write memory, backup, push, then update.');
-      if (!ok) {
-        if (badge) badge.textContent = '';
-        html = '<span style="color:var(--text2)">Canceled.</span>';
-      } else {
-        const data = await apiFetch('/ops/update-openclaw', { method: 'POST' });
-        if (!data.ok) throw new Error('Update flow failed. See details below.');
-        if (badge) badge.textContent = '✅';
-        const stepRows = (data.steps || []).map(s =>
-          `<div class="ops-cost-row"><span class="ops-cost-label">${escHtml(s.step || 'step')}</span><span class="ops-cost-value">${s.ok ? '✅ ok' : '❌ failed'}</span></div>`
-        ).join('');
-        const updateStep = (data.steps || []).find(s => s.step === 'update_openclaw') || {};
-        html = `<span style="color:var(--green)">✅ OpenClaw updated successfully.</span>
-          ${stepRows}
-          <div class="ops-cost-row"><span class="ops-cost-label">Before</span><span class="ops-cost-value">${escHtml(updateStep.beforeVersion || 'n/a')}</span></div>
-          <div class="ops-cost-row"><span class="ops-cost-label">After</span><span class="ops-cost-value">${escHtml(updateStep.afterVersion || 'n/a')}</span></div>
-          <pre style="margin-top:8px;font-size:.75rem;color:var(--text2);white-space:pre-wrap;word-break:break-all">${escHtml(updateStep.output || '')}</pre>`;
-      }
+    } else {
+      throw new Error(`Unknown action: ${action}`);
     }
 
     if (resultInner) resultInner.innerHTML = html;

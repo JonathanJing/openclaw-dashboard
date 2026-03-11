@@ -159,19 +159,28 @@ function toggleSessionsPanel() {
   // Panel toggle handled by CSS via collapsed class
 }
 
-async function spawnSingleTask(taskId) {
-  try {
-    await apiFetch(`/tasks/${taskId}/spawn`, { method: 'POST' });
-    toast('Task spawned as sub-agent', 'success');
-    loadTasks(true);
-  } catch(e) {
-    toast(`Spawn failed: ${e.message}`, 'error');
-  }
+function spawnSingleTask(_taskId) {
+  // Dashboard is read-only. Spawn tasks via Discord or CLI.
+  toast('Dashboard is read-only. Use Discord or CLI to spawn tasks.', 'info');
 }
 
 // ─── Sessions Panel ───
 // ─── Model names (single source of truth for display) ───
-const MODEL_DISPLAY_NAMES = [];
+const MODEL_DISPLAY_NAMES = [
+  // [match-pattern (normModelStr applied), display name]
+  ['opus-4-6',            'Claude Opus 4.6'],
+  ['sonnet-4-6',          'Claude Sonnet 4.6'],
+  ['gemini-3-flash',      'Gemini 3 Flash'],
+  ['gemini-3-1-pro',      'Gemini 3.1 Pro'],
+  ['gemini-3-1-flash',    'Gemini 3.1 Flash Lite'],
+  ['gpt-5-4',             'GPT-5.4'],
+  ['gpt-5-3-codex',       'GPT-5.3 Codex'],
+  ['gpt-5-3-instant',     'GPT-5.3 Instant'],
+  ['gpt-5-mini',          'GPT-5 Mini'],
+  ['kimi-k2',             'Kimi K2.5'],
+  ['doubao',              'Doubao Seed'],
+  ['qwen3-5-35b',         'Qwen3.5-35B'],
+];
 
 // ─── Model Selector ───
 let globalDefaultModel = 'claude-sonnet-4-6'; // updated dynamically from /ops/system
@@ -218,27 +227,10 @@ function buildModelSelect(currentModel, id, type) {
     onchange="changeModel('${type}','${id}',this.value,this)">${opts}</select>`;
 }
 
-async function changeModel(type, id, model, el) {
-  el.disabled = true;
-  el.style.opacity = '0.5';
-  const endpoint = type === 'session' ? '/ops/session-model' : '/ops/cron-model';
-  const body = type === 'session' ? { channelId: id, model } : { jobId: id, model };
-  try {
-    await apiFetch(endpoint, { method: 'POST', body: JSON.stringify(body) });
-    el.style.borderColor = 'var(--green)';
-    el.style.color = 'var(--green)';
-    setTimeout(() => {
-      el.style.opacity = '1';
-      if (type === 'session') loadSessions();
-      else loadCronEnhanced();
-    }, 800);
-  } catch (e) {
-    el.style.borderColor = '#f87171';
-    el.style.color = '#f87171';
-    el.disabled = false;
-    el.style.opacity = '1';
-    toast('Model switch failed: ' + e.message, 'error');
-  }
+function changeModel(_type, _id, _model, el) {
+  // Dashboard is read-only. Change models via Discord (/status) or CLI.
+  if (el) { el.disabled = false; el.style.opacity = '1'; }
+  toast('Dashboard is read-only. Change models via Discord or CLI.', 'info');
 }
 
 const SESSION_SORT_DEFAULT_DIR = {
@@ -315,13 +307,44 @@ async function loadCronCosts() {
       `累计 ${s.totalRuns || 0} 次执行 · 总固定成本 ${fmtUsd(s.totalCronCost, 2)}（${fmtTokens(s.totalCronTokens || 0)} tokens） · 日均固定成本 ${fmtUsd(s.avgDailyCronCost, 2)} · 基线固定 ${fmtUsd(s.avgFixedBaselineCost, 2)} / 任务量波动 ${fmtUsd(s.avgWorkloadVariableCost, 2)} / 交互波动 ${fmtUsd(s.avgInteractiveVariableCost, 2)} · 今日固定 ${fmtUsd(today.cronCost, 2)}（${fmtTokens(today.cronTokens || 0)}） · 今日浮动 ${fmtUsd(today.interactiveCost, 2)} · ${s.days || 0} 天`
     );
 
+    // Per-model aggregation table (built first; appended to main html below)
+    const modelStats = data.modelStats || [];
+    let modelStatsHtml = '';
+    if (modelStats.length > 0) {
+      modelStatsHtml = `<div class="glass-card" style="padding:10px;margin-bottom:10px">
+        <div style="font-size:.8rem;font-weight:600;margin-bottom:6px">📊 ${tt('Cost by Model', '按模型聚合成本')}</div>
+        <table class="sessions-table">
+          <thead>
+            <tr>
+              <th>${tt('Model', '模型')}</th>
+              <th>${tt('Total Runs', '总次数')}</th>
+              <th>Tokens/${tt('run', '次')}</th>
+              <th>${tt('Total Tokens', '总 Tokens')}</th>
+              <th>${tt('Jobs', '任务数')}</th>
+            </tr>
+          </thead>
+          <tbody>`;
+      for (const m of modelStats) {
+        modelStatsHtml += `<tr>
+          <td style="font-weight:600;font-size:.78rem">
+            <span class="sess-model" style="border-color:${getModelColor(m.model)};color:${getModelColor(m.model)}">${shortModel(m.model)}</span>
+          </td>
+          <td>${m.runs}</td>
+          <td>${fmtTokens(m.runs > 0 ? Math.round(m.totalTokens / m.runs) : 0)}</td>
+          <td style="font-weight:600">${fmtTokens(m.totalTokens)}</td>
+          <td style="font-size:.72rem;color:var(--text2)">${m.jobs.slice(0,5).map(j => `<div>${escHtml(j.name)} (${j.runs}x)</div>`).join('')}${m.jobs.length > 5 ? `<div style="color:var(--text3)">+${m.jobs.length - 5} more</div>` : ''}</td>
+        </tr>`;
+      }
+      modelStatsHtml += '</tbody></table></div>';
+    }
+
     // Per-job cost table (each run + each day)
     const jobs = data.jobs || [];
     const review = data.review || {};
     const rc = review.cron || {};
     const ri = review.interactive || {};
     const cov = review.coverage || {};
-    let html = `<div class="glass-card" style="padding:10px;margin-bottom:10px">
+    let html = modelStatsHtml + `<div class="glass-card" style="padding:10px;margin-bottom:10px">
       <div style="font-size:.8rem;font-weight:600;margin-bottom:6px">🔎 ${tt('Data quality review', '数据质量 Review')}</div>
       <div style="font-size:.74rem;color:var(--text2);display:flex;gap:14px;flex-wrap:wrap">
         <span>Cron finished: <b>${rc.finishedRuns || 0}</b></span>
@@ -344,7 +367,13 @@ async function loadCronCosts() {
         <td>${j.avgDurationSec ? `${j.avgDurationSec.toFixed(1)}s` : '—'}</td>
         <td>${fmtTokens(j.tokensPerRun || 0)}</td>
         <td style="color:${j.costPerRun > 0.2 ? '#fbbf24' : 'var(--green)'}">${fmtUsd(j.costPerRun, 3)}</td>
-        <td>${fmtTokens(j.today?.tokens || 0)} / ${fmtUsd(j.today?.cost, 3)}</td>
+        <td>${(() => {
+          const todayTok = j.today?.tokens || 0;
+          const todayRuns = j.today?.runs || 0;
+          if (todayTok > 0) return fmtTokens(todayTok);
+          if (todayRuns > 0 && j.tokensPerRun > 0) return `~${fmtTokens(todayRuns * j.tokensPerRun)}`;
+          return '—';
+        })()} / ${fmtUsd(j.today?.cost, 3)}</td>
         <td>${fmtUsd(j.avgDailyCost, 3)}</td>
         <td style="font-weight:600">${fmtUsd(j.totalCost, 2)}</td>
       </tr>`;

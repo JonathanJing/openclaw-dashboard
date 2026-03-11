@@ -214,7 +214,7 @@ function register(router) {
   // Legacy compat (frontend still calls these)
   router.add('GET', '/ops/config',  (req, res) => handleConfig(req, res));
   router.add('GET', '/files',       (req, res, q) => handleFiles(req, res, q));
-  router.add('PUT', '/files',       (req, res, q) => handleFiles(req, res, q));
+  // PUT /files removed — dashboard is read-only; file edits go via CLI/Discord.
   router.add('GET', '/skills',      (req, res) => handleSkills(req, res));
   router.add('GET', '/notes',       (_req, res) => jsonReply(res, 200, []));
 }

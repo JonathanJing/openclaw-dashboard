@@ -88,7 +88,10 @@ function triggerTaskExecution(task) {
   req.end();
 }
 
-// ── Task CRUD routes ────────────────────────────────────────────────
+// ── Task routes (read-only) ─────────────────────────────────────────
+// Dashboard is read-only. Task writes (create/update/delete/spawn) go via Discord or CLI.
+// Removed: POST /tasks, PATCH /tasks/:id, DELETE /tasks/:id,
+//          POST /tasks/:id/notes, POST /tasks/:id/spawn
 function register(router) {
   // List tasks
   router.add('GET', '/tasks', (req, res, q) => {
@@ -98,26 +101,6 @@ function register(router) {
     jsonReply(res, 200, tasks);
   });
 
-  // Create task
-  router.add('POST', '/tasks', async (req, res) => {
-    try {
-      const body = await readJsonBody(req);
-      if (!body.title) return errorReply(res, 400, 'title required');
-      const now = new Date().toISOString();
-      const task = {
-        id: uuid(), title: body.title, description: body.description || '', content: body.content || '',
-        status: body.status || 'new', priority: body.priority || 'medium',
-        assignee: body.assignee || 'main', createdAt: now, updatedAt: now,
-        dueDate: body.dueDate || null, notes: [], source: body.source || 'dashboard',
-      };
-      const tasks = readTasks();
-      tasks.push(task);
-      writeTasks(tasks);
-      if (task.status === 'new') triggerTaskExecution(task);
-      jsonReply(res, 201, task);
-    } catch (e) { errorReply(res, 400, e.message); }
-  });
-
   // Get task by id
   router.add('GET', '/tasks/:id', (req, res) => {
     const id = req.params?.id;
@@ -125,77 +108,6 @@ function register(router) {
     const task = tasks.find(t => t.id === id);
     if (!task) return errorReply(res, 404, 'Task not found');
     return jsonReply(res, 200, task);
-  });
-
-  // Update task by id
-  router.add('PATCH', '/tasks/:id', async (req, res) => {
-    try {
-      const id = req.params?.id;
-      const body = await readJsonBody(req);
-      const tasks = readTasks();
-      const idx = tasks.findIndex(t => t.id === id);
-      if (idx < 0) return errorReply(res, 404, 'Task not found');
-
-      const task = tasks[idx];
-      const allowed = ['title', 'description', 'content', 'status', 'priority', 'assignee', 'dueDate', 'source'];
-      for (const k of allowed) {
-        if (Object.prototype.hasOwnProperty.call(body, k)) task[k] = body[k];
-      }
-      task.updatedAt = new Date().toISOString();
-      tasks[idx] = task;
-      writeTasks(tasks);
-      return jsonReply(res, 200, task);
-    } catch (e) {
-      return errorReply(res, 400, e.message);
-    }
-  });
-
-  // Delete task by id
-  router.add('DELETE', '/tasks/:id', (req, res) => {
-    const id = req.params?.id;
-    const tasks = readTasks();
-    const idx = tasks.findIndex(t => t.id === id);
-    if (idx < 0) return errorReply(res, 404, 'Task not found');
-    const [deleted] = tasks.splice(idx, 1);
-    writeTasks(tasks);
-    return jsonReply(res, 200, { ok: true, deleted: { id: deleted.id, title: deleted.title } });
-  });
-
-  // Add note
-  router.add('POST', '/tasks/:id/notes', async (req, res) => {
-    try {
-      const id = req.params?.id;
-      const body = await readJsonBody(req);
-      const text = (body?.text || body?.content || '').trim();
-      if (!text) return errorReply(res, 400, 'text required');
-
-      const tasks = readTasks();
-      const idx = tasks.findIndex(t => t.id === id);
-      if (idx < 0) return errorReply(res, 404, 'Task not found');
-
-      const note = {
-        id: uuid(),
-        text: sanitizeUntrustedText(text, 10000),
-        createdAt: new Date().toISOString(),
-      };
-      tasks[idx].notes = Array.isArray(tasks[idx].notes) ? tasks[idx].notes : [];
-      tasks[idx].notes.push(note);
-      tasks[idx].updatedAt = new Date().toISOString();
-      writeTasks(tasks);
-      return jsonReply(res, 201, note);
-    } catch (e) {
-      return errorReply(res, 400, e.message);
-    }
-  });
-
-  // Trigger sub-agent execution for one task
-  router.add('POST', '/tasks/:id/spawn', (req, res) => {
-    const id = req.params?.id;
-    const tasks = readTasks();
-    const task = tasks.find(t => t.id === id);
-    if (!task) return errorReply(res, 404, 'Task not found');
-    triggerTaskExecution(task);
-    return jsonReply(res, 200, { ok: true, id: task.id, queued: true });
   });
 
   // Logs (task history + memory logs)
