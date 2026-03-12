@@ -136,7 +136,9 @@ const MODEL_PALETTE = {
   'Kimi':                   '#22d3ee',  // cyan  (moonshot/kimi-k2.5)
   'doubao-seed-2-0-pro':    '#a78bfa',  // violet
   'qwen-mac':               '#38bdf8',  // sky
-  'qwen-spark':             '#818cf8',  // indigo
+  'qwen-spark':             '#818cf8',  // indigo (legacy alias)
+  'qwen-spark-35b':         '#818cf8',  // indigo
+  'qwen-spark-27b':         '#6366f1',  // darker indigo
 };
 
 function _colorHash(str) {
@@ -148,10 +150,12 @@ function _colorHash(str) {
 // Known ledger aliases that don't appear in MODEL_GROUND_TRUTH.md
 // but exist in historical ledger.db rows. Map them to the canonical alias color.
 const LEDGER_ALIAS_MAP = {
-  // qwen-spark variants
-  'local-dgx-spark/Qwen3.5-35B-A3B-UD-Q4_K_XL.gguf': 'qwen-spark',
-  'local-dgx-spark/Qwen3.5-35B-A3B':                  'qwen-spark',
-  'local-dgx-spark/qwen3.5:35b-a3b':                  'qwen-spark',
+  // qwen-spark-35b variants
+  'local-dgx-spark/Qwen3.5-35B-A3B-UD-Q4_K_XL.gguf': 'qwen-spark-35b',
+  'local-dgx-spark/Qwen3.5-35B-A3B':                  'qwen-spark-35b',
+  'local-dgx-spark/qwen3.5:35b-a3b':                  'qwen-spark-35b',
+  // qwen-spark-27b variants
+  'local-dgx-spark-27b/Qwen3.5-27B-Claude-4.6-Opus-Reasoning-Distilled.Q5_K_M.gguf': 'qwen-spark-27b',
   // qwen-mac variants
   'local-macbook-pro/qwen3.5:35b-a3b':                 'qwen-mac',
   // ollama-remote (treated as qwen-spark color — same model)

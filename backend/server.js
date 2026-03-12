@@ -17,6 +17,19 @@ const url = require('url');
 const cfg    = require('./lib/config');
 const helpers = require('./lib/http-helpers');
 
+// ── Global Error Handlers ───────────────────────────────────────────
+process.on('uncaughtException', (err) => {
+  console.error('[FATAL] Uncaught Exception:', err);
+  console.error(err.stack);
+  // Give logs time to flush before exit
+  setTimeout(() => process.exit(1), 100);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('[FATAL] Unhandled Rejection at:', promise, 'reason:', reason);
+  // Don't exit, but log prominently
+});
+
 // ── Simple Router ───────────────────────────────────────────────────
 class Router {
   constructor() {
@@ -98,6 +111,7 @@ const STATIC_FILES = {
   '/icon-180.png': { file: 'icon-180.png', type: 'image/png' },
   '/marked.min.js':  { file: 'marked.min.js',  type: 'application/javascript' },
   '/purify.min.js':  { file: 'purify.min.js',  type: 'application/javascript' },
+  '/models-registry.json': { file: 'models-registry.json', type: 'application/json' },
 };
 
 const MIME_TYPES = {
