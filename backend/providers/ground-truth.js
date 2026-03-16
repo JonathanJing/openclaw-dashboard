@@ -4,6 +4,9 @@
  * Parses MODEL_GROUND_TRUTH.md YAML blocks → channel map, cron map, model registry.
  * Single Source of Truth for "what channels exist", "what crons should run", etc.
  *
+ * Note: MODEL_GROUND_TRUTH.md is now an INDEX file. Detailed configs are in refs/ground-truth/*.md
+ * This parser reads the index file which contains the canonical YAML blocks.
+ *
  * Re-reads file only when mtime changes (cached in memory).
  */
 const fs = require('fs');
