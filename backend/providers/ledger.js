@@ -122,11 +122,124 @@ function handleDrift(req, res, query) {
   jsonReply(res, 200, { provider, days, rows });
 }
 
+/**
+ * Get token usage breakdown by source type: channel, thread, cron
+ */
+function handleBySource(req, res, query) {
+  const days = parseInt(query.days || '7', 10);
+
+  // Daily breakdown by source category
+  const dailyRows = sqliteJson(cfg.LEDGER_DB, `
+    WITH daily_calls AS (
+      SELECT
+        date(ts, 'localtime') as day,
+        CASE
+          WHEN source_kind = 'cron' OR session_key LIKE '%:cron:%' THEN 'cron'
+          WHEN thread_id IS NOT NULL AND thread_id != '' THEN 'thread'
+          ELSE 'channel'
+        END as source_type,
+        input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, cost_total
+      FROM calls
+      WHERE date(ts, 'localtime') >= date('now', 'localtime', '-${days} days')
+    )
+    SELECT
+      day,
+      source_type,
+      count(*) as calls,
+      sum(input_tokens) as input_tokens,
+      sum(output_tokens) as output_tokens,
+      sum(cache_read_tokens) as cache_read_tokens,
+      sum(cache_write_tokens) as cache_write_tokens,
+      sum(input_tokens + output_tokens + cache_read_tokens + cache_write_tokens) as total_tokens,
+      round(sum(cost_total), 4) as cost_usd
+    FROM daily_calls
+    GROUP BY day, source_type
+    ORDER BY day DESC, source_type
+  `);
+
+  // Summary totals
+  const summaryRows = sqliteJson(cfg.LEDGER_DB, `
+    SELECT
+      CASE
+        WHEN source_kind = 'cron' OR session_key LIKE '%:cron:%' THEN 'cron'
+        WHEN thread_id IS NOT NULL AND thread_id != '' THEN 'thread'
+        ELSE 'channel'
+      END as source_type,
+      count(*) as total_calls,
+      sum(input_tokens + output_tokens + cache_read_tokens + cache_write_tokens) as total_tokens,
+      round(sum(cost_total), 4) as total_cost
+    FROM calls
+    WHERE date(ts, 'localtime') >= date('now', 'localtime', '-${days} days')
+    GROUP BY source_type
+  `);
+
+  // Cron job details
+  const cronRows = sqliteJson(cfg.LEDGER_DB, `
+    SELECT
+      date(ts, 'localtime') as day,
+      COALESCE(cron_job_id,
+        CASE
+          WHEN session_key LIKE 'agent:main:cron:%'
+          THEN substr(session_key, 18, instr(substr(session_key, 18), ':') - 1)
+          ELSE 'unknown'
+        END
+      ) as job_id,
+      count(*) as calls,
+      sum(input_tokens + output_tokens + cache_read_tokens + cache_write_tokens) as total_tokens,
+      round(sum(cost_total), 4) as cost_usd
+    FROM calls
+    WHERE (source_kind = 'cron' OR session_key LIKE '%:cron:%')
+      AND date(ts, 'localtime') >= date('now', 'localtime', '-${days} days')
+    GROUP BY day, job_id
+    ORDER BY day DESC, cost_usd DESC
+  `);
+
+  // Group daily data by date
+  const daily = {};
+  for (const r of dailyRows) {
+    if (!daily[r.day]) daily[r.day] = {};
+    daily[r.day][r.source_type] = {
+      calls: r.calls,
+      input_tokens: r.input_tokens,
+      output_tokens: r.output_tokens,
+      cache_read_tokens: r.cache_read_tokens,
+      cache_write_tokens: r.cache_write_tokens,
+      total_tokens: r.total_tokens,
+      cost_usd: r.cost_usd
+    };
+  }
+
+  // Group cron details by date
+  const cronDetails = {};
+  for (const r of cronRows) {
+    if (!cronDetails[r.day]) cronDetails[r.day] = [];
+    cronDetails[r.day].push({
+      job_id: r.job_id,
+      calls: r.calls,
+      total_tokens: r.total_tokens,
+      cost_usd: r.cost_usd
+    });
+  }
+
+  // Build summary object
+  const summary = {};
+  for (const r of summaryRows) {
+    summary[r.source_type] = {
+      calls: r.total_calls,
+      tokens: r.total_tokens,
+      cost: r.total_cost
+    };
+  }
+
+  jsonReply(res, 200, { days, summary, daily, cron_details: cronDetails });
+}
+
 function register(router) {
   router.add('GET', '/api/ledger/today',      (req, res) => handleToday(req, res));
   router.add('GET', '/api/ledger/history',     (req, res, q) => handleHistory(req, res, q));
   router.add('GET', '/api/ledger/by-channel',  (req, res, q) => handleByChannel(req, res, q));
   router.add('GET', '/api/ledger/drift',       (req, res, q) => handleDrift(req, res, q));
+  router.add('GET', '/api/ledger/by-source',   (req, res, q) => handleBySource(req, res, q));
 
   // Legacy compatibility routes (frontend cost.js may use /ops/ledger/* paths)
   router.add('GET', '/ops/ledger/today',   (req, res) => handleToday(req, res));

@@ -72,11 +72,11 @@
     </div>
     <div class="agent-stat stat-hook">
       <div class="agent-stat-header">
-        <span class="agent-stat-icon">⚙️</span>
+        <span class="agent-stat-icon">🐶</span>
         <span class="agent-stat-badge idle" id="hookBadge">—</span>
       </div>
       <div class="agent-stat-value val-blue" id="hookValue">—</div>
-      <div class="agent-stat-label">DGX Active Job</div>
+      <div class="agent-stat-label">Watchdog</div>
       <div class="agent-stat-detail" id="hookDetail">—</div>
     </div>
     <div class="agent-stat stat-sentinel" style="--accent:var(--blue)">
@@ -85,7 +85,7 @@
         <span class="agent-stat-badge idle" id="sentinelBadge">—</span>
       </div>
       <div class="agent-stat-value val-accent" id="sentinelValue">—</div>
-      <div class="agent-stat-label" id="sentinelLabel">DGX Spark Health</div>
+      <div class="agent-stat-label" id="sentinelLabel">System Status</div>
       <div class="agent-stat-detail" id="sentinelDetail">—</div>
     </div>
     <div class="agent-stat stat-total">
@@ -100,11 +100,8 @@
   </div>
 
   <!-- System Info Bar (fixed, always visible) -->
-  <div id="systemInfoBar" class="glass-card" style="padding:10px 16px;margin-bottom:8px;font-size:.75rem;display:none">
+  <div id="systemInfoBar" class="glass-card" style="padding:10px 16px;margin-bottom:12px;font-size:.75rem;display:none">
     <div style="display:flex;flex-wrap:wrap;gap:6px 16px;align-items:center" id="systemInfoContent"></div>
-  </div>
-  <div id="dgxInfoBar" class="glass-card" style="padding:10px 16px;margin-bottom:12px;font-size:.75rem;display:none">
-    <div style="display:flex;flex-wrap:wrap;gap:6px 16px;align-items:center" id="dgxInfoContent"></div>
   </div>
 
   <div id="watchdogGlobalAlert" class="glass-card" style="padding:10px 14px;margin-bottom:12px;border-color:var(--red);display:none">
@@ -139,7 +136,11 @@
   <!-- ═══ Overview Panel ═══ -->
   <div class="tab-panel active" id="panel-overview">
     <div id="sessionsAlerts" style="margin-bottom:12px"></div>
-    <div style="display:flex;justify-content:flex-end;margin-bottom:6px">
+    <div style="display:flex;justify-content:flex-end;margin-bottom:6px;gap:8px">
+      <button id="inactiveToggleBtn" onclick="window._sessionsHideInactive=!window._sessionsHideInactive; this.textContent=window._sessionsHideInactive?'👁 显示今日无活动':'🙈 隐藏今日无活动'; loadSessions();"
+        style="font-size:.72rem;padding:3px 10px;border-radius:10px;border:1px solid var(--border);background:var(--surface);color:var(--text2);cursor:pointer">
+        🙈 隐藏今日无活动
+      </button>
       <button id="staleToggleBtn" onclick="window._sessionsHideStale=!window._sessionsHideStale; this.textContent=window._sessionsHideStale?'👁 显示全部':'🙈 隐藏7天无活跃'; loadSessions();"
         style="font-size:.72rem;padding:3px 10px;border-radius:10px;border:1px solid var(--border);background:var(--surface);color:var(--text2);cursor:pointer">
         🙈 隐藏7天无活跃
@@ -147,15 +148,6 @@
     </div>
     <div id="sessionsTable" class="sessions-table-wrap">
       <div class="skeleton skeleton-card"></div>
-    </div>
-    <div class="glass-card" style="padding:16px;margin-top:16px">
-      <div class="card-title">Tasks</div>
-      <div class="card-sub" style="margin-bottom:10px">Basic list view</div>
-      <input type="text" class="search-input" id="taskSearch" placeholder="Search tasks…" style="width:100%;max-width:none;margin-bottom:12px">
-      <div id="taskList" class="task-list">
-        <div class="skeleton skeleton-card"></div>
-        <div class="skeleton skeleton-card"></div>
-      </div>
     </div>
   </div>
 
@@ -171,12 +163,6 @@
       </div>
       <div class="ops-model-bar" id="opsModelBar"></div>
     </div>
-    <div class="card-title" style="margin-bottom:12px">Channel Breakdown</div>
-    <div id="opsChannelList" class="ops-channel-list">
-      <div class="skeleton skeleton-card"></div>
-      <div class="skeleton skeleton-card"></div>
-    </div>
-
     <div class="glass-card" style="padding:16px;margin-top:16px">
       <div class="card-header">
         <div>
@@ -200,6 +186,21 @@
       <div id="costHeatmap" class="cost-heatmap"></div>
     </div>
 
+    <!-- Usage by Source Type -->
+    <div class="glass-card" style="padding:16px;margin-top:16px">
+      <div class="card-header">
+        <div>
+          <div class="card-title">📊 Usage by Source</div>
+          <div class="card-sub" id="bySourceSub">Loading…</div>
+        </div>
+      </div>
+      <div id="bySourceChart" style="margin-bottom:12px"></div>
+      <div id="bySourceList">
+        <div class="skeleton skeleton-card"></div>
+        <div class="skeleton skeleton-card"></div>
+      </div>
+    </div>
+
     <!-- Provider Audit hidden — no useful billing API from Anthropic/Google yet -->
     <div class="glass-card" style="padding:16px;margin-top:16px;display:none" id="auditCard">
       <div class="card-title">🔍 Provider Audit (Official APIs)</div>
@@ -213,42 +214,9 @@
   <div class="tab-panel" id="panel-health">
     <div class="glass-card" style="padding:16px;margin-bottom:16px">
       <div class="card-title" style="margin-bottom:4px">System Health</div>
-      <div class="card-sub">Watchdog, runtime state, quality</div>
+      <div class="card-sub">Operations control & system status</div>
     </div>
 
-    <!-- DGX Spark Status Card -->
-    <div class="glass-card" style="padding:16px;margin-bottom:16px" id="dgxCard">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-        <div>
-          <div class="card-title" style="margin-bottom:2px">⚡ DGX Spark — Local Inference Node</div>
-          <div class="card-sub">llama.cpp server · Qwen3.5 35B A3B</div>
-        </div>
-        <div id="dgxStatusBadge" style="font-size:.75rem;padding:3px 10px;border-radius:20px;background:rgba(255,255,255,.08);color:var(--text2)">Loading…</div>
-      </div>
-      <div id="dgxContent"><div class="skeleton skeleton-card" style="height:80px"></div></div>
-    </div>
-    <!-- Local API Hub Status Card -->
-    <div class="glass-card" style="padding:16px;margin-bottom:16px" id="localApiHubCard">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-        <div>
-          <div class="card-title" style="margin-bottom:2px">🔌 Local API Hub</div>
-          <div class="card-sub">Content Gateway · port 3456</div>
-        </div>
-        <div id="localApiHubBadge" style="font-size:.75rem;padding:3px 10px;border-radius:20px;background:rgba(255,255,255,.08);color:var(--text2)">Loading…</div>
-      </div>
-      <div id="localApiHubContent"><div class="skeleton skeleton-card" style="height:60px"></div></div>
-    </div>
-
-    <div class="glass-card" style="padding:16px;margin-bottom:16px;display:none" id="qualityCardHidden">
-      <div class="card-title" style="margin-bottom:4px">Quality</div>
-      <div class="card-sub" style="margin-bottom:10px">Hidden in v2.6</div>
-      <div id="qualityContent"></div>
-    </div>
-    <div class="glass-card" style="padding:16px;margin-bottom:16px;display:none" id="auditCardHidden">
-      <div class="card-title" style="margin-bottom:4px">Audit</div>
-      <div class="card-sub" style="margin-bottom:10px">Temporarily hidden in v2.6</div>
-      <div id="auditContent2"></div>
-    </div>
     <div class="glass-card" style="padding:16px">
       <div class="card-title" style="margin-bottom:4px">⚙️ Operations Control</div>
       <div class="card-sub" style="margin-bottom:16px">Dashboard is read-only · Only restart and doctor --fix are allowed</div>
@@ -267,14 +235,6 @@
       <div id="opsMgmtResult" style="margin-top:14px;display:none">
         <div class="glass-card" style="padding:12px;background:rgba(0,0,0,0.3);border-color:var(--border)" id="opsMgmtResultInner"></div>
       </div>
-    </div>
-    <div class="glass-card" style="padding:16px;margin-top:16px">
-      <div class="card-title" style="margin-bottom:4px">🐶 Watchdog</div>
-      <div class="card-sub" id="watchdogStatusText">Loading watchdog status...</div>
-      <div class="ops-ch-meta" id="watchdogStatusMeta" style="margin-top:8px"></div>
-      <div style="margin-top:6px;font-size:.7rem;color:var(--text2)" id="watchdogWindowLabel">Showing last 24h · auto-refresh every 10s</div>
-      <div id="watchdogTimeline" style="margin-top:10px"></div>
-      <div id="watchdogEventsList" class="ops-channel-list" style="margin-top:10px"></div>
     </div>
   </div>
 
@@ -309,30 +269,12 @@
       </div>
     </div>
 
-    <!-- GPU Timeline -->
+    <!-- Recent Tasks (Primary View) -->
     <div class="glass-card" style="padding:16px;margin-bottom:16px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
         <div>
-          <div class="card-title" style="margin-bottom:2px">🎛️ GPU Utilization Timeline</div>
-          <div class="card-sub">Last 24h · updates every 5 min</div>
-        </div>
-        <select id="sparkGpuHours" onchange="loadSparkGpuTimeline()" style="background:var(--glass);border:1px solid var(--border);color:var(--text1);padding:4px 8px;border-radius:6px;font-size:.75rem">
-          <option value="6">6h</option>
-          <option value="24" selected>24h</option>
-          <option value="72">3d</option>
-        </select>
-      </div>
-      <div id="sparkGpuChart" style="height:100px;position:relative">
-        <div class="skeleton" style="height:100px;border-radius:6px"></div>
-      </div>
-    </div>
-
-    <!-- Recent Tasks -->
-    <div class="glass-card" style="padding:16px;margin-bottom:16px">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-        <div>
-          <div class="card-title" style="margin-bottom:2px">📋 Recent Tasks</div>
-          <div class="card-sub">All Spark agent task runs</div>
+          <div class="card-title" style="margin-bottom:2px">📋 24h Task History</div>
+          <div class="card-sub">Spark Agent task runs · time · duration · tokens</div>
         </div>
         <div style="display:flex;gap:6px">
           <select id="sparkTaskTypeFilter" onchange="loadSparkTaskList()" style="background:var(--glass);border:1px solid var(--border);color:var(--text1);padding:4px 8px;border-radius:6px;font-size:.75rem">
@@ -483,14 +425,14 @@
 <div class="toast-container" id="toastContainer"></div>
 
 <!-- Modular JS: shared utilities first, then tab modules, then boot -->
-<script src="/frontend/shared/api.js?v=20260307c"></script>
-<script src="/frontend/shared/ui-utils.js?v=20260307c"></script>
-<script src="/frontend/tabs/overview.js?v=20260307c"></script>
-<script src="/frontend/tabs/cost.js?v=20260307c"></script>
-<script src="/frontend/tabs/cron.js?v=20260307c"></script>
-<script src="/frontend/tabs/health.js?v=20260307c"></script>
-<script src="/frontend/tabs/spark-monitor.js?v=20260310a"></script>
-<script src="/frontend/tabs/config.js?v=20260307c"></script>
-<script src="/frontend/shared/boot.js?v=20260307c"></script>
+<script src="/frontend/shared/api.js?v=20260316z"></script>
+<script src="/frontend/shared/ui-utils.js?v=20260316z"></script>
+<script src="/frontend/tabs/overview.js?v=20260316z"></script>
+<script src="/frontend/tabs/cost.js?v=20260316z"></script>
+<script src="/frontend/tabs/cron.js?v=20260316z"></script>
+<script src="/frontend/tabs/health.js?v=20260316z"></script>
+<script src="/frontend/tabs/spark-monitor.js?v=20260316z"></script>
+<script src="/frontend/tabs/config.js?v=20260316z"></script>
+<script src="/frontend/shared/boot.js?v=20260316z"></script>
 </body>
 </html>

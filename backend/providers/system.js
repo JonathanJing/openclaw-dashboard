@@ -3,7 +3,10 @@
  * System Provider — disk, uptime, LaunchAgent status.
  */
 const os = require('os');
+const fs = require('fs');
+const path = require('path');
 const { execFileSync, execSync } = require('child_process');
+const cfg = require('../lib/config');
 const { jsonReply } = require('../lib/http-helpers');
 
 function getSystemInfo() {
@@ -85,6 +88,21 @@ function getSystemInfo() {
     });
   } catch {
     info.launchAgents = [];
+  }
+
+  // Default model from openclaw.json
+  try {
+    const ocConfig = JSON.parse(fs.readFileSync(cfg.OPENCLAW_CONFIG_FILE, 'utf8'));
+    const primary = ocConfig?.agents?.defaults?.model?.primary;
+    const fallbacks = ocConfig?.agents?.defaults?.model?.fallbacks;
+    if (primary) {
+      info.models = {
+        primary,
+        fallbacks: fallbacks || [],
+      };
+    }
+  } catch {
+    // Ignore config read errors
   }
 
   return info;

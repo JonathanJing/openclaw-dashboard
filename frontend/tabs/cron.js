@@ -1,59 +1,9 @@
 
 /* Cron Tab — Cron Jobs, Run History, Cost Analysis */
 
+// Cron Jobs list removed — data shown in cost table instead
 async function loadCronEnhanced() {
-  const panel = document.getElementById('panel-tasks');
-  if (!panel) return;
-
-  let jobsContainer = document.getElementById('cronJobsContainer');
-  if (!jobsContainer) {
-    jobsContainer = document.createElement('div');
-    jobsContainer.id = 'cronJobsContainer';
-    jobsContainer.style.marginBottom = '12px';
-    panel.insertBefore(jobsContainer, panel.firstElementChild);
-  }
-
-  try {
-    const data = await apiFetch('/ops/cron');
-    const jobs = data.jobs || [];
-
-    let html = `<div class="glass-card" style="padding:14px;margin-bottom:12px">
-      <div class="card-title">Cron Jobs</div>
-      <div class="card-sub">${tt(
-        `${data.total} jobs · ${data.enabled} enabled · ${data.disabled} disabled`,
-        `${data.total} 个任务 · ${data.enabled} 启用 · ${data.disabled} 停用`
-      )}</div>
-    </div>`;
-
-    for (const j of jobs) {
-      const statusDot = !j.enabled ? 'off' : (j.lastRun?.status === 'finished' ? 'ok' : (j.lastRun?.status ? 'fail' : 'ok'));
-      const lastRunText = j.lastRun ? (() => {
-        const ago = timeSince(j.lastRun.ts || Date.now());
-        const dur = j.lastRun.durationMs ? (j.lastRun.durationMs / 1000).toFixed(0) + 's' : '';
-        const tokens = j.lastRun.tokens ? fmtTokens(j.lastRun.tokens) : '';
-        return [ago, dur, tokens, j.lastRun.model ? shortModel(j.lastRun.model) : ''].filter(Boolean).join(' · ');
-      })() : tt('Never run', '尚未运行');
-
-      html += `<div class="cron-card ${j.enabled ? '' : 'disabled'}">
-        <div class="cron-header">
-          <div>
-            <div class="cron-name">${escHtml(j.name)}</div>
-            <div class="cron-schedule">🕐 ${escHtml(j.schedule)}</div>
-          </div>
-          <span class="cron-status"><span class="dot ${statusDot}"></span>${j.enabled ? tt('Enabled', '启用') : tt('Disabled', '停用')}</span>
-        </div>
-        <div class="cron-desc">${escHtml(j.description)}</div>
-        <div class="cron-footer">
-          <span>📋 ${j.payloadKind || '—'}</span>
-          <span>🧠 ${buildModelSelect(j.model || '', j.id, 'cron')}</span>
-          <span>⏱ ${tt('Last', '上次')}: ${lastRunText}</span>
-        </div>
-      </div>`;
-    }
-    jobsContainer.innerHTML = html;
-  } catch (e) {
-    jobsContainer.innerHTML = `<div class="glass-card" style="padding:14px;margin-bottom:12px"><p>${escHtml(e.message)}</p></div>`;
-  }
+  // No-op: cron jobs are displayed in loadCronCosts() table
 }
 
 // ─── Ops Channel Usage Panel ───
@@ -168,18 +118,41 @@ function spawnSingleTask(_taskId) {
 // ─── Model names (single source of truth for display) ───
 const MODEL_DISPLAY_NAMES = [
   // [match-pattern (normModelStr applied), display name]
+  // Anthropic
   ['opus-4-6',            'Claude Opus 4.6'],
   ['sonnet-4-6',          'Claude Sonnet 4.6'],
+  ['haiku-4-5',           'Claude Haiku 4.5'],
+  ['haiku-3-5',           'Claude Haiku 3.5'],
+  // Google
   ['gemini-3-flash',      'Gemini 3 Flash'],
   ['gemini-3-1-pro',      'Gemini 3.1 Pro'],
   ['gemini-3-1-flash',    'Gemini 3.1 Flash Lite'],
+  ['gemini-2-5-pro',      'Gemini 2.5 Pro'],
+  ['gemini-2-5-flash',    'Gemini 2.5 Flash'],
+  // OpenAI
   ['gpt-5-4',             'GPT-5.4'],
   ['gpt-5-3-codex',       'GPT-5.3 Codex'],
   ['gpt-5-3-instant',     'GPT-5.3 Instant'],
+  ['gpt-5-3-chat',        'GPT-5.3 Chat'],
+  ['gpt-5-2',             'GPT-5.2'],
+  ['gpt-5-1',             'GPT-5.1'],
+  ['gpt-5',               'GPT-5'],
   ['gpt-5-mini',          'GPT-5 Mini'],
-  ['kimi-k2',             'Kimi K2.5'],
+  ['gpt-5-nano',          'GPT-5 Nano'],
+  // Moonshot
+  ['kimi-k2',             'Kimi-K2.5'],
+  // Volcengine
   ['doubao',              'Doubao Seed'],
-  ['qwen3-5-35b',         'Qwen3.5-35B'],
+  // Qwen models - unified naming
+  ['qwen3-5-27b-claude',  'Qwen-27B'],
+  ['qwen3-5-27b',         'Qwen-27B'],
+  ['qwen3-5-35b',         'Qwen-35B'],
+  ['qwen-mac',            'Qwen-MacBook'],
+  ['qwen-spark-35b',      'Qwen-35B'],
+  ['qwen-spark-27b',      'Qwen-27B'],
+  ['local-dgx-spark-qwen-35b', 'Qwen-35B'],
+  ['local-dgx-spark-qwen-27b', 'Qwen-27B'],
+  ['local-macbook-pro-qwen',   'Qwen-MacBook'],
 ];
 
 // ─── Model Selector ───
@@ -289,6 +262,7 @@ function normalizeTaskTag(tag) {
 }
 
 let _sessionsHideStale = false; // global toggle: hide sessions with no activity for 7+ days
+let _sessionsHideInactive = false; // global toggle: hide sessions with no activity today
 
 
 async function loadCronCosts() {
@@ -379,33 +353,6 @@ async function loadCronCosts() {
       </tr>`;
     }
     html += '</tbody></table>';
-
-    // Daily breakdown per cron (last 7 days)
-    if (jobs.length > 0) {
-      html += '<div style="margin-top:12px;display:grid;gap:8px">';
-      for (const j of jobs) {
-        const daily = (j.daily || []).slice(-7).reverse();
-        html += `<details class="glass-card" style="padding:10px">
-          <summary style="cursor:pointer;font-size:.78rem;font-weight:600">${escHtml(j.name)} · 最近 ${daily.length} 天每日成本</summary>
-          <div style="margin-top:8px;overflow:auto">
-            <table class="sessions-table" style="font-size:.74rem">
-              <thead><tr><th>日期</th><th>次数</th><th>Tokens</th><th>Tokens/次</th><th>$/次</th><th>当日总$</th></tr></thead>
-              <tbody>
-                ${daily.map(d => `<tr>
-                  <td>${d.date}</td>
-                  <td>${d.runs}</td>
-                  <td>${fmtTokens(d.tokens || 0)}</td>
-                  <td>${fmtTokens(d.tokensPerRun || 0)}</td>
-                  <td>${fmtUsd(d.costPerRun, 3)}</td>
-                  <td style="font-weight:600">${fmtUsd(d.cost, 3)}</td>
-                </tr>`).join('')}
-              </tbody>
-            </table>
-          </div>
-        </details>`;
-      }
-      html += '</div>';
-    }
 
     contentEl.innerHTML = html;
 

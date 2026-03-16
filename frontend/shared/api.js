@@ -167,8 +167,8 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     document.getElementById(`panel-${btn.dataset.tab}`).classList.add('active');
     if (btn.dataset.tab === 'overview') { loadSessions(); loadTasks(true); }
     if (btn.dataset.tab === 'tasks') { loadCronEnhanced(); loadCronCosts(); }
-    if (btn.dataset.tab === 'ops') { loadOpsChannels(); loadOpsAlltime(); loadOpsAudit(); }
-    if (btn.dataset.tab === 'health') { loadOperationsStatus(); loadDgxStatus(); loadLocalApiHubStatus(); }
+    if (btn.dataset.tab === 'ops') { loadOpsAlltime(); loadOpsBySource(); loadOpsAudit(); }
+    if (btn.dataset.tab === 'health') { /* Operations Control only */ }
     if (btn.dataset.tab === 'config') { loadConfig(); loadSkills(); loadFileList(); }
   });
 });

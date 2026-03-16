@@ -26,6 +26,11 @@ function loadCronNameMap() {
   }
 }
 
+function isRunSession(key) {
+  // Skip run-specific sessions (they are children of base sessions)
+  return /:run:[a-f0-9-]{8,36}/i.test(String(key));
+}
+
 function prettifySessionName(entry, key, chatId, channelNames, cronNameMap) {
   const rawDisplay = String(entry?.displayName || '').trim();
   const groupChannel = String(entry?.groupChannel || '').trim();
@@ -97,6 +102,9 @@ function handleSessions(req, res, query) {
 
   const sessions = [];
   for (const [key, entry] of Object.entries(raw)) {
+    // Skip run-specific sessions (children of base sessions) to avoid duplicates
+    if (isRunSession(key)) continue;
+
     const origin = entry.origin || {};
     const chatId = extractChatId(key, origin);
     const channel = origin.provider || origin.surface || 'unknown';

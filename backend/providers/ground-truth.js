@@ -136,7 +136,7 @@ const MODEL_PALETTE = {
   'gpt-5-mini':             '#fbbf24',  // amber
   'gpt-5.3-instant-latest': '#ef4444',  // red
   'gpt-5.4':                '#f97316',  // deep orange
-  'Kimi':                   '#22d3ee',  // cyan  (moonshot/kimi-k2.5)
+  'kimi-k2.5':              '#22d3ee',  // cyan  (moonshot/kimi-k2.5)
   'doubao-seed-2-0-pro':    '#a78bfa',  // violet
   'qwen-mac':               '#38bdf8',  // sky
   'qwen-spark':             '#818cf8',  // indigo (legacy alias)
@@ -173,7 +173,7 @@ const LEDGER_ALIAS_MAP = {
   'openai-codex/gpt-5.3-codex':                        'gpt-5.3-codex',
   'openai-codex/gpt-5.3-chat-latest':                  'gpt-5.3-instant-latest',
   // moonshot
-  'moonshot/kimi-k2.5':                                'Kimi',
+  'moonshot/kimi-k2.5':                                'kimi-k2.5',
 };
 
 function getModelColorMap() {

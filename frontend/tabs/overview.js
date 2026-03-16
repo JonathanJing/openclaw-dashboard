@@ -20,7 +20,12 @@ async function loadSessions() {
   try {
     const url = _sessionsHideStale ? '/ops/sessions?hideStale=1' : '/ops/sessions';
     const data = await apiFetch(url);
-    const sessions = data.sessions || [];
+    let sessions = data.sessions || [];
+    
+    // Filter out inactive sessions (no activity today) if toggle is on
+    if (window._sessionsHideInactive) {
+      sessions = sessions.filter(s => (s.today?.messages || 0) > 0 || (s.today?.totalTokens || 0) > 0);
+    }
     const alerts = data.alerts || [];
     const summary = data.summary || {};
 
@@ -232,7 +237,7 @@ async function loadDgxStatus() {
 
     // Backward + forward compatible field mapping
     const m = d.model || {
-      name: modelFromSnap.model_path || modelFromSnap.name || 'Qwen3.5-35B',
+      name: modelFromSnap.model_path || modelFromSnap.name || 'Qwen-35B',
       nParams: modelFromSnap.n_params_human || modelFromSnap.n_params || null,
       sizeGiB: modelFromSnap.size_gib || null,
       nCtxTrain: modelFromSnap.n_ctx_train || null,

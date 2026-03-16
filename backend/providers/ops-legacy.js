@@ -140,9 +140,38 @@ function handleOpsModels(_req, res) {
   }
 
   // displayNames: [ [pattern, shortLabel], ... ] for shortModel()
+  // Must match frontend cron.js MODEL_DISPLAY_NAMES
+  const DISPLAY_NAME_MAP = {
+    'opus-4.6': 'Claude Opus 4.6',
+    'sonnet-4.6': 'Claude Sonnet 4.6',
+    'haiku-4.5': 'Claude Haiku 4.5',
+    'haiku-3.5': 'Claude Haiku 3.5',
+    'gemini-3-flash': 'Gemini 3 Flash',
+    'gemini-3.1-pro': 'Gemini 3.1 Pro',
+    'gemini-3.1-flash-lite': 'Gemini 3.1 Flash Lite',
+    'gemini-2.5-pro': 'Gemini 2.5 Pro',
+    'gemini-2.5-flash': 'Gemini 2.5 Flash',
+    'gpt-5.4': 'GPT-5.4',
+    'gpt-5.3-codex': 'GPT-5.3 Codex',
+    'gpt-5.3-instant': 'GPT-5.3 Instant',
+    'gpt-5.3-instant-latest': 'GPT-5.3 Instant',
+    'gpt-5.3-chat': 'GPT-5.3 Chat',
+    'gpt-5.2': 'GPT-5.2',
+    'gpt-5.1': 'GPT-5.1',
+    'gpt-5': 'GPT-5',
+    'gpt-5-mini': 'GPT-5 Mini',
+    'gpt-5-nano': 'GPT-5 Nano',
+    'kimi-k2.5': 'Kimi-K2.5',
+    'doubao-seed-2-0-pro': 'Doubao Seed',
+    'qwen-mac': 'Qwen-MacBook',
+    'qwen-spark': 'Qwen-35B',
+    'qwen-spark-35b': 'Qwen-35B',
+    'qwen-spark-27b': 'Qwen-27B',
+  };
   const displayNames = modelList.map(m => {
-    const short = m.alias.replace(/-preview$/, '');
-    return [m.alias, short];
+    const alias = m.alias.replace(/-preview$/, '');
+    const displayName = DISPLAY_NAME_MAP[alias] || alias;
+    return [m.alias, displayName];
   });
 
   jsonReply(res, 200, {

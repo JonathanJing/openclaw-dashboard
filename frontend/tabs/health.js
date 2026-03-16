@@ -1,16 +1,12 @@
 
-/* Health Tab — System Info, Watchdog, Security Audit, Spark Metrics */
+/* Health Tab — Operations Control */
 
 async function loadSystemInfo() {
-  // Refresh model options from server dynamically
+  // Model registry is now static (defined in cron.js)
+  // Only refresh colors from server (non-critical visual)
   try {
     const data = await apiFetch('/ops/models');
-    if (data.registry) refreshModelOptions(data.registry);
     if (data.colors) Object.assign(MODEL_COLORS, data.colors);
-    if (data.displayNames) {
-      MODEL_DISPLAY_NAMES.length = 0;
-      MODEL_DISPLAY_NAMES.push(...data.displayNames);
-    }
   } catch(e) {}
 
   try {
@@ -57,72 +53,16 @@ async function loadSystemInfo() {
   }
 }
 
-function inferDgxActiveJob(dgx) {
-  const slots = dgx?.snapshot?.llama?.slots || [];
-  const busySlots = slots.filter(s => s?.is_processing);
-  if (!busySlots.length) {
-    return { title: tt('Idle', '空闲'), detail: tt('No active generation', '当前无推理任务') };
-  }
-  const lead = busySlots[0] || {};
-  const candidate = lead.task || lead.job || lead.source || lead.session || lead.id_task || lead.id || '';
-  const title = candidate ? String(candidate).slice(0, 18) : tt('Generating', '推理中');
-  return {
-    title,
-    detail: `${busySlots.length}/${slots.length || busySlots.length} ${tt('slots busy', '槽位忙')}`,
-  };
-}
-
-function renderDgxInfoBar(dgx) {
-  const el = document.getElementById('dgxInfoBar');
-  const c = document.getElementById('dgxInfoContent');
-  if (!el || !c) return;
-
-  const online = !!dgx?.online;
-  const gpu = dgx?.snapshot?.gpu || {};
-  const ram = dgx?.snapshot?.ram || {};
-  const modelName = dgx?.model?.name || 'local-dgx-spark';
-  const activeTask = dgx?.activeTask;
-  const gpuUtil = gpu.gpu_util_pct;
-  const gpuTemp = gpu.gpu_temp_c;
-  const gpuPower = gpu.gpu_power_w;
-  const ramUsedPct = ram.ram_total_kb ? Math.round((Number(ram.ram_used_kb || 0) / Number(ram.ram_total_kb)) * 100) : null;
-
-  c.innerHTML = online
-    ? `
-      <span>🖥️ <strong>DGX Spark</strong></span>
-      <span style="color:var(--green)">🟢 ${tt('Online', '在线')}</span>
-      <span>🧠 ${escHtml(shortModel(modelName))}</span>
-      <span>⚙️ ${activeTask ? `running #${activeTask.taskId || activeTask.slotId}` : tt('idle', '空闲')}</span>
-      <span>🎛️ GPU ${gpuUtil != null ? Number(gpuUtil).toFixed(0) + '%' : '—'}</span>
-      <span>🌡️ ${gpuTemp != null ? Number(gpuTemp).toFixed(0) + '°C' : '—'}</span>
-      <span>⚡ ${gpuPower != null ? Number(gpuPower).toFixed(1) + 'W' : '—'}</span>
-      <span>💾 RAM ${ramUsedPct != null ? ramUsedPct + '%' : '—'}</span>
-    `
-    : `<span style="color:var(--red)">🔴 DGX Spark ${tt('offline/unreachable', '离线或不可达')}</span>`;
-
-  el.style.display = '';
-}
-
 async function renderAgentMonitor() {
   await loadSystemInfo();
 
-  const [ledger, ledger7d, dgx, sparkSnap, watchdog, sessionsData, cronData] = await Promise.all([
+  const [ledger, ledger7d, watchdog, sessionsData, cronData] = await Promise.all([
     apiFetch('/ops/ledger/today').catch(() => ({ rows: [] })),
     apiFetch('/api/ledger/history?days=7').catch(() => ({ rows: [] })),
-    apiFetch('/ops/dgx-status').catch(() => ({})),
-    apiFetch('/api/spark/snapshot').catch(() => ({})),
     apiFetch('/ops/watchdog?limit=60&windowMinutes=240').catch(() => ({})),
     apiFetch('/ops/sessions').catch(() => ({ alerts: [] })),
     apiFetch('/ops/cron').catch(() => ({ jobs: [] })),
   ]);
-
-  const dgxCombined = {
-    ...dgx,
-    snapshot: dgx?.snapshot || sparkSnap?.snapshot || null,
-    watchdog: dgx?.watchdog || sparkSnap?.watchdog || null,
-  };
-
-  renderDgxInfoBar(dgxCombined);
 
   const rows = ledger.by_model || ledger.rows || [];
   let totalCost = 0;
@@ -140,10 +80,16 @@ async function renderAgentMonitor() {
       if (n.includes('qwen') && n.includes('35b')) {
         const isMac = p.includes('macbook') || p.includes('mac-pro');
         return {
-          key: isMac ? 'Qwen3.5-35B (MacBook)' : 'Qwen3.5-35B (DGX Spark)',
+          key: isMac ? 'Qwen-MacBook' : 'Qwen-35B',
           colorRef: isMac
             ? 'local-macbook-pro/qwen3.5:35b-a3b'
             : 'local-dgx-spark/Qwen3.5-35B-A3B-UD-Q4_K_XL.gguf',
+        };
+      }
+      if (n.includes('qwen') && n.includes('27b')) {
+        return {
+          key: 'Qwen-27B',
+          colorRef: 'local-dgx-spark-27b/Qwen3.5-27B-Claude-4.6-Opus-Reasoning-Distilled.Q5_K_M.gguf',
         };
       }
     }
@@ -213,32 +159,26 @@ async function renderAgentMonitor() {
   cronBadge.innerHTML = alertTotal > 0 ? `⚠️ ${alertTotal} ${tt('open', '未恢复')}` : `✅ ${tt('clear', '正常')}`;
   cronDetail.textContent = `${sessionAlerts} ${tt('session', '会话')} · ${cronErrors} cron · ${watchdogDown} watchdog`;
 
-  // Card 4: DGX Active Job
+  // Card 4: Watchdog Status
   const hookVal = document.getElementById('hookValue');
   const hookBadge = document.getElementById('hookBadge');
   const hookDetail = document.getElementById('hookDetail');
-  const activeJob = inferDgxActiveJob(dgxCombined);
-  hookVal.textContent = activeJob.title;
-  hookBadge.className = `agent-stat-badge ${(dgxCombined?.online && activeJob.title !== tt('Idle', '空闲')) ? 'active' : 'idle'}`;
-  hookBadge.innerHTML = dgxCombined?.online ? tt('live', '实时') : tt('offline', '离线');
-  hookDetail.textContent = activeJob.detail;
+  const wdStatus = watchdog.effectiveStatus || 'unknown';
+  const wdRunning = !!watchdog.runtime?.running;
+  hookVal.textContent = wdStatus === 'healthy' ? tt('Healthy', '健康') : wdStatus === 'down' ? tt('Down', '断连') : tt('Unknown', '未知');
+  hookBadge.className = `agent-stat-badge ${wdRunning ? 'active' : 'error'}`;
+  hookBadge.innerHTML = wdRunning ? '✓' : '✕';
+  hookDetail.textContent = wdRunning ? tt('Watchdog active', 'Watchdog 运行中') : tt('Watchdog inactive', 'Watchdog 未运行');
 
-  // Card 5: DGX Spark Health
+  // Card 5: System Status
   const sentinelValue = document.getElementById('sentinelValue');
   const sentinelBadge = document.getElementById('sentinelBadge');
   const sentinelDetail = document.getElementById('sentinelDetail');
-  const dgxOnline = !!dgxCombined?.online;
-  const slots = Array.isArray(dgxCombined?.snapshot?.llama?.slots) ? dgxCombined.snapshot.llama.slots : [];
-  const busyFromArray = slots.filter(s => s?.is_processing).length;
-  const totalFromArray = slots.length;
-  const busyFromObj = Number(dgxCombined?.slots?.busy);
-  const totalFromObj = Number(dgxCombined?.slots?.total);
-  const busy = Number.isFinite(busyFromObj) ? busyFromObj : busyFromArray;
-  const total = Number.isFinite(totalFromObj) ? totalFromObj : totalFromArray;
-  sentinelValue.textContent = dgxOnline ? tt('Online', '在线') : tt('Offline', '离线');
-  sentinelBadge.className = `agent-stat-badge ${dgxOnline ? 'active' : 'error'}`;
-  sentinelBadge.innerHTML = dgxOnline ? '🟢 DGX' : '🔴 DGX';
-  sentinelDetail.textContent = dgxOnline ? `${busy}/${total || 0} ${tt('slots busy', '槽位忙')}` : tt('Probe failed', '连接失败');
+  const allHealthy = wdRunning && alertTotal === 0;
+  sentinelValue.textContent = allHealthy ? tt('All Good', '一切正常') : tt('Check', '需检查');
+  sentinelBadge.className = `agent-stat-badge ${allHealthy ? 'active' : 'error'}`;
+  sentinelBadge.innerHTML = allHealthy ? '✓' : '⚠';
+  sentinelDetail.textContent = allHealthy ? tt('No alerts', '无告警') : `${alertTotal} ${tt('alerts', '告警')}`;
 
   // Card 6: Model Mix
   // If today has no local usage, compute 7d local% as context
@@ -470,56 +410,5 @@ async function loadAudit() {
 }
 
 // timeSince() is defined in shared/ui-utils.js
-
-// ─── Local API Hub Status ────────────────────────────────────────────────────
-async function loadLocalApiHubStatus() {
-  const card    = document.getElementById('localApiHubCard');
-  const badge   = document.getElementById('localApiHubBadge');
-  const content = document.getElementById('localApiHubContent');
-  if (!card || !content) return;
-
-  try {
-    const data = await apiFetch('/ops/local-api-hub');
-
-    if (data.reachable) {
-      badge.textContent = '🟢 Online';
-      badge.style.background = 'rgba(63,185,80,.15)';
-      badge.style.color = 'var(--green)';
-    } else {
-      badge.textContent = '🔴 Offline';
-      badge.style.background = 'rgba(248,81,73,.15)';
-      badge.style.color = 'var(--red)';
-    }
-
-    // Route list
-    const routes = data.routes;
-    const routeHtml = routes && typeof routes === 'object'
-      ? Object.entries(routes).map(([method, paths]) => {
-          const list = Array.isArray(paths) ? paths : [paths];
-          return list.map(p =>
-            `<span style="font-family:var(--mono);font-size:.68rem;padding:2px 8px;border-radius:6px;background:rgba(255,255,255,.06);color:var(--text2)">
-              <span style="color:var(--accent2)">${escHtml(method)}</span> ${escHtml(p)}
-            </span>`
-          ).join('');
-        }).join('')
-      : '';
-
-    content.innerHTML = `
-      <div style="display:flex;flex-wrap:wrap;gap:6px 14px;margin-bottom:8px;font-size:.75rem">
-        <span>🌐 <strong>${escHtml(data.hubUrl || '—')}</strong></span>
-        ${data.reachable
-          ? `<span style="color:var(--green)">✓ ${data.latencyMs}ms</span>`
-          : `<span style="color:var(--red)">${escHtml(data.error || 'Unreachable')}</span>`
-        }
-        ${data.module ? `<span style="color:var(--text2)">module: ${escHtml(data.module)}</span>` : ''}
-      </div>
-      ${routeHtml ? `<div style="display:flex;flex-wrap:wrap;gap:4px">${routeHtml}</div>` : ''}
-    `;
-  } catch (e) {
-    badge.textContent = '⚠ Error';
-    badge.style.color = 'var(--yellow)';
-    content.innerHTML = `<div style="font-size:.76rem;color:var(--text2)">${escHtml(e.message)}</div>`;
-  }
-}
 
 // ─── Config Viewer ───

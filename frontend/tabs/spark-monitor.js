@@ -8,11 +8,20 @@
 async function loadSparkSummary() {
   try {
     const data = await apiFetch('/api/spark-tasks/summary');
-    if (!data?.ok) return;
+    if (!data?.ok) {
+      console.warn('[spark-monitor] summary not ok:', data);
+      return;
+    }
 
-    // Status counts
+    // Status counts - handle both 'count' and 'COUNT(*)' field names
     const byStatus = data.tasks?.byStatus || [];
-    const get = (s) => (byStatus.find(r => r.status === s)?.count || 0);
+    console.log('[spark-monitor] byStatus:', byStatus);
+    
+    const get = (s) => {
+      const row = byStatus.find(r => r.status === s);
+      return row ? (row.count || row['COUNT(*)'] || 0) : 0;
+    };
+    
     document.getElementById('sparkTasksDone').textContent    = get('done');
     document.getElementById('sparkTasksRunning').textContent = get('running');
     document.getElementById('sparkTasksError').textContent   = get('error');
@@ -40,61 +49,15 @@ function fmtTokens(n) {
   return String(n);
 }
 
-// ── GPU Timeline Chart ────────────────────────────────────────────────────────
-
+// ── Task Timeline Chart (24h) ─────────────────────────────────────────────────
+// REMOVED: Timeline deleted per user request. Task info now shown in Recent Tasks list.
 async function loadSparkGpuTimeline() {
-  const hours = document.getElementById('sparkGpuHours')?.value || 24;
+  // No-op: timeline removed
   const el = document.getElementById('sparkGpuChart');
-  if (!el) return;
-
-  try {
-    const data = await apiFetch(`/api/spark-tasks/gpu?hours=${hours}`);
-    const timeline = data?.timeline || [];
-
-    if (timeline.length === 0) {
-      el.innerHTML = '<div style="color:var(--text2);text-align:center;padding:30px;font-size:.8rem">No GPU data yet — GPU Reporter runs every 5 minutes</div>';
-      return;
-    }
-
-    // Mini SVG bar chart
-    const max = Math.max(...timeline.map(p => p.gpu_pct || 0), 1);
-    const w = 800, h = 90, barW = Math.max(2, Math.floor(w / timeline.length) - 1);
-    const bars = timeline.map((p, i) => {
-      const pct  = (p.gpu_pct || 0) / max;
-      const barH = Math.max(2, Math.round(pct * (h - 20)));
-      const x    = Math.round(i * (w / timeline.length));
-      const y    = h - barH - 10;
-      const col  = p.slots_busy > 0 ? '#7c6af7' : '#3b82f6';
-      const ts   = new Date(p.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      return `<rect x="${x}" y="${y}" width="${barW}" height="${barH}" fill="${col}" rx="1" opacity=".85">
-        <title>${ts} — GPU: ${(p.gpu_pct||0).toFixed(1)}% | slots busy: ${p.slots_busy||0}${p.active_task ? ' | task: '+p.active_task : ''}</title>
-      </rect>`;
-    }).join('');
-
-    // X-axis labels (every ~20% of points)
-    const step = Math.max(1, Math.floor(timeline.length / 5));
-    const labels = timeline.filter((_, i) => i % step === 0).map((p, i) => {
-      const x = Math.round((i * step) * (w / timeline.length));
-      const ts = new Date(p.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      return `<text x="${x}" y="${h}" font-size="9" fill="var(--text2)">${ts}</text>`;
-    }).join('');
-
-    el.innerHTML = `
-      <svg viewBox="0 0 ${w} ${h + 5}" style="width:100%;height:100px" preserveAspectRatio="none">
-        <line x1="0" y1="${h-10}" x2="${w}" y2="${h-10}" stroke="var(--border)" stroke-width="1"/>
-        ${bars}
-        ${labels}
-      </svg>
-      <div style="display:flex;gap:16px;margin-top:4px;font-size:.68rem;color:var(--text2)">
-        <span><span style="display:inline-block;width:10px;height:10px;background:#7c6af7;border-radius:2px;margin-right:3px"></span>Spark Agent active</span>
-        <span><span style="display:inline-block;width:10px;height:10px;background:#3b82f6;border-radius:2px;margin-right:3px"></span>OpenClaw slot</span>
-      </div>`;
-  } catch (e) {
-    el.innerHTML = `<div style="color:var(--red);font-size:.8rem">Error loading GPU data: ${e.message}</div>`;
-  }
+  if (el) el.innerHTML = '<div style="color:var(--text2);text-align:center;padding:20px;font-size:.8rem">Task activity shown in Recent Tasks below</div>';
 }
 
-// ── Task List ─────────────────────────────────────────────────────────────────
+// ── Task List (Enhanced) ─────────────────────────────────────────────────────
 
 async function loadSparkTaskList() {
   const type   = document.getElementById('sparkTaskTypeFilter')?.value || '';
@@ -103,7 +66,8 @@ async function loadSparkTaskList() {
   if (!el) return;
 
   try {
-    const data = await apiFetch(`/api/spark-tasks/list?type=${type}&status=${status}&limit=30`);
+    // Fetch tasks from last 24 hours
+    const data = await apiFetch(`/api/spark-tasks/list?type=${type}&status=${status}&hours=24&limit=100`);
     const tasks = data?.tasks || [];
 
     if (tasks.length === 0) {
@@ -111,23 +75,64 @@ async function loadSparkTaskList() {
       return;
     }
 
-    const statusColor = { done: 'var(--green)', running: 'var(--accent)', error: 'var(--red)', unknown: 'var(--text2)' };
-    const statusIcon  = { done: '✅', running: '⏳', error: '❌', unknown: '❓' };
+    const statusColor = { done: '#22c55e', running: '#7c6af7', error: '#ef4444', unknown: '#6b7280' };
+    const statusBg    = { done: 'rgba(34,197,94,0.15)', running: 'rgba(124,106,247,0.15)', error: 'rgba(239,68,68,0.15)', unknown: 'rgba(107,114,128,0.15)' };
+    const statusIcon  = { done: '✓', running: '●', error: '✕', unknown: '?' };
 
     const rows = tasks.map(t => {
       const sc   = statusColor[t.status] || statusColor.unknown;
+      const sb   = statusBg[t.status] || statusBg.unknown;
       const si   = statusIcon[t.status]  || statusIcon.unknown;
-      const dur  = t.duration_s != null ? `${Number(t.duration_s).toFixed(0)}s` : '—';
-      const ts   = t.started_at ? new Date(t.started_at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—';
-      const sum  = t.result_summary ? `<div style="font-size:.7rem;color:var(--text2);margin-top:2px">${t.result_summary}</div>` : '';
-      return `<div style="display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">
-        <span style="font-size:1rem;min-width:20px">${si}</span>
+      
+      // Format duration
+      let dur = '—';
+      if (t.duration_s != null) {
+        const mins = Math.floor(t.duration_s / 60);
+        const secs = Math.floor(t.duration_s % 60);
+        dur = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
+      }
+      
+      // Format tokens
+      const tokens = t.tokens_used ? fmtTokens(t.tokens_used) : '—';
+      
+      // Format time - larger and more prominent
+      const finishedTime = t.finished_at 
+        ? new Date(t.finished_at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+        : (t.started_at ? new Date(t.started_at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—');
+      
+      // Summary
+      const sum = t.result_summary ? `<div style="font-size:.75rem;color:var(--text2);margin-top:4px;line-height:1.4">${t.result_summary}</div>` : '';
+      
+      return `<div style="display:flex;align-items:flex-start;gap:12px;padding:12px 0;border-bottom:1px solid var(--border)">
+        <!-- Status Icon -->
+        <div style="width:28px;height:28px;border-radius:50%;background:${sb};color:${sc};display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;flex-shrink:0">${si}</div>
+        
+        <!-- Main Content -->
         <div style="flex:1;min-width:0">
-          <div style="font-size:.82rem;font-weight:600;color:var(--text1)">${t.task_name}</div>
-          <div style="font-size:.7rem;color:var(--text2)">${t.task_type} · ${ts} · ${dur}</div>
+          <!-- Task Name -->
+          <div style="font-size:.9rem;font-weight:600;color:var(--text1);margin-bottom:2px">${t.task_name}</div>
+          
+          <!-- Type -->
+          <div style="font-size:.72rem;color:var(--text2);margin-bottom:6px">${t.task_type}</div>
+          
+          <!-- Summary -->
           ${sum}
         </div>
-        <span style="font-size:.7rem;padding:2px 8px;border-radius:10px;background:rgba(255,255,255,.06);color:${sc};white-space:nowrap">${t.status}</span>
+        
+        <!-- Right Side: Time, Duration, Tokens -->
+        <div style="text-align:right;flex-shrink:0;min-width:100px">
+          <!-- Finished Time - Larger -->
+          <div style="font-size:.85rem;font-weight:500;color:var(--text1);margin-bottom:4px">${finishedTime}</div>
+          
+          <!-- Duration & Tokens - Highlighted -->
+          <div style="display:flex;gap:8px;justify-content:flex-end;margin-bottom:4px">
+            <span style="font-size:.75rem;padding:3px 8px;border-radius:6px;background:rgba(124,106,247,0.12);color:#a78bfa;font-weight:500">⏱ ${dur}</span>
+            <span style="font-size:.75rem;padding:3px 8px;border-radius:6px;background:rgba(34,197,94,0.12);color:#4ade80;font-weight:500">🪙 ${tokens}</span>
+          </div>
+          
+          <!-- Status Badge -->
+          <span style="font-size:.7rem;padding:2px 10px;border-radius:12px;background:${sb};color:${sc};font-weight:500">${t.status}</span>
+        </div>
       </div>`;
     }).join('');
 

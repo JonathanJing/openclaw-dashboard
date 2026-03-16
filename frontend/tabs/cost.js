@@ -1,114 +1,5 @@
 
-/* Cost Tab — Channel Breakdown, All-Time Usage, Provider Audit */
-
-async function loadOpsChannels() {
-  const listEl = document.getElementById('opsChannelList');
-  const subEl = document.getElementById('opsTotalSub');
-  const pillsEl = document.getElementById('opsTotalPills');
-  const barEl = document.getElementById('opsModelBar');
-  if (!listEl) return;
-
-  try {
-    const data = await apiFetch('/ops/channels');
-    // New format: { channels: [{channel, chat_id, messages, totalTokens, cost}] }
-    // Old format: { totals: {...}, channels: [{today: {models, messages, totalTokens, cost}, channel, displayName, status}] }
-    const rawChannels = data.channels || [];
-
-    // Detect new vs old format by checking first channel structure
-    const isNewFormat = rawChannels.length > 0 && rawChannels[0].chat_id !== undefined && rawChannels[0].today === undefined;
-
-    if (isNewFormat) {
-      // New format: flat rows from SQLite
-      const totalTokens = rawChannels.reduce((s, c) => s + (c.totalTokens || 0), 0);
-      const totalCost   = rawChannels.reduce((s, c) => s + (c.cost || 0), 0);
-      const totalMsgs   = rawChannels.reduce((s, c) => s + (c.messages || 0), 0);
-
-      if (subEl) subEl.textContent = `${fmtTokens(totalTokens)} tokens · ${totalMsgs} messages · $${totalCost.toFixed(2)}`;
-      if (pillsEl) pillsEl.innerHTML = ''; // no model breakdown in new format
-      if (barEl) barEl.innerHTML = '';
-
-      if (rawChannels.length === 0) {
-        listEl.innerHTML = '<div class="empty-state"><h3>No activity today</h3><p>Channel usage will appear here once messages flow.</p></div>';
-        return;
-      }
-      listEl.innerHTML = rawChannels.map(ch => {
-        const isCron = ch.isCron || ch.chat_id === '__cron__';
-        const icon = isCron ? '⚙️' : (ch.channel === 'discord' ? '🎮' : (ch.channel === 'whatsapp' ? '📱' : '💬'));
-        const name = isCron
-          ? tt('Cron Jobs', 'Cron 任务（合计）')
-          : (ch.displayName || ch.chat_id || ch.channel || '?');
-        const meta = isCron
-          ? tt('all scheduled jobs · today', '今日全部定时任务')
-          : (ch.channel || '—');
-        return `<div class="ops-channel-card">
-          <div class="ops-ch-left">
-            <div class="ops-ch-name">${icon} ${escHtml(name)}</div>
-            <div class="ops-ch-meta">
-              <span>${ch.messages || 0} ${tt('msgs', '条消息')}</span>
-              <span>${escHtml(meta)}</span>
-            </div>
-          </div>
-          <div class="ops-ch-right">
-            <div class="ops-ch-tokens">${fmtTokens(ch.totalTokens || 0)}</div>
-            <div class="ops-ch-cost">$${(ch.cost || 0).toFixed(2)}</div>
-          </div>
-        </div>`;
-      }).join('');
-
-    } else {
-      // Old format (legacy)
-      const totals = data.totals || {};
-      if (subEl) subEl.textContent = `${fmtTokens(totals.totalTokens)} tokens · ${totals.messages || 0} messages · $${(totals.cost || 0).toFixed(2)}`;
-      if (pillsEl) {
-        const modelEntries = Object.entries(totals.models || {}).filter(([,t]) => t > 0).sort((a, b) => b[1] - a[1]);
-        pillsEl.innerHTML = modelEntries.slice(0, 4).map(([m, t]) =>
-          `<span class="pill" style="border-color:${getModelColor(m)};color:${getModelColor(m)}">${shortModel(m)} ${fmtTokens(t)}</span>`
-        ).join('');
-      }
-      if (barEl) {
-        const modelEntries = Object.entries(totals.models || {}).filter(([,t]) => t > 0).sort((a, b) => b[1] - a[1]);
-        const total = totals.totalTokens || 1;
-        barEl.innerHTML =
-          '<div class="ops-bar-track">' +
-          modelEntries.map(([m, t]) =>
-            `<div style="width:${(t/total*100).toFixed(2)}%;background:${getModelColor(m)}" title="${shortModel(m)}: ${fmtTokens(t)}"></div>`
-          ).join('') +
-          '</div>' +
-          '<div class="ops-model-legend">' + modelEntries.map(([m, t]) =>
-            `<span class="ops-model-legend-item"><span class="ops-model-dot" style="background:${getModelColor(m)}"></span>${shortModel(m)} ${((t/total)*100).toFixed(0)}%</span>`
-          ).join('') + '</div>';
-      }
-
-      if (rawChannels.length === 0) {
-        listEl.innerHTML = '<div class="empty-state"><h3>No activity today</h3><p>Channel usage will appear here once messages flow.</p></div>';
-        return;
-      }
-      listEl.innerHTML = rawChannels.map(ch => {
-        const modelList = Object.entries(ch.today?.models || {}).sort((a, b) => b[1] - a[1]);
-        const topModel = modelList[0] ? shortModel(modelList[0][0]) : '—';
-        const icon = ch.channel === 'discord' ? '🎮' : (ch.channel === 'whatsapp' ? '📱' : '💬');
-        const name = (ch.displayName || '').replace(/^discord:\d+#/, '#');
-        return `<div class="ops-channel-card">
-          <div class="ops-ch-left">
-            <div class="ops-ch-name">${icon} ${escHtml(name)}</div>
-            <div class="ops-ch-meta">
-              <span>${(ch.today?.messages || 0)} msgs</span>
-              <span>${topModel}</span>
-              <span>${ch.status || ''}</span>
-            </div>
-          </div>
-          <div class="ops-ch-right">
-            <div class="ops-ch-tokens">${fmtTokens(ch.today?.totalTokens || 0)}</div>
-            <div class="ops-ch-cost">$${(ch.today?.cost || 0).toFixed(2)}</div>
-          </div>
-        </div>`;
-      }).join('');
-    }
-  } catch (e) {
-    listEl.innerHTML = `<div class="empty-state"><h3>Unable to load</h3><p>${e.message}</p></div>`;
-  }
-}
-
+/* Cost Tab — All-Time Usage, Provider Audit, Usage by Source */
 
 // ─── Time Range Filter State ──────────────────────────────────────────
 let _costRangeDays = 30;
@@ -199,6 +90,11 @@ async function loadOpsAlltime(days) {
         if (p.includes('macbook') || p.includes('mac-pro') || p.includes('mac pro')) return 'local/qwen-mac';
         return 'local/qwen-spark';
       }
+      // Qwen 27B variants
+      if (m.includes('qwen') && m.includes('27b') &&
+          (p.includes('local') || p.includes('ollama'))) {
+        return 'local/qwen-27b';
+      }
       if (m.includes('qwen') && m.includes('30b') &&
           (p.includes('local') || p.includes('ollama'))) return 'local/qwen3.5-30b';
       // anthropic/anthropic/... double prefix artifact → clean
@@ -208,9 +104,10 @@ async function loadOpsAlltime(days) {
 
     // Display name for the canonical key
     function canonicalDisplayName(key, rawModel) {
-      if (key === 'local/qwen-spark') return 'Qwen3.5-35B (DGX Spark)';
-      if (key === 'local/qwen-mac')   return 'Qwen3.5-35B (MacBook)';
-      if (key === 'local/qwen3.5-30b') return 'Qwen3.5-30B (local)';
+      if (key === 'local/qwen-spark') return 'Qwen-35B';
+      if (key === 'local/qwen-27b')   return 'Qwen-27B';
+      if (key === 'local/qwen-mac')   return 'Qwen-MacBook';
+      if (key === 'local/qwen3.5-30b') return 'Qwen-30B';
       return shortModel(rawModel || key);
     }
 
@@ -336,7 +233,7 @@ async function loadOpsAudit() {
       const t = oi.totals;
       const modelRows = Object.entries(oi.models || {}).sort((a, b) => b[1].input - a[1].input).map(([m, d]) =>
         `<div class="ops-channel-card" style="padding:8px 12px">
-          <div class="ops-ch-left"><div class="ops-ch-name" style="font-size:.82rem">🟢 ${escHtml(m)}</div>
+          <div class="ops-ch-left"><div class="ops-ch-name" style="font-size:.82rem">🟢 ${escHtml(shortModel(m))}</div>
           <div class="ops-ch-meta"><span>${d.requests} reqs</span><span>cached: ${fmtTokens(d.cached)}</span></div></div>
           <div class="ops-ch-right"><div class="ops-ch-tokens">${fmtTokens(d.input + d.output)}</div></div></div>`
       ).join('');
@@ -368,6 +265,180 @@ async function loadOpsAudit() {
     el.innerHTML = html;
   } catch (e) {
     el.innerHTML = `<div class="ops-ch-meta">Failed: ${e.message}</div>`;
+  }
+}
+
+// ─── Usage by Source Type (Channel / Thread / Cron) ─────────────────────
+let _sourceRangeDays = 7;
+
+function _ensureSourceRangeFilter() {
+  const subEl = document.getElementById('bySourceSub');
+  if (!subEl) return;
+  const parent = subEl.closest('.glass-card') || subEl.parentElement;
+  if (!parent) return;
+  if (document.getElementById('sourceRangeFilter')) return;
+
+  const filterDiv = document.createElement('div');
+  filterDiv.id = 'sourceRangeFilter';
+  filterDiv.style.cssText = 'display:flex;gap:6px;align-items:center;margin-bottom:10px;flex-wrap:wrap';
+  ['7d', '14d', '30d'].forEach(label => {
+    const days = parseInt(label);
+    const btn = document.createElement('button');
+    btn.textContent = label;
+    btn.dataset.days = days;
+    btn.style.cssText = `padding:3px 10px;border-radius:10px;border:1px solid var(--border);
+      background:${days === _sourceRangeDays ? 'var(--accent)' : 'var(--surface)'};
+      color:${days === _sourceRangeDays ? '#fff' : 'var(--text2)'};
+      cursor:pointer;font-size:.72rem;transition:background .15s`;
+    btn.onclick = () => {
+      _sourceRangeDays = days;
+      document.querySelectorAll('#sourceRangeFilter button').forEach(b => {
+        const active = Number(b.dataset.days) === _sourceRangeDays;
+        b.style.background = active ? 'var(--accent)' : 'var(--surface)';
+        b.style.color = active ? '#fff' : 'var(--text2)';
+      });
+      loadOpsBySource(_sourceRangeDays);
+    };
+    filterDiv.appendChild(btn);
+  });
+
+  const cardHeader = parent.querySelector('.card-header');
+  if (cardHeader) {
+    cardHeader.after(filterDiv);
+  } else {
+    parent.insertBefore(filterDiv, parent.firstChild);
+  }
+}
+
+async function loadOpsBySource(days) {
+  if (days === undefined) days = _sourceRangeDays;
+  else _sourceRangeDays = days;
+
+  const listEl = document.getElementById('bySourceList');
+  const subEl = document.getElementById('bySourceSub');
+  const chartEl = document.getElementById('bySourceChart');
+  if (!listEl) return;
+
+  _ensureSourceRangeFilter();
+
+  try {
+    const data = await apiFetch(`/api/ledger/by-source?days=${days}`);
+    const summary = data.summary || {};
+    const daily = data.daily || {};
+    const cronDetails = data.cron_details || {};
+
+    // Calculate totals
+    const totalCalls = (summary.channel?.calls || 0) + (summary.thread?.calls || 0) + (summary.cron?.calls || 0);
+    const totalTokens = (summary.channel?.tokens || 0) + (summary.thread?.tokens || 0) + (summary.cron?.tokens || 0);
+    const totalCost = (summary.channel?.cost || 0) + (summary.thread?.cost || 0) + (summary.cron?.cost || 0);
+
+    if (subEl) {
+      subEl.textContent = `${fmtTokens(totalTokens)} tokens · ${totalCalls.toLocaleString()} calls · $${totalCost.toFixed(2)} · last ${days} days`;
+    }
+
+    // Build summary cards
+    const sourceTypes = [
+      { key: 'channel', icon: '💬', name: tt('Channel Sessions', '对话频道'), desc: tt('Direct messages in channels', '频道直接对话') },
+      { key: 'thread', icon: '🧵', name: tt('Thread Sessions', '线程对话'), desc: tt('New thread conversations', '新开线程的对话') },
+      { key: 'cron', icon: '⚙️', name: tt('Cron Jobs', '定时任务'), desc: tt('Scheduled job executions', '定时任务执行') }
+    ];
+
+    let html = '<div class="ops-channel-list">';
+    for (const st of sourceTypes) {
+      const s = summary[st.key] || { calls: 0, tokens: 0, cost: 0 };
+      const pct = totalTokens > 0 ? ((s.tokens / totalTokens) * 100).toFixed(1) : '0';
+      html += `<div class="ops-channel-card">
+        <div class="ops-ch-left">
+          <div class="ops-ch-name">${st.icon} ${escHtml(st.name)}</div>
+          <div class="ops-ch-meta">
+            <span>${s.calls.toLocaleString()} ${tt('calls', '调用')}</span>
+            <span>${pct}% ${tt('of tokens', 'Token 占比')}</span>
+          </div>
+        </div>
+        <div class="ops-ch-right">
+          <div class="ops-ch-tokens">${fmtTokens(s.tokens)}</div>
+          <div class="ops-ch-cost">$${s.cost.toFixed(2)}</div>
+        </div>
+      </div>`;
+    }
+    html += '</div>';
+
+    // Add daily breakdown table
+    const sortedDays = Object.keys(daily).sort((a, b) => b.localeCompare(a));
+    if (sortedDays.length > 0) {
+      html += `<div style="margin-top:20px;">
+        <div style="font-weight:600;margin-bottom:10px;font-size:.9rem">${tt('Daily Breakdown', '每日明细')}</div>
+        <div class="ops-table-wrap">
+          <table class="ops-table">
+            <thead>
+              <tr>
+                <th>${tt('Date', '日期')}</th>
+                <th>💬 ${tt('Channel', '频道')}</th>
+                <th>🧵 ${tt('Thread', '线程')}</th>
+                <th>⚙️ ${tt('Cron', '定时')}</th>
+                <th>${tt('Total', '合计')}</th>
+              </tr>
+            </thead>
+            <tbody>`;
+
+      for (const day of sortedDays.slice(0, 14)) { // Show last 14 days
+        const d = daily[day];
+        const ch = d.channel || { total_tokens: 0, cost_usd: 0 };
+        const th = d.thread || { total_tokens: 0, cost_usd: 0 };
+        const cr = d.cron || { total_tokens: 0, cost_usd: 0 };
+        const dayTokens = (ch.total_tokens || 0) + (th.total_tokens || 0) + (cr.total_tokens || 0);
+        const dayCost = (ch.cost_usd || 0) + (th.cost_usd || 0) + (cr.cost_usd || 0);
+
+        html += `<tr>
+          <td>${day.slice(5)}</td>
+          <td>${fmtTokens(ch.total_tokens || 0)} <span style="color:var(--text2);font-size:.7rem">$${(ch.cost_usd || 0).toFixed(2)}</span></td>
+          <td>${fmtTokens(th.total_tokens || 0)} <span style="color:var(--text2);font-size:.7rem">$${(th.cost_usd || 0).toFixed(2)}</span></td>
+          <td>${fmtTokens(cr.total_tokens || 0)} <span style="color:var(--text2);font-size:.7rem">$${(cr.cost_usd || 0).toFixed(2)}</span></td>
+          <td><strong>${fmtTokens(dayTokens)}</strong> <span style="color:var(--text2);font-size:.7rem">$${dayCost.toFixed(2)}</span></td>
+        </tr>`;
+      }
+      html += `</tbody></table></div></div>`;
+    }
+
+    listEl.innerHTML = html;
+
+    // Render simple bar chart
+    if (chartEl && sortedDays.length > 0) {
+      const chartDays = sortedDays.slice(0, 7).reverse(); // Last 7 days
+      const maxTokens = Math.max(...chartDays.map(d => {
+        const day = daily[d];
+        return ((day.channel?.total_tokens || 0) + (day.thread?.total_tokens || 0) + (day.cron?.total_tokens || 0));
+      }));
+
+      let chartHtml = '<div style="display:flex;align-items:flex-end;gap:8px;height:120px;padding:10px 0;">';
+      for (const day of chartDays) {
+        const d = daily[day];
+        const ch = d.channel?.total_tokens || 0;
+        const th = d.thread?.total_tokens || 0;
+        const cr = d.cron?.total_tokens || 0;
+        const total = ch + th + cr;
+        const height = maxTokens > 0 ? (total / maxTokens * 100) : 0;
+
+        chartHtml += `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;">
+          <div style="width:100%;display:flex;align-items:flex-end;gap:1px;height:100px;">
+            <div style="flex:1;background:var(--accent);height:${maxTokens > 0 ? (ch / maxTokens * 100) : 0}%;border-radius:2px 2px 0 0;" title="Channel: ${fmtTokens(ch)}"></div>
+            <div style="flex:1;background:var(--green);height:${maxTokens > 0 ? (th / maxTokens * 100) : 0}%;border-radius:2px 2px 0 0;" title="Thread: ${fmtTokens(th)}"></div>
+            <div style="flex:1;background:var(--yellow);height:${maxTokens > 0 ? (cr / maxTokens * 100) : 0}%;border-radius:2px 2px 0 0;" title="Cron: ${fmtTokens(cr)}"></div>
+          </div>
+          <div style="font-size:.65rem;color:var(--text2);">${day.slice(5)}</div>
+        </div>`;
+      }
+      chartHtml += '</div>';
+      chartHtml += `<div style="display:flex;gap:12px;justify-content:center;font-size:.7rem;margin-top:8px;">
+        <span><span style="display:inline-block;width:8px;height:8px;background:var(--accent);border-radius:2px;margin-right:4px;"></span>${tt('Channel', '频道')}</span>
+        <span><span style="display:inline-block;width:8px;height:8px;background:var(--green);border-radius:2px;margin-right:4px;"></span>${tt('Thread', '线程')}</span>
+        <span><span style="display:inline-block;width:8px;height:8px;background:var(--yellow);border-radius:2px;margin-right:4px;"></span>${tt('Cron', '定时')}</span>
+      </div>`;
+      chartEl.innerHTML = chartHtml;
+    }
+
+  } catch (e) {
+    listEl.innerHTML = `<div class="empty-state"><h3>Unable to load</h3><p>${e.message}</p></div>`;
   }
 }
 
