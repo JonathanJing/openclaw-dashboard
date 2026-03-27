@@ -56,91 +56,13 @@ async function loadSystemInfo() {
 async function renderAgentMonitor() {
   await loadSystemInfo();
 
-  const [ledger, ledger7d, watchdog, sessionsData, cronData] = await Promise.all([
-    apiFetch('/ops/ledger/today').catch(() => ({ rows: [] })),
-    apiFetch('/api/ledger/history?days=7').catch(() => ({ rows: [] })),
+  const [watchdog, sessionsData, cronData] = await Promise.all([
     apiFetch('/ops/watchdog?limit=60&windowMinutes=240').catch(() => ({})),
     apiFetch('/ops/sessions').catch(() => ({ alerts: [] })),
     apiFetch('/ops/cron').catch(() => ({ jobs: [] })),
   ]);
 
-  const rows = ledger.by_model || ledger.rows || [];
-  let totalCost = 0;
-  let totalTokens = 0;
-  let localTokens = 0;
-  const models = {};
-  let totalCalls = 0;
-
-  // Canonical key: merge local Qwen variants, fix double-prefix, return stable display key.
-  // colorRef: the full "provider/model" string to pass to getModelColor()
-  const modelMeta = (provider, raw) => {
-    const p = (provider || '').toLowerCase();
-    const n = (raw || '').toLowerCase().replace(/\.gguf$/i, '');
-    if (p.includes('local') || p.includes('ollama')) {
-      if (n.includes('qwen') && n.includes('35b')) {
-        const isMac = p.includes('macbook') || p.includes('mac-pro');
-        return {
-          key: isMac ? 'Qwen-MacBook' : 'Qwen-35B',
-          colorRef: isMac
-            ? 'local-macbook-pro/qwen3.5:35b-a3b'
-            : 'local-dgx-spark/Qwen3.5-35B-A3B-UD-Q4_K_XL.gguf',
-        };
-      }
-      if (n.includes('qwen') && n.includes('27b')) {
-        return {
-          key: 'Qwen-27B',
-          colorRef: 'local-dgx-spark-27b/Qwen3.5-27B-Claude-4.6-Opus-Reasoning-Distilled.Q5_K_M.gguf',
-        };
-      }
-    }
-    // Fix anthropic/anthropic/... double prefix
-    if (p.startsWith('anthropic/')) return { key: raw || 'unknown', colorRef: raw || 'unknown' };
-    // Normalize display key: strip known provider prefix if embedded in model name
-    const displayKey = (raw || 'unknown').replace(/^(anthropic|openai|google|moonshot|volcengine|openai-codex)\//i, '');
-    return { key: displayKey || 'unknown', colorRef: `${provider}/${raw}` };
-  };
-
-  // Track colorRef per canonical key so mix bar uses correct color
-  const modelColors = {}; // canonicalKey → colorRef
-
-  rows.forEach(r => {
-    const cost = Number(r.cost_total || 0);
-    // Always use individual token fields (billed_total_tokens is 0 for local models)
-    const billed = Number(
-      (r.input_tokens || 0) + (r.output_tokens || 0) +
-      (r.cache_read_tokens || 0) + (r.cache_write_tokens || 0)
-    );
-    const { key: m, colorRef } = modelMeta(r.provider, r.model || 'unknown');
-    totalCost   += cost;
-    totalTokens += billed;
-    totalCalls  += Number(r.calls || 0);
-    models[m]        = (models[m] || 0) + billed;
-    modelColors[m]   = colorRef; // last write wins (all variants map to same colorRef)
-
-    const provider = String(r.provider || '').toLowerCase();
-    const modelRaw = String(r.model || '').toLowerCase();
-    const isLocal = provider.includes('local') || provider.includes('ollama') || modelRaw.includes('gguf');
-    if (isLocal) localTokens += billed;
-  });
-
-  // Card 1: Today Cost
-  const mainBadge = document.getElementById('mainAgentBadge');
-  const mainValue = document.getElementById('mainAgentValue');
-  const mainDetail = document.getElementById('mainAgentDetail');
-  mainBadge.className = 'agent-stat-badge active';
-  mainBadge.innerHTML = '<span class="pulse-dot"></span> today';
-  mainValue.textContent = '$' + totalCost.toFixed(2);
-  mainDetail.textContent = totalCalls + ' calls';
-
-  // Card 2: Today Tokens
-  const subVal = document.getElementById('subagentValue');
-  const subBadge = document.getElementById('subagentBadge');
-  const subDetail = document.getElementById('subagentDetail');
-  subVal.textContent = fmtTokens(totalTokens);
-  subBadge.className = 'agent-stat-badge active';
-  subBadge.innerHTML = 'today';
-  const topModel = Object.entries(models).filter(([k]) => k !== 'delivery-mirror' && k !== 'unknown').sort((a, b) => b[1] - a[1])[0];
-  subDetail.textContent = topModel ? 'Top: ' + shortModel(topModel[0]) : '—';
+  // Overview cards are rendered by Overview tab, not Health tab.
 
   // Card 3: Alert Snapshot
   const sessionAlerts = (sessionsData.alerts || []).length;
@@ -179,57 +101,6 @@ async function renderAgentMonitor() {
   sentinelBadge.className = `agent-stat-badge ${allHealthy ? 'active' : 'error'}`;
   sentinelBadge.innerHTML = allHealthy ? '✓' : '⚠';
   sentinelDetail.textContent = allHealthy ? tt('No alerts', '无告警') : `${alertTotal} ${tt('alerts', '告警')}`;
-
-  // Card 6: Model Mix
-  // If today has no local usage, compute 7d local% as context
-  let localPctLabel = '0% local';
-  {
-    const rows7d = ledger7d.rows || [];
-    let local7d = 0, total7d = 0;
-    for (const r of rows7d) {
-      const p = (r.provider || '').toLowerCase();
-      const t = Number(r.total_tokens || 0);
-      total7d += t;
-      if (p.includes('local') || p.includes('ollama')) local7d += t;
-    }
-    if (localTokens > 0) {
-      const pct = totalTokens > 0 ? Math.round((localTokens / totalTokens) * 100) : 0;
-      localPctLabel = `${pct}% ${tt('local', '本地')}`;
-    } else if (total7d > 0) {
-      const pct7d = Math.round((local7d / total7d) * 100);
-      localPctLabel = `${pct7d}% ${tt('local (7d)', '本地 7d')}`;
-    }
-  }
-
-  const sorted = Object.entries(models).filter(([k, v]) => k !== 'delivery-mirror' && k !== 'unknown' && v > 0).sort((a, b) => b[1] - a[1]);
-  const mixEl = document.getElementById('modelMixBars');
-  const totalVal5 = document.getElementById('totalValue');
-  const totalBadge5 = document.getElementById('totalBadge');
-  if (mixEl) {
-    if (!sorted.length) {
-      mixEl.innerHTML = '<div class="ops-ch-meta">No ledger data today</div>';
-    } else {
-      totalVal5.textContent = sorted.length + ' models';
-      totalBadge5.className = 'agent-stat-badge active';
-      totalBadge5.innerHTML = localPctLabel;
-      let barHtml = '<div style="display:flex;height:10px;border-radius:5px;overflow:hidden;margin-bottom:6px">';
-      const resolvedColors = {};
-      sorted.forEach(([m, tk]) => {
-        const pct = ((tk / (totalTokens || 1)) * 100);
-        // Use modelColors[m] (colorRef) for proper color lookup, fallback to key itself
-        const c = getModelColor(modelColors[m] || m);
-        resolvedColors[m] = c;
-        barHtml += `<div style="width:${pct}%;background:${c};min-width:2px" title="${escHtml(m)} ${pct.toFixed(0)}%"></div>`;
-      });
-      barHtml += '</div><div style="display:flex;flex-wrap:wrap;gap:4px 10px;font-size:.7rem">';
-      sorted.forEach(([m, tk]) => {
-        const pct = ((tk / (totalTokens || 1)) * 100).toFixed(0);
-        barHtml += `<span style="color:${resolvedColors[m]}">● ${escHtml(m)} <b>${pct}%</b></span>`;
-      });
-      barHtml += '</div>';
-      mixEl.innerHTML = barHtml;
-    }
-  }
 
   renderSessionsPanel();
 }

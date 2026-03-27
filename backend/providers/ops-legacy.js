@@ -40,7 +40,7 @@ const { jsonReply, errorReply } = require('../lib/http-helpers');
 
 // Legacy proxy port: set to a DIFFERENT port if you still run the old api-server.js alongside.
 // When the old server is NOT running, legacy routes will gracefully 501.
-const OLD_SERVER_PORT = parseInt(process.env.DASHBOARD_LEGACY_PORT || '18790', 10);
+const OLD_SERVER_PORT = cfg.LEGACY_PROXY_PORT;
 
 function proxyToOld(req, res) {
   // If no legacy server configured, return 501 with helpful message
@@ -348,32 +348,14 @@ function register(router) {
     jsonReply(res, 200, { total: 0, byCategory: {}, note: 'Vision stats not available in modular backend yet' });
   });
 
-  // ── Control ops: only restart + doctor --fix are allowed ──────────
-  // Dashboard is read-only except for these two explicit control actions.
-  const { readJsonBody } = require('../lib/http-helpers');
-
-  // POST /ops/restart — restart OpenClaw gateway via `openclaw gateway restart`
+  // ── Control ops are disabled in hardened mode ──────────────────────
+  // Do not execute local binaries from this provider.
   router.add('POST', '/ops/restart', (req, res) => {
-    const { execFile } = require('child_process');
-    // Use absolute paths — LaunchAgent PATH may not include /opt/homebrew/bin
-    const bin = process.env.OPENCLAW_BIN || '/opt/homebrew/bin/openclaw';
-    const nodeBin = process.execPath; // same node that runs this server
-    const env = { ...process.env, PATH: `/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:${process.env.PATH || ''}` };
-    execFile(bin, ['gateway', 'restart'], { timeout: 15000, encoding: 'utf8', env }, (err, stdout, stderr) => {
-      if (err && !stdout) return errorReply(res, 500, stderr || err.message);
-      jsonReply(res, 200, { ok: true, message: 'Restart signal sent.', output: (stdout || '').trim() });
-    });
+    errorReply(res, 403, 'Restart is disabled in hardened mode.');
   });
 
-  // POST /ops/doctor — run `openclaw doctor --fix` and stream result
   router.add('POST', '/ops/doctor', (req, res) => {
-    const { execFile } = require('child_process');
-    const bin = process.env.OPENCLAW_BIN || '/opt/homebrew/bin/openclaw';
-    const env = { ...process.env, PATH: `/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:${process.env.PATH || ''}` };
-    execFile(bin, ['doctor', '--fix'], { timeout: 60000, encoding: 'utf8', env }, (err, stdout, stderr) => {
-      if (err && !stdout) return errorReply(res, 500, stderr || err.message);
-      jsonReply(res, 200, { ok: !err, output: (stdout || '') + (stderr || '') });
-    });
+    errorReply(res, 403, 'Doctor fix is disabled in hardened mode.');
   });
 
   // All other mutating routes removed — dashboard is read-only.

@@ -6,7 +6,6 @@
  */
 const fs   = require('fs');
 const path = require('path');
-const { execFileSync } = require('child_process');
 const cfg  = require('../lib/config');
 const { jsonReply } = require('../lib/http-helpers');
 
@@ -81,19 +80,6 @@ function buildTimeline(eventsAsc, startMs, endMs, stepMs, initialStatus) {
   return points;
 }
 
-// Quick check: is the gateway runtime process running?
-function checkRuntimeRunning() {
-  try {
-    const out = execFileSync('/bin/sh', ['-lc', "pgrep -f 'openclaw-gateway|node.*openclaw.*gateway' | head -1"], {
-      timeout: 2500, encoding: 'utf8',
-    });
-    const pid = out.trim();
-    return { running: !!pid, pid: pid || null };
-  } catch {
-    return { running: false, pid: null };
-  }
-}
-
 function handleWatchdog(req, res, query) {
   const reqLimit  = parseInt(query.limit         || '200', 10);
   const reqWindow = parseInt(query.windowMinutes || '1440', 10);
@@ -137,11 +123,9 @@ function handleWatchdog(req, res, query) {
   ).slice(-limit).reverse().map(({ _ts, ...ev }) => ev);
 
   // Derive effective status
-  let rt = { running: false, pid: null };
-  try { rt = checkRuntimeRunning(); } catch {}
-  const effectiveStatus = !rt.running
-    ? 'down'
-    : (watchdogStatus === 'healthy' ? 'healthy' : 'degraded');
+  // Avoid process inspection through shell in hardened mode.
+  const rt = { running: null, pid: null };
+  const effectiveStatus = watchdogStatus === 'healthy' ? 'healthy' : 'degraded';
 
   jsonReply(res, 200, {
     effectiveStatus,

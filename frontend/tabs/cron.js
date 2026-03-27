@@ -273,16 +273,39 @@ async function loadCronCosts() {
   if (!contentEl) return;
 
   try {
-    const data = await apiFetch('/ops/cron-costs');
-    const s = data.summary || {};
-    const today = s.today || {};
+    const [summaryData, dailyData] = await Promise.all([
+      apiFetch('/dashboard/usage/cron/summary?days=7'),
+      apiFetch('/dashboard/usage/cron/daily?days=7'),
+    ]);
+
+    const s = summaryData.summary || {};
+    const jobs = summaryData.rows || [];
+    const dailyRows = dailyData.rows || [];
+    const todayKey = new Date().toISOString().slice(0, 10);
+    const todayRows = dailyRows.filter(r => r.day === todayKey);
+    const today = todayRows.reduce((acc, r) => {
+      acc.tokens += Number(r.totalTokens || 0);
+      acc.cost += Number(r.costUsd || 0);
+      acc.calls += Number(r.calls || 0);
+      return acc;
+    }, { tokens: 0, cost: 0, calls: 0 });
+
     summaryEl.textContent = tt(
-      `${s.totalRuns || 0} runs · total fixed ${fmtUsd(s.totalCronCost, 2)} (${fmtTokens(s.totalCronTokens || 0)} tokens) · avg daily fixed ${fmtUsd(s.avgDailyCronCost, 2)} · baseline fixed ${fmtUsd(s.avgFixedBaselineCost, 2)} / workload variable ${fmtUsd(s.avgWorkloadVariableCost, 2)} / interactive variable ${fmtUsd(s.avgInteractiveVariableCost, 2)} · today fixed ${fmtUsd(today.cronCost, 2)} (${fmtTokens(today.cronTokens || 0)}) · today variable ${fmtUsd(today.interactiveCost, 2)} · ${s.days || 0} days`,
-      `累计 ${s.totalRuns || 0} 次执行 · 总固定成本 ${fmtUsd(s.totalCronCost, 2)}（${fmtTokens(s.totalCronTokens || 0)} tokens） · 日均固定成本 ${fmtUsd(s.avgDailyCronCost, 2)} · 基线固定 ${fmtUsd(s.avgFixedBaselineCost, 2)} / 任务量波动 ${fmtUsd(s.avgWorkloadVariableCost, 2)} / 交互波动 ${fmtUsd(s.avgInteractiveVariableCost, 2)} · 今日固定 ${fmtUsd(today.cronCost, 2)}（${fmtTokens(today.cronTokens || 0)}） · 今日浮动 ${fmtUsd(today.interactiveCost, 2)} · ${s.days || 0} 天`
+      `${s.calls || 0} calls · total cron ${fmtUsd(s.costUsd || 0, 2)} (${fmtTokens(s.totalTokens || 0)} tokens) · today ${fmtUsd(today.cost, 2)} (${fmtTokens(today.tokens)} tokens) · 7 days`,
+      `累计 ${s.calls || 0} 次调用 · 总 cron 成本 ${fmtUsd(s.costUsd || 0, 2)}（${fmtTokens(s.totalTokens || 0)} tokens） · 今日 ${fmtUsd(today.cost, 2)}（${fmtTokens(today.tokens)}） · 7 天`
     );
 
-    // Per-model aggregation table (built first; appended to main html below)
-    const modelStats = data.modelStats || [];
+    const modelAgg = new Map();
+    for (const j of jobs) {
+      const key = `${j.provider || 'unknown'}|${j.model || 'unknown'}`;
+      const prev = modelAgg.get(key) || { model: j.model, runs: 0, totalTokens: 0, jobs: [] };
+      prev.runs += Number(j.calls || 0);
+      prev.totalTokens += Number(j.totalTokens || 0);
+      prev.jobs.push({ name: j.jobName || j.cronJobId || 'unknown', runs: Number(j.calls || 0) });
+      modelAgg.set(key, prev);
+    }
+    const modelStats = Array.from(modelAgg.values()).sort((a, b) => b.totalTokens - a.totalTokens);
+
     let modelStatsHtml = '';
     if (modelStats.length > 0) {
       modelStatsHtml = `<div class="glass-card" style="padding:10px;margin-bottom:10px">
@@ -312,52 +335,44 @@ async function loadCronCosts() {
       modelStatsHtml += '</tbody></table></div>';
     }
 
-    // Per-job cost table (each run + each day)
-    const jobs = data.jobs || [];
-    const review = data.review || {};
-    const rc = review.cron || {};
-    const ri = review.interactive || {};
-    const cov = review.coverage || {};
-    let html = modelStatsHtml + `<div class="glass-card" style="padding:10px;margin-bottom:10px">
-      <div style="font-size:.8rem;font-weight:600;margin-bottom:6px">🔎 ${tt('Data quality review', '数据质量 Review')}</div>
-      <div style="font-size:.74rem;color:var(--text2);display:flex;gap:14px;flex-wrap:wrap">
-        <span>Cron finished: <b>${rc.finishedRuns || 0}</b></span>
-        <span>${tt('No usage', '无 usage')}: <b style="color:${(rc.runsWithoutUsage || 0) > 0 ? '#fbbf24' : 'var(--green)'}">${rc.runsWithoutUsage || 0}</b></span>
-        <span>${tt('Zero tokens', '零 tokens')}: <b style="color:${(rc.runsWithZeroTokens || 0) > 0 ? '#fbbf24' : 'var(--green)'}">${rc.runsWithZeroTokens || 0}</b></span>
-        <span>${tt('Interactive coverage days', '交互覆盖天数')}: <b>${cov.daysWithInteractive || 0}/${cov.daysWithCron || 0}</b>（${cov.interactiveCoveragePct || 0}%）</span>
-        <span>${tt('Interactive msgs with usage', '交互 usage消息')}: <b>${ri.messagesWithUsage || 0}</b></span>
-      </div>
-      ${(review.notes || []).length > 0 ? `<div style="margin-top:6px;font-size:.72rem;color:#fbbf24">${(review.notes || []).map(n => `• ${escHtml(n)}`).join('<br>')}</div>` : ''}
-    </div>`;
-
-    html += `<table class="sessions-table"><thead><tr><th>${tt('Cron job', 'Cron 任务')}</th><th>${tt('Runs', '总次数')}</th><th>${tt('Avg duration/run', '平均时长/次')}</th><th>Tokens/${tt('run', '次')}</th><th>$/ ${tt('run', '次')}</th><th>${tt('Today (tokens / $)', '今日（tokens / $）')}</th><th>${tt('Avg daily $', '日均 $')}</th><th>${tt('Total cost', '总花费')}</th></tr></thead><tbody>`;
+    let html = modelStatsHtml;
+    html += `<table class="sessions-table"><thead><tr><th>${tt('Cron job', 'Cron 任务')}</th><th>${tt('Runs', '总次数')}</th><th>${tt('Active days', '活跃天数')}</th><th>Tokens/${tt('run', '次')}</th><th>$/ ${tt('run', '次')}</th><th>${tt('Today (tokens / $)', '今日（tokens / $）')}</th><th>${tt('Total tokens', '总 Tokens')}</th><th>${tt('Total cost', '总花费')}</th></tr></thead><tbody>`;
     for (const j of jobs) {
+      const jTodayRows = todayRows.filter(r => r.cronJobId === j.cronJobId && r.model === j.model && r.provider === j.provider);
+      const jToday = jTodayRows.reduce((acc, r) => {
+        acc.tokens += Number(r.totalTokens || 0);
+        acc.cost += Number(r.costUsd || 0);
+        acc.calls += Number(r.calls || 0);
+        return acc;
+      }, { tokens: 0, cost: 0, calls: 0 });
+      const tokensPerRun = Number(j.calls || 0) > 0 ? Number(j.totalTokens || 0) / Number(j.calls || 0) : 0;
+      const costPerRun = Number(j.calls || 0) > 0 ? Number(j.costUsd || 0) / Number(j.calls || 0) : 0;
       html += `<tr>
         <td style="font-weight:600;font-size:.78rem">
-          ${escHtml(j.name)}
+          ${escHtml(j.jobName || j.cronJobId || 'unknown')}
           <div style="margin-top:4px"><span class="sess-model" style="border-color:${getModelColor(j.model)};color:${getModelColor(j.model)}">${shortModel(j.model)}</span></div>
         </td>
-        <td>${j.runs}</td>
-        <td>${j.avgDurationSec ? `${j.avgDurationSec.toFixed(1)}s` : '—'}</td>
-        <td>${fmtTokens(j.tokensPerRun || 0)}</td>
-        <td style="color:${j.costPerRun > 0.2 ? '#fbbf24' : 'var(--green)'}">${fmtUsd(j.costPerRun, 3)}</td>
-        <td>${(() => {
-          const todayTok = j.today?.tokens || 0;
-          const todayRuns = j.today?.runs || 0;
-          if (todayTok > 0) return fmtTokens(todayTok);
-          if (todayRuns > 0 && j.tokensPerRun > 0) return `~${fmtTokens(todayRuns * j.tokensPerRun)}`;
-          return '—';
-        })()} / ${fmtUsd(j.today?.cost, 3)}</td>
-        <td>${fmtUsd(j.avgDailyCost, 3)}</td>
-        <td style="font-weight:600">${fmtUsd(j.totalCost, 2)}</td>
+        <td>${j.calls}</td>
+        <td>${j.activeDays || '—'}</td>
+        <td>${fmtTokens(tokensPerRun)}</td>
+        <td style="color:${costPerRun > 0.2 ? '#fbbf24' : 'var(--green)'}">${fmtUsd(costPerRun, 3)}</td>
+        <td>${fmtTokens(jToday.tokens)} / ${fmtUsd(jToday.cost, 3)}</td>
+        <td style="font-weight:600">${fmtTokens(j.totalTokens || 0)}</td>
+        <td style="font-weight:600">${fmtUsd(j.costUsd || 0, 2)}</td>
       </tr>`;
     }
     html += '</tbody></table>';
-
     contentEl.innerHTML = html;
 
-    // Trend chart: stacked bar (cron fixed + interactive variable)
-    const trend = data.dailyTrend || [];
+    const dailyMap = new Map();
+    for (const r of dailyRows) {
+      const day = r.day;
+      const prev = dailyMap.get(day) || { date: day, cronCost: 0, cronTokens: 0 };
+      prev.cronCost += Number(r.costUsd || 0);
+      prev.cronTokens += Number(r.totalTokens || 0);
+      dailyMap.set(day, prev);
+    }
+    const trend = Array.from(dailyMap.values()).sort((a, b) => a.date < b.date ? -1 : 1);
     if (canvas && trend.length > 1) {
       const ctx = canvas.getContext('2d');
       const W = canvas.parentElement.clientWidth - 32;
@@ -365,54 +380,31 @@ async function loadCronCosts() {
       canvas.width = W * 2; canvas.height = H * 2;
       canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
       ctx.scale(2, 2);
-
-      const maxCost = Math.max(...trend.map(d => d.totalCost), 1);
+      const maxCost = Math.max(...trend.map(d => d.cronCost), 1);
       const barW = Math.min(40, (W - 40) / trend.length - 4);
       const startX = 36;
       const chartH = H - 30;
-
       ctx.clearRect(0, 0, W, H);
-
-      // Y axis labels
       ctx.fillStyle = '#8b949e'; ctx.font = '10px sans-serif'; ctx.textAlign = 'right';
       for (let i = 0; i <= 4; i++) {
         const y = 10 + chartH - (i / 4) * chartH;
         ctx.fillText('$' + (maxCost * i / 4).toFixed(0), 30, y + 3);
         ctx.strokeStyle = 'rgba(255,255,255,0.05)'; ctx.beginPath(); ctx.moveTo(startX, y); ctx.lineTo(W, y); ctx.stroke();
       }
-
       trend.forEach((d, i) => {
         const x = startX + i * ((W - startX) / trend.length) + 2;
-        const fixedH = ((d.fixedBaselineCost || 0) / maxCost) * chartH;
-        const cronVarH = ((d.workloadVariableCost || 0) / maxCost) * chartH;
-        const interH = (d.interactiveCost / maxCost) * chartH;
+        const h = ((d.cronCost || 0) / maxCost) * chartH;
         const baseY = 10 + chartH;
-
-        // Interactive variable — bottom
-        ctx.fillStyle = 'rgba(124,92,252,0.6)';
-        ctx.fillRect(x, baseY - interH, barW, interH);
-
-        // Cron volume variable — middle
-        ctx.fillStyle = 'rgba(251,191,36,0.75)';
-        ctx.fillRect(x, baseY - interH - cronVarH, barW, cronVarH);
-
-        // Cron fixed baseline — top
         ctx.fillStyle = 'rgba(45,212,160,0.8)';
-        ctx.fillRect(x, baseY - interH - cronVarH - fixedH, barW, fixedH);
-
-        // Date label
+        ctx.fillRect(x, baseY - h, barW, h);
         ctx.fillStyle = '#8b949e'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center';
         ctx.fillText(d.date.slice(5), x + barW / 2, baseY + 12);
-
-        // Total label
         ctx.fillStyle = '#e6edf3'; ctx.font = 'bold 9px sans-serif';
-        ctx.fillText('$' + d.totalCost.toFixed(2), x + barW / 2, baseY - interH - cronVarH - fixedH - 3);
+        ctx.fillText('$' + d.cronCost.toFixed(2), x + barW / 2, baseY - h - 3);
       });
-
-      const avgFixed = trend.reduce((sum, d) => sum + (d.fixedCostSharePct || 0), 0) / trend.length;
-      legendEl.innerHTML = `<span style="color:#2dd4a0">■ 固定基线（Cron）</span><span style="color:#fbbf24">■ 任务量波动（Cron）</span><span style="color:#7c5cfc">■ 交互浮动成本</span><span style="color:#8b949e">固定占比均值 ${avgFixed.toFixed(0)}%</span>`;
+      if (legendEl) legendEl.innerHTML = `<span style="color:#2dd4a0">■ ${tt('Cron daily cost', 'Cron 每日成本')}</span><span style="color:#8b949e">${tt('7-day usage trend', '7 天趋势')}</span>`;
     } else if (legendEl) {
-      legendEl.textContent = '趋势数据不足（至少需要 2 天）';
+      legendEl.textContent = tt('Not enough trend data (need at least 2 days)', '趋势数据不足（至少需要 2 天）');
     }
   } catch (e) {
     contentEl.innerHTML = `<p>${e.message}</p>`;

@@ -54,26 +54,41 @@ async function loadOpsAlltime(days) {
 
   const modelsEl = document.getElementById('alltimeModels');
   const subEl    = document.getElementById('alltimeSub');
+  const opsTotalSub = document.getElementById('opsTotalSub');
+  const opsTotalPills = document.getElementById('opsTotalPills');
+  const opsModelBar = document.getElementById('opsModelBar');
   if (!modelsEl) return;
 
   _ensureCostRangeFilter();
 
   try {
     const apiDays = days >= 9999 ? 9999 : days;
-    const hist = await apiFetch(`/api/ledger/history?days=${apiDays}`);
+    const hist = await apiFetch(`/dashboard/usage/models/history?days=${apiDays}`);
     const dayRows = hist.rows || [];
 
     // ── Totals ────────────────────────────────────────────────────────
-    let totalCost   = 0;
-    let totalTokens = 0;
-    for (const r of dayRows) {
-      totalCost   += Number(r.cost_total   || 0);
-      totalTokens += Number(r.total_tokens || 0);
-    }
+    let totalCost   = Number(hist.summary?.costUsd || 0);
+    let totalTokens = Number(hist.summary?.totalTokens || 0);
 
     const rangeLabel = days >= 9999 ? 'all time' : `last ${hist.days || days} days`;
-    if (subEl) subEl.textContent =
-      `${fmtTokens(totalTokens)} tokens · $${totalCost.toFixed(2)} · ${rangeLabel}`;
+    if (subEl) subEl.textContent = `${fmtTokens(totalTokens)} tokens · $${totalCost.toFixed(2)} · ${rangeLabel}`;
+
+    // Today's Usage (PST) card uses today's dashboard-friendly usage endpoint
+    try {
+      const today = await apiFetch('/dashboard/usage/models/today');
+      const todaySummary = today.summary || {};
+      const todayRows = today.rows || [];
+      if (opsTotalSub) {
+        opsTotalSub.textContent = `${fmtTokens(todaySummary.totalTokens || 0)} tokens · $${Number(todaySummary.costUsd || 0).toFixed(2)} · ${todaySummary.calls || 0} calls today`;
+      }
+      if (opsTotalPills) {
+        opsTotalPills.innerHTML = todayRows.slice(0, 4).map(r => `<span class="pill" style="border-color:${getModelColor(r.model)};color:${getModelColor(r.model)}">${shortModel(r.model)} ${fmtTokens(r.totalTokens || 0)}</span>`).join('');
+      }
+      if (opsModelBar) {
+        const total = Number(todaySummary.totalTokens || 0) || 1;
+        opsModelBar.innerHTML = '<div class="ops-bar-track">' + todayRows.map(r => `<div style="width:${((Number(r.totalTokens || 0)/total)*100).toFixed(2)}%;background:${getModelColor(r.model)}" title="${shortModel(r.model)}: ${fmtTokens(r.totalTokens || 0)}"></div>`).join('') + '</div>';
+      }
+    } catch {}
 
     // ── Model aggregation from HISTORY (not just today) ───────────────
     // Normalise local-model name variants so Qwen gguf rows don't appear
@@ -122,9 +137,9 @@ async function loadOpsAlltime(days) {
 
     for (const r of dayRows) {
       const key   = canonicalKey(r.provider, r.model);
-      const toks  = Number(r.total_tokens || 0);
-      const cost  = Number(r.cost_total   || 0);
-      const calls = Number(r.calls        || 0);
+      const toks  = Number(r.totalTokens || 0);
+      const cost  = Number(r.costUsd || 0);
+      const calls = Number(r.calls || 0);
       const prev  = modelAgg.get(key);
       const prov  = (r.provider || '').toLowerCase();
       const isLocal = prov.includes('local') || prov.includes('ollama') ||
@@ -190,25 +205,21 @@ async function loadOpsAlltime(days) {
     for (const r of dayRows) {
       const d = r.day;
       if (!dailyMap[d]) dailyMap[d] = { date: d, tokens: 0, cost: 0, localTokens: 0, paidTokens: 0, models: {}, modelCosts: {}, localModels: {} };
-      const toks = Number(r.total_tokens || 0);
-      const cost = Number(r.cost_total   || 0);
+      const toks = Number(r.totalTokens || 0);
+      const cost = Number(r.costUsd || 0);
       const alias = canonicalKey(r.provider, r.model);
       dailyMap[d].tokens           += toks;
       dailyMap[d].cost             += cost;
       dailyMap[d].models[alias]     = (dailyMap[d].models[alias]    || 0) + toks;
       dailyMap[d].modelCosts[alias] = (dailyMap[d].modelCosts[alias]|| 0) + cost;
-      if (r.is_local) {
-        dailyMap[d].localTokens      += toks;
+      const provider = String(r.provider || '').toLowerCase();
+      const modelRaw = String(r.model || '').toLowerCase();
+      const isLocal = provider.includes('local') || provider.includes('ollama') || modelRaw.includes('gguf');
+      if (isLocal) {
+        dailyMap[d].localTokens += toks;
         dailyMap[d].localModels[alias] = (dailyMap[d].localModels[alias] || 0) + toks;
       } else {
         dailyMap[d].paidTokens += toks;
-      }
-    }
-    // Overlay authoritative daily_totals from API (avoids any front-end grouping drift)
-    for (const dt of (hist.daily_totals || [])) {
-      if (dailyMap[dt.day]) {
-        dailyMap[dt.day].localTokens = dt.local_tokens || dailyMap[dt.day].localTokens;
-        dailyMap[dt.day].paidTokens  = dt.paid_tokens  || dailyMap[dt.day].paidTokens;
       }
     }
     const allDaily = Object.values(dailyMap).sort((a, b) => a.date < b.date ? -1 : 1);
@@ -319,127 +330,10 @@ async function loadOpsBySource(days) {
   const chartEl = document.getElementById('bySourceChart');
   if (!listEl) return;
 
-  _ensureSourceRangeFilter();
-
-  try {
-    const data = await apiFetch(`/api/ledger/by-source?days=${days}`);
-    const summary = data.summary || {};
-    const daily = data.daily || {};
-    const cronDetails = data.cron_details || {};
-
-    // Calculate totals
-    const totalCalls = (summary.channel?.calls || 0) + (summary.thread?.calls || 0) + (summary.cron?.calls || 0);
-    const totalTokens = (summary.channel?.tokens || 0) + (summary.thread?.tokens || 0) + (summary.cron?.tokens || 0);
-    const totalCost = (summary.channel?.cost || 0) + (summary.thread?.cost || 0) + (summary.cron?.cost || 0);
-
-    if (subEl) {
-      subEl.textContent = `${fmtTokens(totalTokens)} tokens · ${totalCalls.toLocaleString()} calls · $${totalCost.toFixed(2)} · last ${days} days`;
-    }
-
-    // Build summary cards
-    const sourceTypes = [
-      { key: 'channel', icon: '💬', name: tt('Channel Sessions', '对话频道'), desc: tt('Direct messages in channels', '频道直接对话') },
-      { key: 'thread', icon: '🧵', name: tt('Thread Sessions', '线程对话'), desc: tt('New thread conversations', '新开线程的对话') },
-      { key: 'cron', icon: '⚙️', name: tt('Cron Jobs', '定时任务'), desc: tt('Scheduled job executions', '定时任务执行') }
-    ];
-
-    let html = '<div class="ops-channel-list">';
-    for (const st of sourceTypes) {
-      const s = summary[st.key] || { calls: 0, tokens: 0, cost: 0 };
-      const pct = totalTokens > 0 ? ((s.tokens / totalTokens) * 100).toFixed(1) : '0';
-      html += `<div class="ops-channel-card">
-        <div class="ops-ch-left">
-          <div class="ops-ch-name">${st.icon} ${escHtml(st.name)}</div>
-          <div class="ops-ch-meta">
-            <span>${s.calls.toLocaleString()} ${tt('calls', '调用')}</span>
-            <span>${pct}% ${tt('of tokens', 'Token 占比')}</span>
-          </div>
-        </div>
-        <div class="ops-ch-right">
-          <div class="ops-ch-tokens">${fmtTokens(s.tokens)}</div>
-          <div class="ops-ch-cost">$${s.cost.toFixed(2)}</div>
-        </div>
-      </div>`;
-    }
-    html += '</div>';
-
-    // Add daily breakdown table
-    const sortedDays = Object.keys(daily).sort((a, b) => b.localeCompare(a));
-    if (sortedDays.length > 0) {
-      html += `<div style="margin-top:20px;">
-        <div style="font-weight:600;margin-bottom:10px;font-size:.9rem">${tt('Daily Breakdown', '每日明细')}</div>
-        <div class="ops-table-wrap">
-          <table class="ops-table">
-            <thead>
-              <tr>
-                <th>${tt('Date', '日期')}</th>
-                <th>💬 ${tt('Channel', '频道')}</th>
-                <th>🧵 ${tt('Thread', '线程')}</th>
-                <th>⚙️ ${tt('Cron', '定时')}</th>
-                <th>${tt('Total', '合计')}</th>
-              </tr>
-            </thead>
-            <tbody>`;
-
-      for (const day of sortedDays.slice(0, 14)) { // Show last 14 days
-        const d = daily[day];
-        const ch = d.channel || { total_tokens: 0, cost_usd: 0 };
-        const th = d.thread || { total_tokens: 0, cost_usd: 0 };
-        const cr = d.cron || { total_tokens: 0, cost_usd: 0 };
-        const dayTokens = (ch.total_tokens || 0) + (th.total_tokens || 0) + (cr.total_tokens || 0);
-        const dayCost = (ch.cost_usd || 0) + (th.cost_usd || 0) + (cr.cost_usd || 0);
-
-        html += `<tr>
-          <td>${day.slice(5)}</td>
-          <td>${fmtTokens(ch.total_tokens || 0)} <span style="color:var(--text2);font-size:.7rem">$${(ch.cost_usd || 0).toFixed(2)}</span></td>
-          <td>${fmtTokens(th.total_tokens || 0)} <span style="color:var(--text2);font-size:.7rem">$${(th.cost_usd || 0).toFixed(2)}</span></td>
-          <td>${fmtTokens(cr.total_tokens || 0)} <span style="color:var(--text2);font-size:.7rem">$${(cr.cost_usd || 0).toFixed(2)}</span></td>
-          <td><strong>${fmtTokens(dayTokens)}</strong> <span style="color:var(--text2);font-size:.7rem">$${dayCost.toFixed(2)}</span></td>
-        </tr>`;
-      }
-      html += `</tbody></table></div></div>`;
-    }
-
-    listEl.innerHTML = html;
-
-    // Render simple bar chart
-    if (chartEl && sortedDays.length > 0) {
-      const chartDays = sortedDays.slice(0, 7).reverse(); // Last 7 days
-      const maxTokens = Math.max(...chartDays.map(d => {
-        const day = daily[d];
-        return ((day.channel?.total_tokens || 0) + (day.thread?.total_tokens || 0) + (day.cron?.total_tokens || 0));
-      }));
-
-      let chartHtml = '<div style="display:flex;align-items:flex-end;gap:8px;height:120px;padding:10px 0;">';
-      for (const day of chartDays) {
-        const d = daily[day];
-        const ch = d.channel?.total_tokens || 0;
-        const th = d.thread?.total_tokens || 0;
-        const cr = d.cron?.total_tokens || 0;
-        const total = ch + th + cr;
-        const height = maxTokens > 0 ? (total / maxTokens * 100) : 0;
-
-        chartHtml += `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;">
-          <div style="width:100%;display:flex;align-items:flex-end;gap:1px;height:100px;">
-            <div style="flex:1;background:var(--accent);height:${maxTokens > 0 ? (ch / maxTokens * 100) : 0}%;border-radius:2px 2px 0 0;" title="Channel: ${fmtTokens(ch)}"></div>
-            <div style="flex:1;background:var(--green);height:${maxTokens > 0 ? (th / maxTokens * 100) : 0}%;border-radius:2px 2px 0 0;" title="Thread: ${fmtTokens(th)}"></div>
-            <div style="flex:1;background:var(--yellow);height:${maxTokens > 0 ? (cr / maxTokens * 100) : 0}%;border-radius:2px 2px 0 0;" title="Cron: ${fmtTokens(cr)}"></div>
-          </div>
-          <div style="font-size:.65rem;color:var(--text2);">${day.slice(5)}</div>
-        </div>`;
-      }
-      chartHtml += '</div>';
-      chartHtml += `<div style="display:flex;gap:12px;justify-content:center;font-size:.7rem;margin-top:8px;">
-        <span><span style="display:inline-block;width:8px;height:8px;background:var(--accent);border-radius:2px;margin-right:4px;"></span>${tt('Channel', '频道')}</span>
-        <span><span style="display:inline-block;width:8px;height:8px;background:var(--green);border-radius:2px;margin-right:4px;"></span>${tt('Thread', '线程')}</span>
-        <span><span style="display:inline-block;width:8px;height:8px;background:var(--yellow);border-radius:2px;margin-right:4px;"></span>${tt('Cron', '定时')}</span>
-      </div>`;
-      chartEl.innerHTML = chartHtml;
-    }
-
-  } catch (e) {
-    listEl.innerHTML = `<div class="empty-state"><h3>Unable to load</h3><p>${e.message}</p></div>`;
-  }
+  // Temporary downgrade: source breakdown is still on legacy API shape and should not render misleading data.
+  if (subEl) subEl.textContent = tt('Temporarily hidden during usage API migration', 'Usage API 迁移中，暂时隐藏');
+  if (chartEl) chartEl.innerHTML = '';
+  listEl.innerHTML = `<div class="empty-state"><h3>${tt('Temporarily unavailable', '暂不可用')}</h3><p>${tt('Usage by Source is being migrated to the new dashboard usage contract.', 'Usage by Source 正在迁移到新的 dashboard usage 契约。')}</p></div>`;
 }
 
 // ─── Ops Management Actions ───

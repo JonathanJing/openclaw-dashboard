@@ -310,7 +310,7 @@ const server = http.createServer((req, res) => {
 
     // v2.6: legacy proxy fallback is disabled by default.
     // Enable only for emergency rollback: DASHBOARD_ENABLE_LEGACY_PROXY=1
-    if (process.env.DASHBOARD_ENABLE_LEGACY_PROXY === '1') {
+    if (cfg.ENABLE_LEGACY_PROXY) {
       return opsLegacy.proxyToOld(req, res);
     }
     return helpers.errorReply(res, 404, `Route not found: ${method} ${pathname}`);

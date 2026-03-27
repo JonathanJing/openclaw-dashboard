@@ -60,6 +60,9 @@ module.exports = {
   ENABLE_MUTATING_OPS:     process.env.OPENCLAW_ENABLE_MUTATING_OPS === '1',
   ENABLE_PROVIDER_AUDIT:   process.env.OPENCLAW_ENABLE_PROVIDER_AUDIT === '1',
   ENABLE_SESSION_PATCH:    process.env.OPENCLAW_ENABLE_SESSION_PATCH === '1',
+  ENABLE_LEGACY_PROXY:     process.env.DASHBOARD_ENABLE_LEGACY_PROXY === '1',
+  LEGACY_PROXY_PORT:       parseInt(process.env.DASHBOARD_LEGACY_PORT || '18790', 10),
+  CORS_ALLOWED_ORIGINS:    (process.env.DASHBOARD_CORS_ORIGINS || '').split(',').filter(Boolean),
 
   // Attachment security
   ALLOW_ATTACHMENT_FILEPATH_COPY:      process.env.OPENCLAW_ALLOW_ATTACHMENT_FILEPATH_COPY === '1',

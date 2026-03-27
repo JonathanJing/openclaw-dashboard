@@ -152,6 +152,10 @@ function register(router) {
     '/local-api-hub/dashboard/activity',
     '/local-api-hub/dashboard/metrics',
     '/local-api-hub/dashboard/alerts',
+    '/local-api-hub/dashboard/usage/models/today',
+    '/local-api-hub/dashboard/usage/models/history',
+    '/local-api-hub/dashboard/usage/cron/summary',
+    '/local-api-hub/dashboard/usage/cron/daily',
     // Memory
     '/local-api-hub/memory/stats',
     '/local-api-hub/memory/today',
@@ -177,6 +181,12 @@ function register(router) {
   router.add('GET', '/local-api-hub/ops/cron/:id', hubProxy);
   // Memory detail routes
   router.add('GET', '/local-api-hub/memory/:date', hubProxy);
+
+  // Root-level dashboard usage aliases so frontend can call dashboard backend directly.
+  router.add('GET', '/dashboard/usage/models/today', hubProxy);
+  router.add('GET', '/dashboard/usage/models/history', hubProxy);
+  router.add('GET', '/dashboard/usage/cron/summary', hubProxy);
+  router.add('GET', '/dashboard/usage/cron/daily', hubProxy);
 }
 
 module.exports = { register };

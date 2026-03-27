@@ -17,8 +17,9 @@ function errorReply(res, status, message) {
 }
 
 // ── CORS ────────────────────────────────────────────────────────────
-const CORS_ALLOWED_ORIGINS = (process.env.DASHBOARD_CORS_ORIGINS || '')
-  .split(',').filter(Boolean);
+const CORS_ALLOWED_ORIGINS = Array.isArray(cfg.CORS_ALLOWED_ORIGINS)
+  ? cfg.CORS_ALLOWED_ORIGINS
+  : [];
 
 function getCorsOrigin(req) {
   const origin = req.headers['origin'] || '';
