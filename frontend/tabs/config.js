@@ -5,6 +5,12 @@ async function loadConfig() {
   const el = document.getElementById('configContent');
   if (!el) return;
   try {
+    const health = await apiFetch('/health').catch(() => ({}));
+    const caps = health.capabilities || {};
+    if (!caps.configEndpoint) {
+      el.innerHTML = `<div class="empty-state"><h3>Config endpoint disabled</h3><p>Read-only dashboard mode. Files remain browsable below, but /ops/config is intentionally disabled.</p></div>`;
+      return;
+    }
     const data = await apiFetch('/ops/config');
     const caps = data.capabilities || {};
     DASHBOARD_CAPS.mutatingOpsEnabled = !!caps.mutatingOpsEnabled;
@@ -335,7 +341,7 @@ function statusLabel(s) {
   return { 'new': 'New', 'in-progress': 'In Progress', 'done': 'Done', 'failed': 'Failed' }[s] || s;
 }
 
-function escHtml(s) {
+window.escHtml = window.escHtml || function escHtml(s) {
   const d = document.createElement('div');
   d.textContent = s;
   return d.innerHTML;

@@ -1,5 +1,13 @@
 
 /* Cost Tab — All-Time Usage, Provider Audit, Usage by Source */
+var escHtml = window.escHtml || function(s) {
+  return String(s ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/\"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+};
 
 // ─── Time Range Filter State ──────────────────────────────────────────
 let _costRangeDays = 30;
@@ -330,10 +338,105 @@ async function loadOpsBySource(days) {
   const chartEl = document.getElementById('bySourceChart');
   if (!listEl) return;
 
-  // Temporary downgrade: source breakdown is still on legacy API shape and should not render misleading data.
-  if (subEl) subEl.textContent = tt('Temporarily hidden during usage API migration', 'Usage API 迁移中，暂时隐藏');
-  if (chartEl) chartEl.innerHTML = '';
-  listEl.innerHTML = `<div class="empty-state"><h3>${tt('Temporarily unavailable', '暂不可用')}</h3><p>${tt('Usage by Source is being migrated to the new dashboard usage contract.', 'Usage by Source 正在迁移到新的 dashboard usage 契约。')}</p></div>`;
+  _ensureSourceRangeFilter();
+
+  try {
+    const data = await apiFetch(`/dashboard/usage/source/history?days=${days}`);
+    const summary = data.summary || {};
+    const daily = data.daily || [];
+    const total = summary.total || { tokens: 0, costUsd: 0, calls: 0 };
+
+    if (subEl) {
+      subEl.textContent = `${fmtTokens(total.tokens || 0)} tokens · ${(total.calls || 0).toLocaleString()} calls · $${Number(total.costUsd || 0).toFixed(2)} · last ${days} days`;
+    }
+
+    const sourceTypes = [
+      { key: 'channel', icon: '💬', name: tt('Channel Sessions', '对话频道') },
+      { key: 'thread', icon: '🧵', name: tt('Thread Sessions', '线程对话') },
+      { key: 'cron', icon: '⚙️', name: tt('Cron Jobs', '定时任务') }
+    ];
+
+    let html = '<div class="ops-channel-list">';
+    for (const st of sourceTypes) {
+      const s = summary[st.key] || { calls: 0, tokens: 0, costUsd: 0 };
+      const pct = (total.tokens || 0) > 0 ? ((s.tokens / total.tokens) * 100).toFixed(1) : '0';
+      html += `<div class="ops-channel-card">
+        <div class="ops-ch-left">
+          <div class="ops-ch-name">${st.icon} ${escHtml(st.name)}</div>
+          <div class="ops-ch-meta">
+            <span>${(s.calls || 0).toLocaleString()} ${tt('calls', '调用')}</span>
+            <span>${pct}% ${tt('of tokens', 'Token 占比')}</span>
+          </div>
+        </div>
+        <div class="ops-ch-right">
+          <div class="ops-ch-tokens">${fmtTokens(s.tokens || 0)}</div>
+          <div class="ops-ch-cost">$${Number(s.costUsd || 0).toFixed(2)}</div>
+        </div>
+      </div>`;
+    }
+    html += '</div>';
+
+    if (daily.length > 0) {
+      html += `<div style="margin-top:20px;">
+        <div style="font-weight:600;margin-bottom:10px;font-size:.9rem">${tt('Daily Breakdown', '每日明细')}</div>
+        <div class="ops-table-wrap">
+          <table class="ops-table">
+            <thead>
+              <tr>
+                <th>${tt('Date', '日期')}</th>
+                <th>💬 ${tt('Channel', '频道')}</th>
+                <th>🧵 ${tt('Thread', '线程')}</th>
+                <th>⚙️ ${tt('Cron', '定时')}</th>
+                <th>${tt('Total', '合计')}</th>
+              </tr>
+            </thead>
+            <tbody>`;
+      for (const d of [...daily].sort((a, b) => b.day.localeCompare(a.day)).slice(0, 14)) {
+        const ch = d.channel || { tokens: 0, costUsd: 0 };
+        const th = d.thread || { tokens: 0, costUsd: 0 };
+        const cr = d.cron || { tokens: 0, costUsd: 0 };
+        const ttRow = d.total || { tokens: 0, costUsd: 0 };
+        html += `<tr>
+          <td>${d.day.slice(5)}</td>
+          <td>${fmtTokens(ch.tokens || 0)} <span style="color:var(--text2);font-size:.7rem">$${Number(ch.costUsd || 0).toFixed(2)}</span></td>
+          <td>${fmtTokens(th.tokens || 0)} <span style="color:var(--text2);font-size:.7rem">$${Number(th.costUsd || 0).toFixed(2)}</span></td>
+          <td>${fmtTokens(cr.tokens || 0)} <span style="color:var(--text2);font-size:.7rem">$${Number(cr.costUsd || 0).toFixed(2)}</span></td>
+          <td><strong>${fmtTokens(ttRow.tokens || 0)}</strong> <span style="color:var(--text2);font-size:.7rem">$${Number(ttRow.costUsd || 0).toFixed(2)}</span></td>
+        </tr>`;
+      }
+      html += `</tbody></table></div></div>`;
+    }
+
+    listEl.innerHTML = html;
+
+    if (chartEl && daily.length > 0) {
+      const chartDays = [...daily].slice(-7);
+      const maxTokens = Math.max(...chartDays.map(d => Number(d.total?.tokens || 0)), 1);
+      let chartHtml = '<div style="display:flex;align-items:flex-end;gap:8px;height:120px;padding:10px 0;">';
+      for (const d of chartDays) {
+        const ch = Number(d.channel?.tokens || 0);
+        const th = Number(d.thread?.tokens || 0);
+        const cr = Number(d.cron?.tokens || 0);
+        chartHtml += `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;">
+          <div style="width:100%;display:flex;align-items:flex-end;gap:1px;height:100px;">
+            <div style="flex:1;background:var(--accent);height:${(ch / maxTokens * 100)}%;border-radius:2px 2px 0 0;" title="Channel: ${fmtTokens(ch)}"></div>
+            <div style="flex:1;background:var(--green);height:${(th / maxTokens * 100)}%;border-radius:2px 2px 0 0;" title="Thread: ${fmtTokens(th)}"></div>
+            <div style="flex:1;background:var(--yellow);height:${(cr / maxTokens * 100)}%;border-radius:2px 2px 0 0;" title="Cron: ${fmtTokens(cr)}"></div>
+          </div>
+          <div style="font-size:.65rem;color:var(--text2);">${d.day.slice(5)}</div>
+        </div>`;
+      }
+      chartHtml += '</div>';
+      chartHtml += `<div style="display:flex;gap:12px;justify-content:center;font-size:.7rem;margin-top:8px;">
+        <span><span style="display:inline-block;width:8px;height:8px;background:var(--accent);border-radius:2px;margin-right:4px;"></span>${tt('Channel', '频道')}</span>
+        <span><span style="display:inline-block;width:8px;height:8px;background:var(--green);border-radius:2px;margin-right:4px;"></span>${tt('Thread', '线程')}</span>
+        <span><span style="display:inline-block;width:8px;height:8px;background:var(--yellow);border-radius:2px;margin-right:4px;"></span>${tt('Cron', '定时')}</span>
+      </div>`;
+      chartEl.innerHTML = chartHtml;
+    }
+  } catch (e) {
+    listEl.innerHTML = `<div class="empty-state"><h3>Unable to load</h3><p>${e.message}</p></div>`;
+  }
 }
 
 // ─── Ops Management Actions ───

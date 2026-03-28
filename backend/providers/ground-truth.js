@@ -108,7 +108,30 @@ function extractYamlBlock(text, key) {
 // ── Public API (used by other providers) ─────────────────────────────
 function getChannelName(id) {
   const gt = parse();
-  return gt.channelNames[id] || null;
+  if (gt.channelNames[id]) return gt.channelNames[id];
+
+  // Fallback to workspace channel files: channels/<id>.md with first markdown heading
+  try {
+    const path = require('path');
+    const file = path.join(cfg.WORKSPACE, 'channels', `${id}.md`);
+    if (fs.existsSync(file)) {
+      const raw = fs.readFileSync(file, 'utf8');
+      const m = raw.match(/^#\s+Channel:\s+(.+)\s+\(/m) || raw.match(/^#\s+(.+)$/m);
+      if (m && m[1]) {
+        let name = m[1].trim();
+        name = name.replace(/\s+—\s+.*$/, '');
+        name = name.replace(/\s+\(.+\)$/, '');
+        name = name.replace(/\s+Channel\s+Config$/i, '');
+        name = name.replace(/\s+Gardening\s+Log$/i, '');
+        name = name.replace(/\s+Log$/i, '');
+        name = name.trim();
+        if (!name.startsWith('#') && /频道|Channel/i.test(name)) return null;
+        return name.trim();
+      }
+    }
+  } catch {}
+
+  return null;
 }
 
 function getChannelMap() {

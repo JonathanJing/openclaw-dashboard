@@ -151,11 +151,37 @@ function handleWatchdog(req, res, query) {
   });
 }
 
+function handleHealthSummary(_req, res) {
+  const state = readState();
+  const events = readEvents(100);
+  const status = String(state?.status || 'unknown');
+  const lastEvent = events.length ? events[events.length - 1] : null;
+  jsonReply(res, 200, {
+    ok: true,
+    effectiveStatus: status === 'healthy' ? 'healthy' : 'degraded',
+    watchdog: {
+      status,
+      consecutiveFailures: Number(state?.consecutive_failures || 0),
+      totalAlerts: Number(state?.total_alerts || 0),
+      totalRecoveries: Number(state?.total_recoveries || 0),
+      lastCheckTs: Number(state?.last_check_ts || 0),
+    },
+    lastEvent: lastEvent || null,
+    runtime: {
+      running: null,
+      pid: null,
+      checkedAt: new Date().toISOString(),
+    },
+  });
+}
+
 function register(router) {
   // Frontend calls /ops/watchdog?limit=200&windowMinutes=1440
   router.add('GET', '/ops/watchdog', (req, res, q) => handleWatchdog(req, res, q));
   // Keep /api/watchdog as alias
   router.add('GET', '/api/watchdog',  (req, res, q) => handleWatchdog(req, res, q));
+  router.add('GET', '/ops/health/summary', (req, res) => handleHealthSummary(req, res));
+  router.add('GET', '/api/health/summary', (req, res) => handleHealthSummary(req, res));
 }
 
 module.exports = { register, readState, readEvents };

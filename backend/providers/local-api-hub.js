@@ -185,7 +185,9 @@ function register(router) {
   // Root-level dashboard usage aliases so frontend can call dashboard backend directly.
   router.add('GET', '/dashboard/usage/models/today', hubProxy);
   router.add('GET', '/dashboard/usage/models/history', hubProxy);
+  router.add('GET', '/dashboard/usage/source/history', hubProxy);
   router.add('GET', '/dashboard/usage/cron/summary', hubProxy);
+  router.add('GET', '/dashboard/usage/cron/trend', hubProxy);
   router.add('GET', '/dashboard/usage/cron/daily', hubProxy);
 }
 

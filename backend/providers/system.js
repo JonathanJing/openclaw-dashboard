@@ -44,8 +44,28 @@ function getSystemInfo() {
     };
   } catch {}
 
-  // Disk and LaunchAgent probing disabled without shell access.
-  info.disk = { unavailable: true, reason: 'disabled in hardened mode' };
+  // Disk usage via Node fs.statfsSync (shell-free, safe in hardened mode).
+  try {
+    const st = fs.statfsSync(cfg.WORKSPACE || cfg.HOME || '/');
+    const blockSize = Number(st.bsize || st.frsize || 0);
+    const total = Number(st.blocks || 0) * blockSize;
+    const free = Number(st.bavail || st.bfree || 0) * blockSize;
+    const used = Math.max(0, total - free);
+    const usePct = total > 0 ? (used / total) * 100 : 0;
+    const fmtGb = (bytes) => `${(bytes / 1073741824).toFixed(0)}GB`;
+    info.disk = {
+      total,
+      free,
+      used,
+      usePct: `${usePct.toFixed(0)}%`,
+      totalHuman: fmtGb(total),
+      usedHuman: fmtGb(used),
+      freeHuman: fmtGb(free),
+      mount: cfg.WORKSPACE || cfg.HOME || '/',
+    };
+  } catch (e) {
+    info.disk = { unavailable: true, reason: e.message || 'statfs failed' };
+  }
   info.launchAgents = [];
 
   // Uptime

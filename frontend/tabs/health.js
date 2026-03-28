@@ -1,5 +1,13 @@
 
 /* Health Tab — Operations Control */
+var escHtml = window.escHtml || function(s) {
+  return String(s ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/\"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+};
 
 async function loadSystemInfo() {
   // Model registry is now static (defined in cron.js)
@@ -24,7 +32,7 @@ async function loadSystemInfo() {
 
     const memPct = Number(sys.memory?.usePct ?? mx.memory?.pct ?? 0);
     const memColor = memPct > 85 ? 'var(--red)' : memPct > 60 ? 'var(--yellow)' : 'var(--green)';
-    const diskUse = sys.disk?.usePct || sys.disk?.percent || '—';
+    const diskUse = sys.disk?.usePct || sys.disk?.percent || (sys.disk?.usedHuman && sys.disk?.totalHuman ? `${sys.disk.usedHuman}/${sys.disk.totalHuman}` : '—');
     const diskPct = parseInt(diskUse, 10) || 0;
     const diskColor = diskPct > 80 ? 'var(--red)' : diskPct > 60 ? 'var(--yellow)' : 'var(--green)';
 
@@ -63,6 +71,9 @@ async function renderAgentMonitor() {
   ]);
 
   // Overview cards are rendered by Overview tab, not Health tab.
+
+  // Overview health cards only: Alert Snapshot, Watchdog, System Sentinel.
+  // Usage cards are owned by Overview tab.
 
   // Card 3: Alert Snapshot
   const sessionAlerts = (sessionsData.alerts || []).length;

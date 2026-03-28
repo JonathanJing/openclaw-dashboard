@@ -27,6 +27,15 @@ if (currentLang !== 'en' && currentLang !== 'zh') currentLang = 'en';
 function isZh() { return currentLang === 'zh'; }
 function tt(en, zh) { return isZh() ? zh : en; }
 function currentLocale() { return isZh() ? 'zh-CN' : 'en-US'; }
+function escHtml(s) {
+  return String(s ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+window.escHtml = escHtml;
 
 function applyLanguageUI() {
   const html = document.documentElement;
@@ -63,11 +72,11 @@ function applyLanguageUI() {
   const cronCostTitle = document.getElementById('cronCostTitle');
   if (cronCostTitle) cronCostTitle.textContent = tt('💰 Cron Cost Analysis', '💰 Cron 成本分析');
   const cronTrendTitle = document.getElementById('cronTrendTitle');
-  if (cronTrendTitle) cronTrendTitle.textContent = tt('📈 Fixed vs Variable Cost Trend', '📈 固定成本 vs 浮动成本趋势');
+  if (cronTrendTitle) cronTrendTitle.textContent = tt('📈 Cron Daily Trend', '📈 Cron 每日趋势');
   const cronTrendSub = document.getElementById('cronTrendSub');
   if (cronTrendSub) cronTrendSub.textContent = tt(
-    'Cron (fixed) = scheduled jobs · Interactive (variable) = manually triggered chats',
-    'Cron（固定）= 每日自动任务 · 交互（浮动）= 人工触发的对话'
+    'Daily cron token and cost trend over the selected window',
+    '所选时间窗口内的 Cron 每日 token / cost 趋势'
   );
 
   const sentinelLabel = document.getElementById('sentinelLabel');
@@ -132,11 +141,17 @@ function applyCapabilitiesUI() {
 
 async function refreshCapabilities() {
   try {
-    const data = await apiFetch('/ops/config');
-    const caps = data?.capabilities || {};
-    DASHBOARD_CAPS.mutatingOpsEnabled = !!caps.mutatingOpsEnabled;
-    DASHBOARD_CAPS.mutatingOpsLoopbackOnly = caps.mutatingOpsLoopbackOnly !== false;
-    DASHBOARD_CAPS.attachmentFilePathCopyEnabled = !!caps.attachmentFilePathCopyEnabled;
+    const health = await apiFetch('/health').catch(() => ({}));
+    if (health?.capabilities?.configEndpoint) {
+      const data = await apiFetch('/ops/config');
+      const caps = data?.capabilities || {};
+      DASHBOARD_CAPS.mutatingOpsEnabled = !!caps.mutatingOpsEnabled;
+      DASHBOARD_CAPS.mutatingOpsLoopbackOnly = caps.mutatingOpsLoopbackOnly !== false;
+      DASHBOARD_CAPS.attachmentFilePathCopyEnabled = !!caps.attachmentFilePathCopyEnabled;
+    } else {
+      DASHBOARD_CAPS.mutatingOpsEnabled = false;
+      DASHBOARD_CAPS.attachmentFilePathCopyEnabled = false;
+    }
   } catch {
     DASHBOARD_CAPS.mutatingOpsEnabled = false;
     DASHBOARD_CAPS.attachmentFilePathCopyEnabled = false;

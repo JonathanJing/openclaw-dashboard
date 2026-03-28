@@ -377,7 +377,34 @@ function handleCronToday(_req, res) {
   const now = new Date();
   const todayStart = new Date(now.toLocaleString('en-US', { timeZone: 'America/Los_Angeles' }));
   todayStart.setHours(0, 0, 0, 0);
-  const channelNames = gt.parse().channelNames;
+  const todayStr = todayStart.toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
+
+  // Ledger fallback for remote cron run cost/token visibility in the overview panel.
+  const ledgerByJob = {};
+  try {
+    const rows = sqliteJson(cfg.LEDGER_DB, `
+      SELECT
+        substr(session_key,
+          instr(session_key,':cron:')+6,
+          instr(session_key,':run:')-instr(session_key,':cron:')-6
+        ) as job_id,
+        round(sum(cost_total), 6) as cost_usd,
+        sum(input_tokens + output_tokens + cache_read_tokens + cache_write_tokens) as total_tokens,
+        max(ts) as last_ts
+      FROM calls
+      WHERE session_key LIKE '%:cron:%'
+        AND date(ts,'localtime') = '${todayStr}'
+      GROUP BY job_id
+    `);
+    for (const r of rows || []) {
+      if (!r.job_id) continue;
+      ledgerByJob[r.job_id] = {
+        costUsd: Number(r.cost_usd || 0),
+        tokens: Number(r.total_tokens || 0),
+        lastTs: r.last_ts || null,
+      };
+    }
+  } catch {}
 
   const todayJobs = jobs
     .filter(j => j.enabled !== false)
@@ -386,6 +413,7 @@ function handleCronToday(_req, res) {
       const lastRun = loadLastCronRun(id);
       const runTs = Date.parse(lastRun?.startedAt || lastRun?.finishedAt || '');
       const ranToday = Number.isFinite(runTs) && runTs >= todayStart.getTime();
+      const ledger = ledgerByJob[id] || { costUsd: 0, tokens: 0, lastTs: null };
       return {
         id,
         name: job.name,
@@ -397,8 +425,8 @@ function handleCronToday(_req, res) {
           durationMs: lastRun.durationMs,
           model: lastRun.model || null,
           provider: lastRun.provider || null,
-          tokens: lastRun.tokens || 0,
-          costUsd: lastRun.costUsd || 0,
+          tokens: Number(lastRun.tokens || 0) || ledger.tokens || 0,
+          costUsd: Number(lastRun.costUsd || 0) || ledger.costUsd || 0,
         } : null,
         ranToday,
       };

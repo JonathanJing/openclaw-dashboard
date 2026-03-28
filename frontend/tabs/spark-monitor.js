@@ -7,37 +7,20 @@
 
 async function loadSparkSummary() {
   try {
-    const data = await apiFetch('/api/spark-tasks/summary');
+    const data = await apiFetch('/dashboard/spark/today');
     if (!data?.ok) {
       console.warn('[spark-monitor] summary not ok:', data);
       return;
     }
 
-    // Status counts - handle both 'count' and 'COUNT(*)' field names
-    const byStatus = data.tasks?.byStatus || [];
-    console.log('[spark-monitor] byStatus:', byStatus);
-    
-    const get = (s) => {
-      const row = byStatus.find(r => r.status === s);
-      return row ? (row.count || row['COUNT(*)'] || 0) : 0;
-    };
-    
-    document.getElementById('sparkTasksDone').textContent    = get('done');
-    document.getElementById('sparkTasksRunning').textContent = get('running');
-    document.getElementById('sparkTasksError').textContent   = get('error');
+    document.getElementById('sparkTasksDone').textContent    = data.summary?.completedTasks ?? '0';
+    document.getElementById('sparkTasksRunning').textContent = data.summary?.runningTasks ?? '0';
+    document.getElementById('sparkTasksError').textContent   = data.summary?.failedTasks ?? '0';
+    document.getElementById('sparkGpuAvg').textContent = data.summary?.gpuUtilizationPct != null ? Number(data.summary.gpuUtilizationPct).toFixed(1) + '%' : '—';
+    document.getElementById('sparkTokensTotal').textContent = (data.summary?.totalTokens || 0) > 0 ? fmtTokens(data.summary.totalTokens) : '0';
 
-    // GPU
-    const avgGpu = data.gpu?.avg_gpu;
-    document.getElementById('sparkGpuAvg').textContent = avgGpu != null ? Number(avgGpu).toFixed(1) + '%' : '—';
-
-    // Tokens
-    const byType = data.tasks?.byType || [];
-    const totalTokens = byType.reduce((s, r) => s + (r.total_tokens || 0), 0);
-    document.getElementById('sparkTokensTotal').textContent = totalTokens > 0 ? fmtTokens(totalTokens) : '0';
-
-    // PR Hunter latest
+    // PR Hunter latest / recent tasks summary reuse
     renderPrHunterLatest(data.recent || []);
-
   } catch (e) {
     console.warn('[spark-monitor] summary error:', e);
   }

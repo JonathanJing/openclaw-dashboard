@@ -1,21 +1,143 @@
 
 /* Overview Tab — Sessions, Agent Monitor, DGX Spark */
+var escHtml = window.escHtml || function(s) {
+  return String(s ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/\"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+};
 
-async function loadAgentMonitor() {
+async function loadOverviewHealthCards() {
   try {
-    agentData = await apiFetch('/agents').catch(() => null);
     await renderAgentMonitor();
   } catch(e) {
-    // Silently fail - monitor is non-critical
-    console.warn('Agent monitor render failed:', e.message);
+    console.warn('Overview health cards failed:', e.message);
   }
 }
 
+async function loadOverviewUsageCards() {
+  try {
+    const data = await apiFetch('/dashboard/usage/models/today');
+    const summary = data.summary || {};
+    const rows = data.rows || [];
+
+    const mainBadge = document.getElementById('mainAgentBadge');
+    const mainValue = document.getElementById('mainAgentValue');
+    const mainDetail = document.getElementById('mainAgentDetail');
+    if (mainValue) {
+      mainBadge.className = 'agent-stat-badge active';
+      mainBadge.innerHTML = '<span class="pulse-dot"></span> today';
+      mainValue.textContent = '$' + Number(summary.costUsd || 0).toFixed(2);
+      mainDetail.textContent = (summary.calls || 0) + ' calls';
+    }
+
+    const subBadge = document.getElementById('subagentBadge');
+    const subVal = document.getElementById('subagentValue');
+    const subDetail = document.getElementById('subagentDetail');
+    if (subVal) {
+      subVal.textContent = fmtTokens(summary.totalTokens || 0);
+      subBadge.className = 'agent-stat-badge active';
+      subBadge.innerHTML = 'today';
+      const top = [...rows].sort((a, b) => Number(b.totalTokens || 0) - Number(a.totalTokens || 0))[0];
+      subDetail.textContent = top ? 'Top: ' + shortModel(top.model) : '—';
+    }
+
+    const mixEl = document.getElementById('modelMixBars');
+    if (mixEl) {
+      if (!rows.length) {
+        mixEl.innerHTML = '<div class="ops-ch-meta">No usage data today</div>';
+      } else {
+        const total = Number(summary.totalTokens || 0) || 1;
+        let barHtml = '<div style="display:flex;height:10px;border-radius:5px;overflow:hidden;margin-bottom:6px">';
+        const colors = {};
+        rows.forEach(r => {
+          const m = r.model || 'unknown';
+          const tk = Number(r.totalTokens || 0);
+          const pct = (tk / total) * 100;
+          const c = getModelColor(m);
+          colors[m] = c;
+          barHtml += `<div style="width:${pct}%;background:${c};min-width:2px" title="${shortModel(m)} ${pct.toFixed(0)}%"></div>`;
+        });
+        barHtml += '</div><div style="display:flex;flex-wrap:wrap;gap:4px 10px;font-size:.7rem">';
+        rows.forEach(r => {
+          const m = r.model || 'unknown';
+          const pct = ((Number(r.totalTokens || 0) / total) * 100).toFixed(0);
+          barHtml += `<span style="color:${colors[m]}">● ${shortModel(m)} <b>${pct}%</b></span>`;
+        });
+        barHtml += '</div>';
+        mixEl.innerHTML = barHtml;
+      }
+    }
+  } catch(e) {
+    console.warn('Overview usage cards failed:', e.message);
+  }
+}
+
+async function loadAgentMonitor() {
+  agentData = await apiFetch('/agents').catch(() => null);
+  await Promise.all([
+    loadOverviewUsageCards(),
+    loadOverviewHealthCards(),
+  ]);
+}
+
+
+async function loadDiscordSurfacesTable() {
+  const tableEl = document.getElementById('sessionsTable');
+  const alertsEl = document.getElementById('sessionsAlerts');
+  if (!tableEl) return;
+  try {
+    const data = await apiFetch('/ops/discord-surfaces');
+    const rows = data.rows || [];
+    const summary = data.summary || {};
+    if (alertsEl) {
+      alertsEl.innerHTML = `<div class="sess-alert info"><span>💬</span><strong>${tt('Discord surfaces', 'Discord 面')}</strong> ${tt('Primary view groups usage by Discord channel first, then shows OpenClaw stats.', '主视图先按 Discord 频道聚合，再展示 OpenClaw 统计。')}</div>`;
+    }
+    if (!rows.length) {
+      tableEl.innerHTML = '<div class="empty-state"><h3>No Discord channel usage today</h3></div>';
+      return;
+    }
+    let html = `<div style="margin-bottom:10px;color:var(--text2);font-size:.78rem">${tt('Today summary', '今日汇总')}: <b>${Number(summary.calls || 0).toLocaleString()}</b> calls · <b>${fmtTokens(summary.totalTokens || 0)}</b> · <b>$${Number(summary.costUsd || 0).toFixed(2)}</b></div>`;
+    html += `<table class="sessions-table">
+      <thead><tr>
+        <th>${tt('Discord Channel / Thread', 'Discord 频道 / 线程')}</th>
+        <th>${tt('Calls', '调用')}</th>
+        <th>Tokens</th>
+        <th>${tt('Cost', '花费')}</th>
+        <th>${tt('Top Model', '主模型')}</th>
+        <th>${tt('Last Activity', '最近活动')}</th>
+      </tr></thead><tbody>`;
+    for (const r of rows) {
+      const isThreadSurface = r.surfaceType === 'thread-surface';
+      const parent = (r.parentChannelName && r.parentChannelName !== r.channelName) ? r.parentChannelName : r.channelName;
+      const subLine = isThreadSurface
+        ? `<br><span style="color:var(--text2);font-size:.68rem">🧵 ${escHtml(r.threadName || 'thread')}</span>`
+        : '';
+      html += `<tr>
+        <td style="font-weight:600">${escHtml(parent || ('#' + r.channelId))}${subLine}</td>
+        <td>${Number(r.calls || 0).toLocaleString()}</td>
+        <td>${fmtTokens(r.totalTokens || 0)}</td>
+        <td style="font-weight:600">$${Number(r.costUsd || 0).toFixed(2)}</td>
+        <td>${r.topModel ? `<span class="sess-model" style="border-color:${getModelColor(r.topModel)};color:${getModelColor(r.topModel)}">${shortModel(r.topModel)}</span>` : '—'}</td>
+        <td style="color:var(--text2);font-size:.75rem">${r.lastTs ? new Date(r.lastTs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—'}</td>
+      </tr>`;
+    }
+    html += '</tbody></table>';
+    tableEl.innerHTML = html;
+  } catch (e) {
+    tableEl.innerHTML = `<div class="empty-state"><p>${e.message}</p></div>`;
+  }
+}
 
 async function loadSessions() {
   const alertsEl = document.getElementById('sessionsAlerts');
   const tableEl = document.getElementById('sessionsTable');
   if (!tableEl) return;
+
+  // New primary view: Discord surfaces first.
+  return loadDiscordSurfacesTable();
 
   try {
     const url = _sessionsHideStale ? '/ops/sessions?hideStale=1' : '/ops/sessions';
@@ -28,27 +150,6 @@ async function loadSessions() {
     }
     const alerts = data.alerts || [];
     const summary = data.summary || {};
-
-    // Update header cards from session data
-    const mainBadge = document.getElementById('mainAgentBadge');
-    const mainValue = document.getElementById('mainAgentValue');
-    const mainDetail = document.getElementById('mainAgentDetail');
-    if (mainValue) {
-      mainBadge.className = 'agent-stat-badge ' + (alerts.filter(a=>a.type==='error').length > 0 ? 'error' : 'active');
-      mainBadge.innerHTML = alerts.length > 0 ? `⚠️ ${alerts.length} alerts` : '✅ healthy';
-      mainValue.textContent = '$' + (summary.todayCost || 0).toFixed(2);
-      mainDetail.textContent = (summary.todayMessages || 0) + ' messages today';
-    }
-    const subVal = document.getElementById('subagentValue');
-    if (subVal) {
-      subVal.textContent = fmtTokens(sessions.reduce((s, r) => s + r.today.totalTokens, 0));
-      document.getElementById('subagentDetail').textContent = shortModel(summary.topModel);
-    }
-    const hookVal = document.getElementById('hookValue');
-    if (hookVal) {
-      hookVal.textContent = summary.active || 0;
-      document.getElementById('hookDetail').textContent = summary.total + ' total';
-    }
 
     // Alerts
     if (alertsEl) {
@@ -64,6 +165,13 @@ async function loadSessions() {
     }
 
     // Chinese names + task type for Discord channels
+    const rowKindMeta = {
+      channel: { label: tt('Channel Session', '频道会话'), emoji: '💬' },
+      cron: { label: tt('Cron Job', '定时任务'), emoji: '⚙️' },
+      system: { label: tt('System / Internal', '系统 / 内部'), emoji: '🫀' },
+      other: { label: tt('Pseudo / Other', '伪会话 / 其他'), emoji: '•' },
+    };
+
     const channelMeta = {
       '#dev_build':              { cn: '开发构建', task: '🔧 深度开发', tier: 'hard' },
       '#ai-learning':            { cn: 'AI学习', task: '🧠 架构讨论', tier: 'hard' },
@@ -96,6 +204,11 @@ async function loadSessions() {
 
     // Fit assessment
     function fitLabel(s) {
+      if (!s.fitEligible) {
+        if (s.rowKind === 'cron') return { emoji: '⚙️', text: tt('Cron', '定时'), tip: tt('Cron rows are shown for visibility, not model-fit scoring', 'Cron 行仅展示可见性，不参与模型匹配评分') };
+        if (s.rowKind === 'system') return { emoji: '🫀', text: tt('System', '系统'), tip: tt('System/internal rows are excluded from fit scoring', '系统/内部行不参与模型匹配评分') };
+        return { emoji: '•', text: tt('Other', '其他'), tip: tt('Not scored for model fit', '不参与模型匹配评分') };
+      }
       const meta = channelMeta[s.displayName];
       const taskTier = meta?.tier || 'medium';
       const mTier = modelTier(s.model);
@@ -162,10 +275,11 @@ async function loadSessions() {
     for (const s of sortedSessions) {
       const meta = channelMeta[s.displayName] || {};
       const cn = meta.cn || '';
-      const taskTag = normalizeTaskTag(meta.task || '');
-      const eff = s.today.effectiveMessages || 0;
+      const kindMeta = rowKindMeta[s.rowKind] || rowKindMeta.other;
+      const taskTag = s.fitEligible ? normalizeTaskTag(meta.task || '') : `<span title="${escHtml(kindMeta.label)}">${kindMeta.emoji} ${escHtml(kindMeta.label)}</span>`;
+      const eff = s.fitEligible ? (s.today.effectiveMessages || 0) : 0;
       const costPerMsg = eff > 0 ? (s.today.cost / eff) : 0;
-      const costColor = costPerMsg > 1.5 ? '#f87171' : costPerMsg > 0.5 ? '#fbbf24' : 'var(--green)';
+      const costColor = !s.fitEligible ? 'var(--text2)' : costPerMsg > 1.5 ? '#f87171' : costPerMsg > 0.5 ? '#fbbf24' : 'var(--green)';
       const fit = fitLabel(s);
 
       const thinkingLvl = s.thinkingLevel && s.thinkingLevel !== '—' ? s.thinkingLevel : '';
@@ -187,7 +301,7 @@ async function loadSessions() {
         <td><span class="sess-status" style="display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px;background:${statusColor};border:1px solid rgba(255,255,255,0.1)"></span>${nameHtml}</td>
         <td style="font-size:.7rem">${taskTag}</td>
         <td>${modelSelect}</td>
-        <td>${s.today.messages}<span style="color:var(--text2);font-size:.65rem"><br>${eff} ${tt('effective', '有效')}</span></td>
+        <td>${s.today.messages}<span style="color:var(--text2);font-size:.65rem"><br>${s.fitEligible ? `${eff} ${tt('effective', '有效')}` : tt('not scored', '不计评分')}</span></td>
         <td>${fmtTokens(s.today.totalTokens)}</td>
         <td style="font-weight:600">$${s.today.cost.toFixed(2)}</td>
         <td style="color:${costColor};font-weight:600">${eff > 0 ? '$' + costPerMsg.toFixed(2) : '—'}</td>

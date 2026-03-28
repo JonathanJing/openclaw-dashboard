@@ -1,5 +1,13 @@
 
 /* Cron Tab — Cron Jobs, Run History, Cost Analysis */
+var escHtml = window.escHtml || function(s) {
+  return String(s ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/\"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+};
 
 // Cron Jobs list removed — data shown in cost table instead
 async function loadCronEnhanced() {
@@ -273,26 +281,20 @@ async function loadCronCosts() {
   if (!contentEl) return;
 
   try {
-    const [summaryData, dailyData] = await Promise.all([
+    const [summaryData, trendData] = await Promise.all([
       apiFetch('/dashboard/usage/cron/summary?days=7'),
-      apiFetch('/dashboard/usage/cron/daily?days=7'),
+      apiFetch('/dashboard/usage/cron/trend?days=7'),
     ]);
 
     const s = summaryData.summary || {};
     const jobs = summaryData.rows || [];
-    const dailyRows = dailyData.rows || [];
+    const trendRows = trendData.rows || [];
     const todayKey = new Date().toISOString().slice(0, 10);
-    const todayRows = dailyRows.filter(r => r.day === todayKey);
-    const today = todayRows.reduce((acc, r) => {
-      acc.tokens += Number(r.totalTokens || 0);
-      acc.cost += Number(r.costUsd || 0);
-      acc.calls += Number(r.calls || 0);
-      return acc;
-    }, { tokens: 0, cost: 0, calls: 0 });
+    const today = (trendRows.find(r => r.day === todayKey) || { totalTokens: 0, costUsd: 0, calls: 0 });
 
     summaryEl.textContent = tt(
-      `${s.calls || 0} calls · total cron ${fmtUsd(s.costUsd || 0, 2)} (${fmtTokens(s.totalTokens || 0)} tokens) · today ${fmtUsd(today.cost, 2)} (${fmtTokens(today.tokens)} tokens) · 7 days`,
-      `累计 ${s.calls || 0} 次调用 · 总 cron 成本 ${fmtUsd(s.costUsd || 0, 2)}（${fmtTokens(s.totalTokens || 0)} tokens） · 今日 ${fmtUsd(today.cost, 2)}（${fmtTokens(today.tokens)}） · 7 天`
+      `${s.calls || 0} calls · total cron ${fmtUsd(s.costUsd || 0, 2)} (${fmtTokens(s.totalTokens || 0)} tokens) · today ${fmtUsd(today.costUsd, 2)} (${fmtTokens(today.totalTokens)} tokens) · 7 days`,
+      `累计 ${s.calls || 0} 次调用 · 总 cron 成本 ${fmtUsd(s.costUsd || 0, 2)}（${fmtTokens(s.totalTokens || 0)} tokens） · 今日 ${fmtUsd(today.costUsd, 2)}（${fmtTokens(today.totalTokens)}） · 7 天`
     );
 
     const modelAgg = new Map();
@@ -338,13 +340,6 @@ async function loadCronCosts() {
     let html = modelStatsHtml;
     html += `<table class="sessions-table"><thead><tr><th>${tt('Cron job', 'Cron 任务')}</th><th>${tt('Runs', '总次数')}</th><th>${tt('Active days', '活跃天数')}</th><th>Tokens/${tt('run', '次')}</th><th>$/ ${tt('run', '次')}</th><th>${tt('Today (tokens / $)', '今日（tokens / $）')}</th><th>${tt('Total tokens', '总 Tokens')}</th><th>${tt('Total cost', '总花费')}</th></tr></thead><tbody>`;
     for (const j of jobs) {
-      const jTodayRows = todayRows.filter(r => r.cronJobId === j.cronJobId && r.model === j.model && r.provider === j.provider);
-      const jToday = jTodayRows.reduce((acc, r) => {
-        acc.tokens += Number(r.totalTokens || 0);
-        acc.cost += Number(r.costUsd || 0);
-        acc.calls += Number(r.calls || 0);
-        return acc;
-      }, { tokens: 0, cost: 0, calls: 0 });
       const tokensPerRun = Number(j.calls || 0) > 0 ? Number(j.totalTokens || 0) / Number(j.calls || 0) : 0;
       const costPerRun = Number(j.calls || 0) > 0 ? Number(j.costUsd || 0) / Number(j.calls || 0) : 0;
       html += `<tr>
@@ -356,7 +351,7 @@ async function loadCronCosts() {
         <td>${j.activeDays || '—'}</td>
         <td>${fmtTokens(tokensPerRun)}</td>
         <td style="color:${costPerRun > 0.2 ? '#fbbf24' : 'var(--green)'}">${fmtUsd(costPerRun, 3)}</td>
-        <td>${fmtTokens(jToday.tokens)} / ${fmtUsd(jToday.cost, 3)}</td>
+        <td>— / —</td>
         <td style="font-weight:600">${fmtTokens(j.totalTokens || 0)}</td>
         <td style="font-weight:600">${fmtUsd(j.costUsd || 0, 2)}</td>
       </tr>`;
@@ -364,15 +359,7 @@ async function loadCronCosts() {
     html += '</tbody></table>';
     contentEl.innerHTML = html;
 
-    const dailyMap = new Map();
-    for (const r of dailyRows) {
-      const day = r.day;
-      const prev = dailyMap.get(day) || { date: day, cronCost: 0, cronTokens: 0 };
-      prev.cronCost += Number(r.costUsd || 0);
-      prev.cronTokens += Number(r.totalTokens || 0);
-      dailyMap.set(day, prev);
-    }
-    const trend = Array.from(dailyMap.values()).sort((a, b) => a.date < b.date ? -1 : 1);
+    const trend = [...trendRows].map(r => ({ date: r.day, cronCost: Number(r.costUsd || 0), cronTokens: Number(r.totalTokens || 0) })).sort((a, b) => a.date < b.date ? -1 : 1);
     if (canvas && trend.length > 1) {
       const ctx = canvas.getContext('2d');
       const W = canvas.parentElement.clientWidth - 32;
