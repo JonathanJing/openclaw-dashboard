@@ -495,7 +495,7 @@ function renderSourceStackedChart(daily) {
     const selected = ANALYTICS_STATE.selectedDay === d.day;
     chartHtml += `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;min-width:0;cursor:pointer" onclick="ANALYTICS_STATE.selectedDay='${d.day}'; ANALYTICS_STATE.expandedDay='${d.day}'; renderSourceStackedChart(ANALYTICS_STATE.sourceDaily||[]); renderAnalyticsDailyDetails(); renderCostHeatmap();">
       <div style="font-size:.62rem;color:var(--text1);font-variant-numeric:tabular-nums;white-space:nowrap">${totalLabel}</div>
-      <div style="width:100%;display:flex;align-items:flex-end;height:110px;border-radius:8px;overflow:hidden;background:${selected ? 'rgba(124,92,255,.10)' : 'rgba(255,255,255,.03)'};outline:${selected ? '2px solid rgba(124,92,255,.55)' : 'none'};outline-offset:2px">
+      <div style="width:100%;display:flex;align-items:flex-end;height:110px;border-radius:8px;overflow:hidden;background:${selected ? 'rgba(124,92,255,.14)' : 'rgba(255,255,255,.03)'};outline:${selected ? '2px solid rgba(124,92,255,.70)' : 'none'};outline-offset:2px;box-shadow:${selected ? '0 0 0 2px rgba(124,92,255,.12), 0 8px 24px rgba(124,92,255,.18)' : 'none'};transform:${selected ? 'translateY(-1px)' : 'none'};transition:all .15s ease">
         <div style="width:100%;display:flex;flex-direction:column;justify-content:flex-end;height:100%">
           <div style="background:#f59e0b;height:${(cr / maxTokens * 100)}%" title="Cron: ${fmtTokens(cr)}"></div>
           <div style="background:#10b981;height:${(th / maxTokens * 100)}%" title="Thread: ${fmtTokens(th)}"></div>
@@ -534,7 +534,7 @@ function renderCostHeatmap() {
       const val = Number(d.modelCosts?.[mk] || 0);
       const alpha = val > 0 ? Math.max(0.10, val / maxCost) : 0.04;
       const selected = ANALYTICS_STATE.selectedDay === d.day;
-      html += `<td onclick="ANALYTICS_STATE.selectedDay='${d.day}'; ANALYTICS_STATE.expandedDay='${d.day}'; renderSourceStackedChart(ANALYTICS_STATE.sourceDaily||[]); renderAnalyticsDailyDetails(); renderCostHeatmap();" style="cursor:pointer;${selected ? 'outline:1px solid rgba(124,92,255,.6);border-radius:6px;' : ''}"><span class="heat-cell" style="background:rgba(124,92,255,${alpha.toFixed(2)})">${val > 0 ? '$' + val.toFixed(2) : '·'}</span></td>`;
+      html += `<td onclick="ANALYTICS_STATE.selectedDay='${d.day}'; ANALYTICS_STATE.expandedDay='${d.day}'; renderSourceStackedChart(ANALYTICS_STATE.sourceDaily||[]); renderAnalyticsDailyDetails(); renderCostHeatmap();" style="cursor:pointer;${selected ? 'outline:2px solid rgba(124,92,255,.72);border-radius:6px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.08);background:rgba(124,92,255,.10);' : ''}"><span class="heat-cell" style="background:rgba(124,92,255,${alpha.toFixed(2)})">${val > 0 ? '$' + val.toFixed(2) : '·'}</span></td>`;
     }
     html += '</tr>';
   }
@@ -554,7 +554,7 @@ function renderAnalyticsDailyDetails() {
     const expanded = ANALYTICS_STATE.expandedDay === d.day;
     const selected = ANALYTICS_STATE.selectedDay === d.day;
     const topModels = Object.entries(d.models || {}).sort((a, b) => b[1] - a[1]);
-    html += `<div class="ops-channel-card" style="display:block;padding:14px 16px;cursor:pointer;${selected ? 'outline:2px solid rgba(124,92,255,.55);background:rgba(124,92,255,.06);' : ''}" onclick="ANALYTICS_STATE.selectedDay='${d.day}'; ANALYTICS_STATE.expandedDay = ANALYTICS_STATE.expandedDay === '${d.day}' ? null : '${d.day}'; renderSourceStackedChart(ANALYTICS_STATE.sourceDaily||[]); renderAnalyticsDailyDetails(); renderCostHeatmap();">
+    html += `<div class="ops-channel-card" style="display:block;padding:14px 16px;cursor:pointer;transition:all .15s ease;${selected ? 'outline:2px solid rgba(124,92,255,.72);background:rgba(124,92,255,.10);box-shadow:0 8px 24px rgba(124,92,255,.14);transform:translateY(-1px);' : ''}" onclick="ANALYTICS_STATE.selectedDay='${d.day}'; ANALYTICS_STATE.expandedDay = ANALYTICS_STATE.expandedDay === '${d.day}' ? null : '${d.day}'; renderSourceStackedChart(ANALYTICS_STATE.sourceDaily||[]); renderAnalyticsDailyDetails(); renderCostHeatmap();">
       <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap">
         <div>
           <div class="ops-ch-name">📅 ${escHtml(d.day)} ${expanded ? '▾' : '▸'}</div>

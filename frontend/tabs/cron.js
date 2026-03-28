@@ -281,19 +281,23 @@ async function loadCronCosts() {
   if (!contentEl) return;
 
   try {
-    const [summaryData, trendData] = await Promise.all([
+    const [summaryData, trendData, dailyData] = await Promise.all([
       apiFetch('/dashboard/usage/cron/summary?days=7'),
       apiFetch('/dashboard/usage/cron/trend?days=7'),
+      apiFetch('/dashboard/usage/cron/daily?days=7'),
     ]);
 
     const s = summaryData.summary || {};
     const jobs = summaryData.jobs || summaryData.rows || [];
     const trendRows = trendData.dailyTrend || trendData.rows || [];
+    const dailyRows = dailyData.rows || [];
     const totalRuns = Number(s.totalRuns || s.calls || 0);
     const totalCronCost = Number(s.totalCronCost || s.costUsd || 0);
     const totalCronTokens = Number(s.totalCronTokens || s.totalTokens || 0);
-    const todayCost = Number(s.today?.cronCost || 0);
-    const todayTokens = Number(s.today?.cronTokens || 0);
+    const todayKey = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
+    const todayRows = dailyRows.filter(r => (r.day || r.date) === todayKey);
+    const todayCost = todayRows.reduce((sum, r) => sum + Number(r.costUsd || 0), 0);
+    const todayTokens = todayRows.reduce((sum, r) => sum + Number(r.totalTokens || 0), 0);
 
     summaryEl.textContent = tt(
       `${totalRuns} calls · total cron ${fmtUsd(totalCronCost, 2)} (${fmtTokens(totalCronTokens)} tokens) · today ${fmtUsd(todayCost, 2)} (${fmtTokens(todayTokens)} tokens) · 7 days`,
@@ -340,11 +344,23 @@ async function loadCronCosts() {
       modelStatsHtml += '</tbody></table></div>';
     }
 
+    const todayMap = new Map();
+    for (const r of dailyRows) {
+      if ((r.day || r.date) !== todayKey) continue;
+      const key = `${r.cronJobId || 'unknown'}|${r.provider || 'unknown'}|${r.model || 'unknown'}`;
+      todayMap.set(key, {
+        totalTokens: Number(r.totalTokens || 0),
+        costUsd: Number(r.costUsd || 0),
+        calls: Number(r.calls || 0),
+      });
+    }
+
     let html = modelStatsHtml;
     html += `<table class="sessions-table"><thead><tr><th>${tt('Cron job', 'Cron 任务')}</th><th>${tt('Runs', '总次数')}</th><th>${tt('Active days', '活跃天数')}</th><th>Tokens/${tt('run', '次')}</th><th>$/ ${tt('run', '次')}</th><th>${tt('Today (tokens / $)', '今日（tokens / $）')}</th><th>${tt('Total tokens', '总 Tokens')}</th><th>${tt('Total cost', '总花费')}</th></tr></thead><tbody>`;
     for (const j of jobs) {
       const tokensPerRun = Number(j.calls || 0) > 0 ? Number(j.totalTokens || 0) / Number(j.calls || 0) : 0;
       const costPerRun = Number(j.calls || 0) > 0 ? Number(j.costUsd || 0) / Number(j.calls || 0) : 0;
+      const today = todayMap.get(`${j.cronJobId || 'unknown'}|${j.provider || 'unknown'}|${j.model || 'unknown'}`) || { totalTokens: 0, costUsd: 0, calls: 0 };
       html += `<tr>
         <td style="font-weight:600;font-size:.78rem">
           ${escHtml(j.jobName || j.cronJobId || 'unknown')}
@@ -354,7 +370,7 @@ async function loadCronCosts() {
         <td>${j.activeDays || '—'}</td>
         <td>${fmtTokens(tokensPerRun)}</td>
         <td style="color:${costPerRun > 0.2 ? '#fbbf24' : 'var(--green)'}">${fmtUsd(costPerRun, 3)}</td>
-        <td>— / —</td>
+        <td>${fmtTokens(today.totalTokens)} / ${fmtUsd(today.costUsd, 2)}</td>
         <td style="font-weight:600">${fmtTokens(j.totalTokens || 0)}</td>
         <td style="font-weight:600">${fmtUsd(j.costUsd || 0, 2)}</td>
       </tr>`;
