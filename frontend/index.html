@@ -171,10 +171,17 @@
         </div>
       </div>
       <div id="alltimeModels" class="ops-channel-list" style="margin-bottom:12px"></div>
-      <div class="week-nav" id="weekNav">
-        <button id="weekPrev" title="Previous week">◀</button>
-        <span class="week-label" id="weekLabel">This Week</span>
-        <button id="weekNext" title="Next week">▶</button>
+      <div class="week-nav" id="analyticsToolbar" style="gap:8px;justify-content:space-between;flex-wrap:wrap">
+        <div style="display:flex;gap:6px;align-items:center" id="analyticsRangeFilter">
+          <button data-days="7">7d</button>
+          <button data-days="14">14d</button>
+          <button data-days="30">30d</button>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button id="weekPrev" title="Previous window">◀</button>
+          <span class="week-label" id="weekLabel">Last 7 Days</span>
+          <button id="weekNext" title="Next window">▶</button>
+        </div>
       </div>
       <div class="card-title" style="font-size:.85rem;margin-bottom:8px" id="dailyChartTitle">Daily Tokens</div>
       <canvas id="dailyChart" height="120" style="width:100%;border-radius:8px"></canvas>
@@ -425,14 +432,14 @@
 <div class="toast-container" id="toastContainer"></div>
 
 <!-- Modular JS: shared utilities first, then tab modules, then boot -->
-<script src="/frontend/shared/api.js?v=20260327s"></script>
-<script src="/frontend/shared/ui-utils.js?v=20260327s"></script>
-<script src="/frontend/tabs/overview.js?v=20260327r"></script>
-<script src="/frontend/tabs/cost.js?v=20260327r"></script>
-<script src="/frontend/tabs/cron.js?v=20260327r"></script>
-<script src="/frontend/tabs/health.js?v=20260327r"></script>
-<script src="/frontend/tabs/spark-monitor.js?v=20260327r"></script>
-<script src="/frontend/tabs/config.js?v=20260327r"></script>
-<script src="/frontend/shared/boot.js?v=20260327s"></script>
+<script src="/frontend/shared/api.js?v=20260327af"></script>
+<script src="/frontend/shared/ui-utils.js?v=20260327af"></script>
+<script src="/frontend/tabs/overview.js?v=20260327af"></script>
+<script src="/frontend/tabs/cost.js?v=20260327af"></script>
+<script src="/frontend/tabs/cron.js?v=20260327af"></script>
+<script src="/frontend/tabs/health.js?v=20260327af"></script>
+<script src="/frontend/tabs/spark-monitor.js?v=20260327af"></script>
+<script src="/frontend/tabs/config.js?v=20260327af"></script>
+<script src="/frontend/shared/boot.js?v=20260327af"></script>
 </body>
 </html>

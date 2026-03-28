@@ -9,56 +9,188 @@ var escHtml = window.escHtml || function(s) {
     .replace(/'/g, '&#39;');
 };
 
-// ─── Time Range Filter State ──────────────────────────────────────────
+// ─── Unified Analytics State ──────────────────────────────────────────
+window.ANALYTICS_STATE = window.ANALYTICS_STATE || {
+  rangeDays: 7,
+  windowOffset: 0,
+  selectedDay: null,
+  expandedDay: null,
+  windowModels: [],
+  allDaily: [],
+  sourceDaily: [],
+};
+
+function canonicalModelProvider(provider, model) {
+  const p = String(provider || '').toLowerCase();
+  const m = String(model || '').toLowerCase();
+  if (p.includes('openai')) return 'openai';
+  if (p.includes('anthropic')) return 'anthropic';
+  if (p.includes('google')) return 'google';
+  if (p.includes('moonshot') || m.includes('kimi')) return 'moonshot';
+  if (p.includes('qwen') || p.includes('local') || p.includes('ollama') || m.includes('qwen') || m.includes('gguf')) return 'local-qwen';
+  if (p.includes('openrouter')) return 'openrouter';
+  return 'other';
+}
+
+function getProviderBaseColor(providerKey) {
+  return {
+    openai: '#f97316',
+    anthropic: '#a855f7',
+    google: '#22c55e',
+    moonshot: '#06b6d4',
+    'local-qwen': '#6366f1',
+    openrouter: '#64748b',
+    other: '#94a3b8',
+  }[providerKey] || '#94a3b8';
+}
+
+function getModelVisual(model, provider) {
+  const providerKey = canonicalModelProvider(provider, model);
+  const color = getModelColor(model || providerKey || 'unknown');
+  const providerColor = getProviderBaseColor(providerKey);
+  return {
+    model,
+    provider: providerKey,
+    color,
+    providerColor,
+    softBg: `${providerColor}22`,
+    borderColor: `${providerColor}66`,
+    textColor: color,
+  };
+}
+
+function buildUnifiedDailyModel(historyRows, sourceDaily) {
+  const byDay = new Map();
+  const modelTotals = new Map();
+
+  for (const r of (historyRows || [])) {
+    const day = r.day;
+    if (!byDay.has(day)) {
+      byDay.set(day, {
+        day,
+        totalTokens: 0,
+        totalCost: 0,
+        totalCalls: 0,
+        models: {},
+        modelCosts: {},
+        modelProviders: {},
+        sources: { channel: { tokens: 0, costUsd: 0, calls: 0 }, thread: { tokens: 0, costUsd: 0, calls: 0 }, cron: { tokens: 0, costUsd: 0, calls: 0 } },
+      });
+    }
+    const d = byDay.get(day);
+    const modelKey = canonicalKey(r.provider, r.model);
+    d.totalTokens += Number(r.totalTokens || 0);
+    d.totalCost += Number(r.costUsd || 0);
+    d.totalCalls += Number(r.calls || 0);
+    d.models[modelKey] = (d.models[modelKey] || 0) + Number(r.totalTokens || 0);
+    d.modelCosts[modelKey] = (d.modelCosts[modelKey] || 0) + Number(r.costUsd || 0);
+    d.modelProviders[modelKey] = r.provider || d.modelProviders[modelKey] || 'unknown';
+    modelTotals.set(modelKey, (modelTotals.get(modelKey) || 0) + Number(r.totalTokens || 0));
+  }
+
+  for (const s of (sourceDaily || [])) {
+    const day = s.day;
+    if (!byDay.has(day)) {
+      byDay.set(day, {
+        day,
+        totalTokens: 0,
+        totalCost: 0,
+        totalCalls: 0,
+        models: {},
+        modelCosts: {},
+        modelProviders: {},
+        sources: { channel: { tokens: 0, costUsd: 0, calls: 0 }, thread: { tokens: 0, costUsd: 0, calls: 0 }, cron: { tokens: 0, costUsd: 0, calls: 0 } },
+      });
+    }
+    const d = byDay.get(day);
+    d.sources = {
+      channel: s.channel || { tokens: 0, costUsd: 0, calls: 0 },
+      thread: s.thread || { tokens: 0, costUsd: 0, calls: 0 },
+      cron: s.cron || { tokens: 0, costUsd: 0, calls: 0 },
+    };
+  }
+
+  const allDaily = Array.from(byDay.values()).sort((a, b) => a.day.localeCompare(b.day));
+  const windowModels = Array.from(modelTotals.entries())
+    .sort((a, b) => b[1] - a[1])
+    .map(([k]) => k);
+
+  return { allDaily, windowModels };
+}
+
 let _costRangeDays = 30;
 
-function _ensureCostRangeFilter() {
-  // Inject filter buttons next to the "All-Time Usage" card title if not already there
-  const subEl = document.getElementById('alltimeSub');
-  if (!subEl) return;
-  const parent = subEl.closest('.glass-card') || subEl.parentElement;
-  if (!parent) return;
+function _pstDateKey(v) {
+  if (!v) return '';
+  if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v)) return v;
+  return new Date(v).toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
+}
 
-  // Already injected?
-  if (document.getElementById('costRangeFilter')) return;
+function _getAnalyticsWindow(daysList) {
+  const all = [...(daysList || [])].sort((a, b) => _pstDateKey(a.day).localeCompare(_pstDateKey(b.day)));
+  const range = ANALYTICS_STATE.rangeDays || 7;
+  const endExclusive = Math.max(0, all.length - (ANALYTICS_STATE.windowOffset * range));
+  const start = Math.max(0, endExclusive - range);
+  return all.slice(start, endExclusive);
+}
 
-  const filterDiv = document.createElement('div');
-  filterDiv.id = 'costRangeFilter';
-  filterDiv.style.cssText = 'display:flex;gap:6px;align-items:center;margin-bottom:10px;flex-wrap:wrap';
-  ['7d', '30d', '90d', 'All'].forEach(label => {
-    const days = label === 'All' ? 9999 : parseInt(label);
-    const btn = document.createElement('button');
-    btn.textContent = label;
-    btn.dataset.days = days;
-    btn.style.cssText = `padding:3px 10px;border-radius:10px;border:1px solid var(--border);
-      background:${days === _costRangeDays ? 'var(--accent)' : 'var(--surface)'};
-      color:${days === _costRangeDays ? '#fff' : 'var(--text2)'};
-      cursor:pointer;font-size:.72rem;transition:background .15s`;
+function _getAnalyticsWindowLabel(windowDays, range) {
+  if (!windowDays || !windowDays.length) return `Last ${range} Days`;
+  return `${windowDays[0].day.slice(5)} – ${windowDays[windowDays.length - 1].day.slice(5)} · ${range}d`;
+}
+
+function _renderAnalyticsToolbar() {
+  const wrap = document.getElementById('analyticsRangeFilter');
+  const label = document.getElementById('weekLabel');
+  const prevBtn = document.getElementById('weekPrev');
+  const nextBtn = document.getElementById('weekNext');
+  if (!wrap) return;
+  wrap.querySelectorAll('button[data-days]').forEach(btn => {
+    const days = Number(btn.dataset.days || 7);
+    const active = days === ANALYTICS_STATE.rangeDays;
+    btn.style.background = active ? 'var(--accent)' : 'var(--surface)';
+    btn.style.color = active ? '#fff' : 'var(--text2)';
+    btn.style.border = '1px solid var(--border)';
+    btn.style.borderRadius = '10px';
+    btn.style.padding = '3px 10px';
     btn.onclick = () => {
-      _costRangeDays = days;
-      document.querySelectorAll('#costRangeFilter button').forEach(b => {
-        const active = Number(b.dataset.days) === _costRangeDays;
-        b.style.background = active ? 'var(--accent)' : 'var(--surface)';
-        b.style.color = active ? '#fff' : 'var(--text2)';
-      });
-      loadOpsAlltime(_costRangeDays);
+      ANALYTICS_STATE.rangeDays = days;
+      ANALYTICS_STATE.windowOffset = 0;
+      _renderAnalyticsToolbar();
+      if (ANALYTICS_STATE.allDaily?.length) initWeekNav(ANALYTICS_STATE.allDaily.map(d => ({ date: d.day, tokens: d.totalTokens, cost: d.totalCost, models: d.models, modelCosts: d.modelCosts })));
+      if (typeof loadOpsBySource === 'function') loadOpsBySource(days);
+      if (typeof renderAnalyticsDailyDetails === 'function') renderAnalyticsDailyDetails();
     };
-    filterDiv.appendChild(btn);
   });
-
-  // Insert filter bar before the first child of the card header area
-  const cardHeader = parent.querySelector('.card-header');
-  if (cardHeader) {
-    cardHeader.after(filterDiv);
-  } else {
-    parent.insertBefore(filterDiv, parent.firstChild);
+  const all = ANALYTICS_STATE.allDaily || [];
+  const range = ANALYTICS_STATE.rangeDays || 7;
+  const maxOffset = Math.max(0, Math.ceil(all.length / range) - 1);
+  if (label) {
+    const windowDays = _getAnalyticsWindow(all);
+    label.textContent = _getAnalyticsWindowLabel(windowDays, range);
   }
+  if (prevBtn) prevBtn.onclick = () => {
+    ANALYTICS_STATE.windowOffset = Math.min(maxOffset, ANALYTICS_STATE.windowOffset + 1);
+    _renderAnalyticsToolbar();
+    if (ANALYTICS_STATE.allDaily?.length) initWeekNav(ANALYTICS_STATE.allDaily.map(d => ({ date: d.day, tokens: d.totalTokens, cost: d.totalCost, models: d.models, modelCosts: d.modelCosts })));
+  };
+  if (nextBtn) nextBtn.onclick = () => {
+    ANALYTICS_STATE.windowOffset = Math.max(0, ANALYTICS_STATE.windowOffset - 1);
+    _renderAnalyticsToolbar();
+    if (ANALYTICS_STATE.allDaily?.length) initWeekNav(ANALYTICS_STATE.allDaily.map(d => ({ date: d.day, tokens: d.totalTokens, cost: d.totalCost, models: d.models, modelCosts: d.modelCosts })));
+  };
+}
+
+function _ensureCostRangeFilter() {
+  const existing = document.getElementById('costRangeFilter');
+  if (existing) existing.remove();
 }
 
 
 async function loadOpsAlltime(days) {
-  if (days === undefined) days = _costRangeDays;
-  else _costRangeDays = days;
+  if (days === undefined) days = ANALYTICS_STATE.rangeDays || _costRangeDays || 7;
+  ANALYTICS_STATE.rangeDays = days;
+  _costRangeDays = days;
 
   const modelsEl = document.getElementById('alltimeModels');
   const subEl    = document.getElementById('alltimeSub');
@@ -231,7 +363,19 @@ async function loadOpsAlltime(days) {
       }
     }
     const allDaily = Object.values(dailyMap).sort((a, b) => a.date < b.date ? -1 : 1);
-    if (allDaily.length > 0) initWeekNav(allDaily);
+    ANALYTICS_STATE.allDaily = allDaily.map(d => ({
+      day: d.date,
+      totalTokens: d.tokens,
+      totalCost: d.cost,
+      totalCalls: 0,
+      models: d.models || {},
+      modelCosts: d.modelCosts || {},
+      modelProviders: Object.fromEntries(Object.keys(d.models || {}).map(k => [k, 'unknown'])),
+      sources: { channel: { tokens: 0, costUsd: 0, calls: 0 }, thread: { tokens: 0, costUsd: 0, calls: 0 }, cron: { tokens: 0, costUsd: 0, calls: 0 } },
+    }));
+    ANALYTICS_STATE.windowModels = Array.from(new Set(allDaily.flatMap(d => Object.keys(d.models || {}))));
+    _renderAnalyticsToolbar();
+    if (allDaily.length > 0) initWeekNav(ANALYTICS_STATE.allDaily.map(d => ({ date: d.day, tokens: d.totalTokens, cost: d.totalCost, models: d.models, modelCosts: d.modelCosts })));
 
   } catch (e) {
     modelsEl.innerHTML = `<div class="empty-state"><p>${e.message}</p></div>`;
@@ -329,6 +473,123 @@ function _ensureSourceRangeFilter() {
   }
 }
 
+function renderSourceStackedChart(daily) {
+  const chartEl = document.getElementById('bySourceChart');
+  if (!chartEl) return;
+  const chartDays = _getAnalyticsWindow((daily || []).map(d => ({ day: d.day, totalTokens: d.total?.tokens || 0, totalCost: d.total?.costUsd || 0 })));
+  if (!chartDays.length) {
+    chartEl.innerHTML = '';
+    return;
+  }
+  const maxTokens = Math.max(...chartDays.map(d0 => {
+    const d = daily.find(x => x.day === d0.day) || d0;
+    return Number(d.total?.tokens || 0);
+  }), 1);
+  let chartHtml = '<div style="display:flex;align-items:flex-end;gap:8px;height:140px;padding:10px 0;">';
+  for (const d0 of chartDays) {
+    const d = daily.find(x => x.day === d0.day) || d0;
+    const ch = Number(d.channel?.tokens || 0);
+    const th = Number(d.thread?.tokens || 0);
+    const cr = Number(d.cron?.tokens || 0);
+    const totalLabel = fmtTokens(ch + th + cr);
+    const selected = ANALYTICS_STATE.selectedDay === d.day;
+    chartHtml += `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;min-width:0;cursor:pointer" onclick="ANALYTICS_STATE.selectedDay='${d.day}'; ANALYTICS_STATE.expandedDay='${d.day}'; renderSourceStackedChart(ANALYTICS_STATE.sourceDaily||[]); renderAnalyticsDailyDetails(); renderCostHeatmap();">
+      <div style="font-size:.62rem;color:var(--text1);font-variant-numeric:tabular-nums;white-space:nowrap">${totalLabel}</div>
+      <div style="width:100%;display:flex;align-items:flex-end;height:110px;border-radius:8px;overflow:hidden;background:${selected ? 'rgba(124,92,255,.10)' : 'rgba(255,255,255,.03)'};outline:${selected ? '2px solid rgba(124,92,255,.55)' : 'none'};outline-offset:2px">
+        <div style="width:100%;display:flex;flex-direction:column;justify-content:flex-end;height:100%">
+          <div style="background:#f59e0b;height:${(cr / maxTokens * 100)}%" title="Cron: ${fmtTokens(cr)}"></div>
+          <div style="background:#10b981;height:${(th / maxTokens * 100)}%" title="Thread: ${fmtTokens(th)}"></div>
+          <div style="background:#7c5cff;height:${(ch / maxTokens * 100)}%" title="Channel: ${fmtTokens(ch)}"></div>
+        </div>
+      </div>
+      <div style="font-size:.65rem;color:${selected ? 'var(--text1)' : 'var(--text2)'};white-space:nowrap">${d.day.slice(5)}</div>
+    </div>`;
+  }
+  chartHtml += '</div>';
+  chartHtml += `<div style="display:flex;gap:12px;justify-content:center;font-size:.72rem;margin-top:8px;flex-wrap:wrap">
+    <span><span style="display:inline-block;width:8px;height:8px;background:#7c5cff;border-radius:2px;margin-right:4px"></span>${tt('Channel', '频道')}</span>
+    <span><span style="display:inline-block;width:8px;height:8px;background:#10b981;border-radius:2px;margin-right:4px"></span>${tt('Thread', '线程')}</span>
+    <span><span style="display:inline-block;width:8px;height:8px;background:#f59e0b;border-radius:2px;margin-right:4px"></span>${tt('Cron', '定时')}</span>
+  </div>`;
+  chartEl.innerHTML = chartHtml;
+}
+
+function renderCostHeatmap() {
+  const el = document.getElementById('costHeatmap');
+  if (!el) return;
+  const daily = _getAnalyticsWindow(ANALYTICS_STATE.allDaily || []);
+  const modelKeys = (ANALYTICS_STATE.windowModels || []).filter(m => daily.some(d => (d.models?.[m] || d.modelCosts?.[m])));
+  if (!daily.length || !modelKeys.length) {
+    el.innerHTML = '';
+    return;
+  }
+  let maxCost = 0;
+  daily.forEach(d => modelKeys.forEach(m => { maxCost = Math.max(maxCost, Number(d.modelCosts?.[m] || 0)); }));
+  maxCost = Math.max(maxCost, 0.001);
+  let html = '<table><thead><tr><th>Model</th>' + daily.map(d => `<th style="${ANALYTICS_STATE.selectedDay===d.day ? 'color:var(--text1)' : ''}">${d.day.slice(5)}</th>`).join('') + '</tr></thead><tbody>';
+  for (const mk of modelKeys) {
+    const visual = getModelVisual(mk, daily.find(d => d.modelProviders?.[mk])?.modelProviders?.[mk]);
+    html += `<tr><td><span style="display:inline-block;width:8px;height:8px;border-radius:999px;background:${visual.color};margin-right:6px"></span>${escHtml(shortModel(mk))}</td>`;
+    for (const d of daily) {
+      const val = Number(d.modelCosts?.[mk] || 0);
+      const alpha = val > 0 ? Math.max(0.10, val / maxCost) : 0.04;
+      const selected = ANALYTICS_STATE.selectedDay === d.day;
+      html += `<td onclick="ANALYTICS_STATE.selectedDay='${d.day}'; ANALYTICS_STATE.expandedDay='${d.day}'; renderSourceStackedChart(ANALYTICS_STATE.sourceDaily||[]); renderAnalyticsDailyDetails(); renderCostHeatmap();" style="cursor:pointer;${selected ? 'outline:1px solid rgba(124,92,255,.6);border-radius:6px;' : ''}"><span class="heat-cell" style="background:rgba(124,92,255,${alpha.toFixed(2)})">${val > 0 ? '$' + val.toFixed(2) : '·'}</span></td>`;
+    }
+    html += '</tr>';
+  }
+  html += '</tbody></table>';
+  el.innerHTML = html;
+}
+
+function renderAnalyticsDailyDetails() {
+  const listEl = document.getElementById('bySourceList');
+  if (!listEl) return;
+  const daily = _getAnalyticsWindow(ANALYTICS_STATE.allDaily || []);
+  if (!daily.length) return;
+  const sourceMap = new Map((ANALYTICS_STATE.sourceDaily || []).map(d => [d.day, d]));
+  let html = '<div class="ops-channel-list">';
+  for (const d of [...daily].reverse()) {
+    const src = sourceMap.get(d.day) || {};
+    const expanded = ANALYTICS_STATE.expandedDay === d.day;
+    const selected = ANALYTICS_STATE.selectedDay === d.day;
+    const topModels = Object.entries(d.models || {}).sort((a, b) => b[1] - a[1]);
+    html += `<div class="ops-channel-card" style="display:block;padding:14px 16px;cursor:pointer;${selected ? 'outline:2px solid rgba(124,92,255,.55);background:rgba(124,92,255,.06);' : ''}" onclick="ANALYTICS_STATE.selectedDay='${d.day}'; ANALYTICS_STATE.expandedDay = ANALYTICS_STATE.expandedDay === '${d.day}' ? null : '${d.day}'; renderSourceStackedChart(ANALYTICS_STATE.sourceDaily||[]); renderAnalyticsDailyDetails(); renderCostHeatmap();">
+      <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap">
+        <div>
+          <div class="ops-ch-name">📅 ${escHtml(d.day)} ${expanded ? '▾' : '▸'}</div>
+          <div class="ops-ch-meta" style="margin-top:4px">
+            <span>💬 ${fmtTokens(src.channel?.tokens || 0)}</span>
+            <span>🧵 ${fmtTokens(src.thread?.tokens || 0)}</span>
+            <span>⚙️ ${fmtTokens(src.cron?.tokens || 0)}</span>
+          </div>
+        </div>
+        <div style="text-align:right">
+          <div class="ops-ch-tokens">${fmtTokens(d.totalTokens || 0)}</div>
+          <div class="ops-ch-cost">$${Number(d.totalCost || 0).toFixed(2)}</div>
+        </div>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px">${topModels.slice(0, 4).map(([mk, v]) => {
+        const visual = getModelVisual(mk, d.modelProviders?.[mk]);
+        return `<span class="pill" style="border-color:${visual.borderColor};color:${visual.textColor};background:${visual.softBg}"><span style="display:inline-block;width:8px;height:8px;border-radius:999px;background:${visual.color};margin-right:6px"></span>${escHtml(shortModel(mk))} ${fmtTokens(v)}</span>`;
+      }).join('')}</div>
+      ${expanded ? `<div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">${topModels.map(([mk, v]) => {
+        const cost = Number(d.modelCosts?.[mk] || 0);
+        const visual = getModelVisual(mk, d.modelProviders?.[mk]);
+        return `<div style="display:flex;justify-content:space-between;gap:12px;align-items:center;padding:6px 0">
+          <div style="display:flex;align-items:center;gap:8px;min-width:0">
+            <span style="display:inline-block;width:10px;height:10px;border-radius:999px;background:${visual.color}"></span>
+            <span style="color:${visual.textColor}">${escHtml(shortModel(mk))}</span>
+          </div>
+          <div class="ops-ch-meta"><span>${fmtTokens(v)}</span><span>$${cost.toFixed(2)}</span></div>
+        </div>`;
+      }).join('')}</div>` : ''}
+    </div>`;
+  }
+  html += '</div>';
+  listEl.innerHTML = html;
+}
+
 async function loadOpsBySource(days) {
   if (days === undefined) days = _sourceRangeDays;
   else _sourceRangeDays = days;
@@ -344,10 +605,12 @@ async function loadOpsBySource(days) {
     const data = await apiFetch(`/dashboard/usage/source/history?days=${days}`);
     const summary = data.summary || {};
     const daily = data.daily || [];
+    ANALYTICS_STATE.sourceDaily = daily;
     const total = summary.total || { tokens: 0, costUsd: 0, calls: 0 };
 
+    const windowDaily = _getAnalyticsWindow((daily || []).map(d => ({ day: d.day, totalTokens: d.total?.tokens || 0, totalCost: d.total?.costUsd || 0 })));
     if (subEl) {
-      subEl.textContent = `${fmtTokens(total.tokens || 0)} tokens · ${(total.calls || 0).toLocaleString()} calls · $${Number(total.costUsd || 0).toFixed(2)} · last ${days} days`;
+      subEl.textContent = `${fmtTokens(total.tokens || 0)} tokens · ${(total.calls || 0).toLocaleString()} calls · $${Number(total.costUsd || 0).toFixed(2)} · ${_getAnalyticsWindowLabel(windowDaily, ANALYTICS_STATE.rangeDays)}`;
     }
 
     const sourceTypes = [
@@ -376,64 +639,11 @@ async function loadOpsBySource(days) {
     }
     html += '</div>';
 
-    if (daily.length > 0) {
-      html += `<div style="margin-top:20px;">
-        <div style="font-weight:600;margin-bottom:10px;font-size:.9rem">${tt('Daily Breakdown', '每日明细')}</div>
-        <div class="ops-table-wrap">
-          <table class="ops-table">
-            <thead>
-              <tr>
-                <th>${tt('Date', '日期')}</th>
-                <th>💬 ${tt('Channel', '频道')}</th>
-                <th>🧵 ${tt('Thread', '线程')}</th>
-                <th>⚙️ ${tt('Cron', '定时')}</th>
-                <th>${tt('Total', '合计')}</th>
-              </tr>
-            </thead>
-            <tbody>`;
-      for (const d of [...daily].sort((a, b) => b.day.localeCompare(a.day)).slice(0, 14)) {
-        const ch = d.channel || { tokens: 0, costUsd: 0 };
-        const th = d.thread || { tokens: 0, costUsd: 0 };
-        const cr = d.cron || { tokens: 0, costUsd: 0 };
-        const ttRow = d.total || { tokens: 0, costUsd: 0 };
-        html += `<tr>
-          <td>${d.day.slice(5)}</td>
-          <td>${fmtTokens(ch.tokens || 0)} <span style="color:var(--text2);font-size:.7rem">$${Number(ch.costUsd || 0).toFixed(2)}</span></td>
-          <td>${fmtTokens(th.tokens || 0)} <span style="color:var(--text2);font-size:.7rem">$${Number(th.costUsd || 0).toFixed(2)}</span></td>
-          <td>${fmtTokens(cr.tokens || 0)} <span style="color:var(--text2);font-size:.7rem">$${Number(cr.costUsd || 0).toFixed(2)}</span></td>
-          <td><strong>${fmtTokens(ttRow.tokens || 0)}</strong> <span style="color:var(--text2);font-size:.7rem">$${Number(ttRow.costUsd || 0).toFixed(2)}</span></td>
-        </tr>`;
-      }
-      html += `</tbody></table></div></div>`;
-    }
-
     listEl.innerHTML = html;
 
-    if (chartEl && daily.length > 0) {
-      const chartDays = [...daily].slice(-7);
-      const maxTokens = Math.max(...chartDays.map(d => Number(d.total?.tokens || 0)), 1);
-      let chartHtml = '<div style="display:flex;align-items:flex-end;gap:8px;height:120px;padding:10px 0;">';
-      for (const d of chartDays) {
-        const ch = Number(d.channel?.tokens || 0);
-        const th = Number(d.thread?.tokens || 0);
-        const cr = Number(d.cron?.tokens || 0);
-        chartHtml += `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;">
-          <div style="width:100%;display:flex;align-items:flex-end;gap:1px;height:100px;">
-            <div style="flex:1;background:var(--accent);height:${(ch / maxTokens * 100)}%;border-radius:2px 2px 0 0;" title="Channel: ${fmtTokens(ch)}"></div>
-            <div style="flex:1;background:var(--green);height:${(th / maxTokens * 100)}%;border-radius:2px 2px 0 0;" title="Thread: ${fmtTokens(th)}"></div>
-            <div style="flex:1;background:var(--yellow);height:${(cr / maxTokens * 100)}%;border-radius:2px 2px 0 0;" title="Cron: ${fmtTokens(cr)}"></div>
-          </div>
-          <div style="font-size:.65rem;color:var(--text2);">${d.day.slice(5)}</div>
-        </div>`;
-      }
-      chartHtml += '</div>';
-      chartHtml += `<div style="display:flex;gap:12px;justify-content:center;font-size:.7rem;margin-top:8px;">
-        <span><span style="display:inline-block;width:8px;height:8px;background:var(--accent);border-radius:2px;margin-right:4px;"></span>${tt('Channel', '频道')}</span>
-        <span><span style="display:inline-block;width:8px;height:8px;background:var(--green);border-radius:2px;margin-right:4px;"></span>${tt('Thread', '线程')}</span>
-        <span><span style="display:inline-block;width:8px;height:8px;background:var(--yellow);border-radius:2px;margin-right:4px;"></span>${tt('Cron', '定时')}</span>
-      </div>`;
-      chartEl.innerHTML = chartHtml;
-    }
+    renderSourceStackedChart(daily);
+    renderAnalyticsDailyDetails();
+    renderCostHeatmap();
   } catch (e) {
     listEl.innerHTML = `<div class="empty-state"><h3>Unable to load</h3><p>${e.message}</p></div>`;
   }

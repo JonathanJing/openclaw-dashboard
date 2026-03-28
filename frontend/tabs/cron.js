@@ -287,14 +287,17 @@ async function loadCronCosts() {
     ]);
 
     const s = summaryData.summary || {};
-    const jobs = summaryData.rows || [];
-    const trendRows = trendData.rows || [];
-    const todayKey = new Date().toISOString().slice(0, 10);
-    const today = (trendRows.find(r => r.day === todayKey) || { totalTokens: 0, costUsd: 0, calls: 0 });
+    const jobs = summaryData.jobs || summaryData.rows || [];
+    const trendRows = trendData.dailyTrend || trendData.rows || [];
+    const totalRuns = Number(s.totalRuns || s.calls || 0);
+    const totalCronCost = Number(s.totalCronCost || s.costUsd || 0);
+    const totalCronTokens = Number(s.totalCronTokens || s.totalTokens || 0);
+    const todayCost = Number(s.today?.cronCost || 0);
+    const todayTokens = Number(s.today?.cronTokens || 0);
 
     summaryEl.textContent = tt(
-      `${s.calls || 0} calls · total cron ${fmtUsd(s.costUsd || 0, 2)} (${fmtTokens(s.totalTokens || 0)} tokens) · today ${fmtUsd(today.costUsd, 2)} (${fmtTokens(today.totalTokens)} tokens) · 7 days`,
-      `累计 ${s.calls || 0} 次调用 · 总 cron 成本 ${fmtUsd(s.costUsd || 0, 2)}（${fmtTokens(s.totalTokens || 0)} tokens） · 今日 ${fmtUsd(today.costUsd, 2)}（${fmtTokens(today.totalTokens)}） · 7 天`
+      `${totalRuns} calls · total cron ${fmtUsd(totalCronCost, 2)} (${fmtTokens(totalCronTokens)} tokens) · today ${fmtUsd(todayCost, 2)} (${fmtTokens(todayTokens)} tokens) · 7 days`,
+      `累计 ${totalRuns} 次调用 · 总 cron 成本 ${fmtUsd(totalCronCost, 2)}（${fmtTokens(totalCronTokens)} tokens） · 今日 ${fmtUsd(todayCost, 2)}（${fmtTokens(todayTokens)}） · 7 天`
     );
 
     const modelAgg = new Map();
@@ -359,7 +362,7 @@ async function loadCronCosts() {
     html += '</tbody></table>';
     contentEl.innerHTML = html;
 
-    const trend = [...trendRows].map(r => ({ date: r.day, cronCost: Number(r.costUsd || 0), cronTokens: Number(r.totalTokens || 0) })).sort((a, b) => a.date < b.date ? -1 : 1);
+    const trend = [...trendRows].map(r => ({ date: r.day || r.date, cronCost: Number(r.cronCost ?? r.costUsd ?? 0), cronTokens: Number(r.cronTokens ?? r.totalTokens ?? 0) })).filter(r => r.date).sort((a, b) => a.date < b.date ? -1 : 1);
     if (canvas && trend.length > 1) {
       const ctx = canvas.getContext('2d');
       const W = canvas.parentElement.clientWidth - 32;
