@@ -126,11 +126,46 @@
   <!-- Tab Bar -->
   <div class="tab-bar">
     <button class="tab-btn active" data-tab="overview"><span id="tabOverviewLabel">Overview</span></button>
+    <button class="tab-btn" data-tab="copilot"><span id="tabCopilotLabel">Copilot</span></button>
     <button class="tab-btn" data-tab="ops"><span id="tabCostLabel">Cost</span></button>
     <button class="tab-btn" data-tab="tasks"><span id="tabCronLabel">Cron</span></button>
     <button class="tab-btn" data-tab="health"><span id="tabHealthLabel">Health</span></button>
     <button class="tab-btn" data-tab="spark"><span id="tabSparkLabel">Spark</span></button>
     <button class="tab-btn" data-tab="config"><span id="tabConfigLabel">Config</span></button>
+  </div>
+
+  <!-- ═══ Copilot Panel ═══ -->
+  <div class="tab-panel" id="panel-copilot">
+    <div style="display: flex; gap: 16px; height: 75vh;">
+      <div style="flex: 3; background: #111827; border-radius: 8px; border: 1px solid #334155; display: flex; flex-direction: column;">
+        <div style="padding: 12px; border-bottom: 1px solid #334155; font-weight: 600; display: flex; justify-content: space-between; align-items: center;">
+          <span>🗣️ Live Transcript</span>
+          <div style="display: flex; gap: 8px; align-items: center;">
+            <div id="audioMeter" style="width: 50px; height: 10px; background: #374151; border-radius: 5px; overflow: hidden; display: none;">
+              <div id="audioMeterFill" style="width: 0%; height: 100%; background: #10b981; transition: width 0.1s;"></div>
+            </div>
+            <span id="copilotStatus" style="font-size: 0.85rem; color: #9ca3af;">⏹️ Stopped</span>
+            <button id="btnStartCopilot" style="padding: 4px 12px; background: #10b981; color: white; border: none; border-radius: 4px; cursor: pointer;">Start</button>
+            <button id="btnStopCopilot" style="padding: 4px 12px; background: #ef4444; color: white; border: none; border-radius: 4px; cursor: pointer;" disabled>Stop</button>
+          </div>
+        </div>
+        <div id="copilotTranscript" style="flex: 1; padding: 12px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px;"></div>
+        <div style="height: 120px; background: #0b1220; border-top: 1px solid #334155; display: flex; flex-direction: column;">
+          <div style="padding: 4px 12px; font-size: 0.75rem; color: #9ca3af; border-bottom: 1px solid #1f2937;">🐛 WebSocket Debug Log</div>
+          <div id="copilotDebugLog" style="flex: 1; padding: 8px 12px; overflow-y: auto; font-family: monospace; font-size: 0.75rem; color: #d1d5db; display: flex; flex-direction: column; gap: 2px;"></div>
+        </div>
+      </div>
+      <div style="flex: 2; display: flex; flex-direction: column; gap: 16px;">
+        <div style="flex: 1; background: #111827; border-radius: 8px; border: 1px solid #334155; display: flex; flex-direction: column;">
+          <div style="padding: 12px; border-bottom: 1px solid #334155; font-weight: 600; color: #facc15;">⚠️ PM Insights</div>
+          <div id="copilotInsights" style="flex: 1; padding: 12px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px;"></div>
+        </div>
+        <div style="flex: 1; background: #111827; border-radius: 8px; border: 1px solid #334155; display: flex; flex-direction: column;">
+          <div style="padding: 12px; border-bottom: 1px solid #334155; font-weight: 600; color: #60a5fa;">📚 RAG Knowledge</div>
+          <div id="copilotRagHits" style="flex: 1; padding: 12px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; font-size: 0.9em;"></div>
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- ═══ Overview Panel ═══ -->
@@ -439,6 +474,7 @@
 <script src="/frontend/tabs/cron.js?v=20260327ai"></script>
 <script src="/frontend/tabs/health.js?v=20260327ai"></script>
 <script src="/frontend/tabs/spark-monitor.js?v=20260327ai"></script>
+<script src="/frontend/tabs/copilot.js?v=20260401ai"></script>
 <script src="/frontend/tabs/config.js?v=20260327ai"></script>
 <script src="/frontend/shared/boot.js?v=20260327ai"></script>
 </body>

@@ -86,6 +86,7 @@ const providers = [
   require('./providers/ledger'),
   require('./providers/cron'),
   require('./providers/spark'),
+  require('./providers/copilot'),
   require('./providers/watchdog'),
   require('./providers/system'),
   require('./providers/config'),
@@ -328,4 +329,28 @@ server.on('error', (e) => {
 server.listen(cfg.PORT, cfg.HOST, () => {
   console.log(`[server] Dashboard v2 listening on ${cfg.HOST}:${cfg.PORT}`);
   console.log(`[server] Routes: ${router.list().length} | Providers: ${providers.length}`);
+});
+
+const { WebSocketServer } = require('ws');
+const wss = new WebSocketServer({ noServer: true });
+
+const copilot = require('./providers/copilot');
+
+wss.on('connection', (ws, req) => {
+  const parsed = url.parse(req.url, true);
+  if (parsed.pathname === '/api/copilot/ws') {
+    copilot.handleWsConnection(ws, req);
+  }
+});
+
+server.on('upgrade', (request, socket, head) => {
+  const parsed = url.parse(request.url, true);
+  if (parsed.pathname === '/api/copilot/ws') {
+    // Ideally check auth token here, but ignoring for PoC
+    wss.handleUpgrade(request, socket, head, (ws) => {
+      wss.emit('connection', ws, request);
+    });
+  } else {
+    socket.destroy();
+  }
 });
