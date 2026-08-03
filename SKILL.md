@@ -35,11 +35,11 @@ metadata:
 
 The published screenshots use deterministic `?preview=1` sample data, never local host or workspace data.
 
-![OpenClaw Dashboard overview](screenshots/overview-v2-light.png)
+![OpenClaw Dashboard overview](https://raw.githubusercontent.com/JonathanJing/openclaw-dashboard/71604d6831bb24b9e8340bf0d1153a9545c5a038/screenshots/overview-v2-light.png)
 
-![OpenClaw Dashboard usage analytics](screenshots/usage-v2-dark.png)
+![OpenClaw Dashboard usage analytics](https://raw.githubusercontent.com/JonathanJing/openclaw-dashboard/71604d6831bb24b9e8340bf0d1153a9545c5a038/screenshots/usage-v2-dark.png)
 
-<img src="screenshots/mobile-v2-dark.png" alt="OpenClaw Dashboard mobile layout" width="390">
+<img src="https://raw.githubusercontent.com/JonathanJing/openclaw-dashboard/71604d6831bb24b9e8340bf0d1153a9545c5a038/screenshots/mobile-v2-dark.png" alt="OpenClaw Dashboard mobile layout" width="390">
 
 ## 🛠️ Installation
 
