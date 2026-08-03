@@ -30,6 +30,7 @@
 - Upgraded `ws` to `8.21.1` to resolve the published memory-disclosure and fragmented-message memory-exhaustion advisories.
 - Added a deterministic `?preview=1` mode for public screenshots so published images never expose local hostnames, sessions, or workspace details.
 - Added verified desktop light, desktop dark, and mobile dark screenshots for the GitHub and ClawHub pages.
+- Added a ClawHub-specific ignore manifest and `env.example.txt` compatibility mirror so the registry package excludes the old monolith while retaining a usable environment template.
 
 ## [1.7.6] - 2026-03-04
 

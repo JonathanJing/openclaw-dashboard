@@ -29,7 +29,7 @@ These screenshots use the built-in `?preview=1` sample-data mode. No local hostn
 ```bash
 openclaw skills install @jonathanjing/openclaw-dashboard
 cd ~/.openclaw/workspace/skills/openclaw-dashboard
-cp env.example .env
+cp env.example.txt .env
 ./start.sh
 ```
 
@@ -101,7 +101,7 @@ Runtime task data stays outside the skill directory:
 | `OPENCLAW_CONTROL_UI_URL` | `http://127.0.0.1:18789/` | Runtime Control UI link |
 | `OPENCLAW_ENABLE_CONFIG_ENDPOINT` | `0` | Expose config details |
 
-See `env.example` for the complete list.
+See `env.example.txt` for the complete list. `env.example` is retained as a compatibility mirror for Git/npm workflows.
 
 ## Meeting Copilot
 

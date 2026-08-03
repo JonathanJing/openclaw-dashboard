@@ -186,4 +186,5 @@ If found: replace with env-based values or placeholders, and mention what was sa
 - `frontend/shared/api.js` — auth, fetch, shared renderers
 - `backend/lib/config.js` — path and env configuration
 - `README.md` — quick start and operator docs
-- `env.example` — public-safe environment template
+- `env.example.txt` — ClawHub-compatible public-safe environment template
+- `env.example` — compatibility mirror for Git/npm workflows

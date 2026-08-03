@@ -95,6 +95,8 @@ async function main() {
   const packageJson = JSON.parse(read('package.json'));
   const start = read('start.sh');
   const startExample = read('start.sh.example');
+  const envExample = read('env.example');
+  const envExampleText = read('env.example.txt');
   const browserBundle = [
     'frontend/shared/api.js',
     'frontend/shared/ui-utils.js',
@@ -141,6 +143,7 @@ async function main() {
   assert.match(start, /backend\/server\.js/);
   assert.doesNotMatch(start, /api-server\.js/);
   assert.equal(start, startExample);
+  assert.equal(envExample, envExampleText);
   assert.ok((fs.statSync(path.join(root, 'start.sh')).mode & 0o111) !== 0, 'start.sh must be executable');
   assert.doesNotMatch(gitignore, /^start\.sh$/m);
   assert.match(gitignore, /^scripts\/\*$/m);
@@ -148,6 +151,7 @@ async function main() {
   assert.equal(packageJson.scripts.test, 'node scripts/test-dashboard.js');
   assert.ok(packageJson.files.includes('start.sh'));
   assert.ok(packageJson.files.includes('scripts/test-dashboard.js'));
+  assert.ok(packageJson.files.includes('env.example.txt'));
   assert.ok(packageJson.files.includes('screenshots/overview-v2-light.png'));
   assert.ok(packageJson.files.includes('screenshots/usage-v2-dark.png'));
   assert.ok(packageJson.files.includes('screenshots/mobile-v2-dark.png'));
