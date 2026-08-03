@@ -1,7 +1,6 @@
 ---
 name: openclaw-dashboard
-description: Real-time operations dashboard for OpenClaw. Monitors sessions, costs, cron jobs, and gateway health. Use when installing the dashboard, starting the server, adding features, updating backend routes, or changing frontend tabs. Includes language toggle (EN/中文), watchdog 24h uptime bar, and cost analysis.
-version: "2.0.0"
+description: OpenClaw operations dashboard for sessions, usage and cost, cron runs, gateway health, DGX Spark work, Local API Hub, and opt-in meeting Copilot. Use when installing, operating, auditing, or extending the dashboard backend, frontend tabs, security model, or OpenClaw-aligned design.
 metadata:
   {
     "openclaw":
@@ -10,32 +9,37 @@ metadata:
         "requires": { "bins": ["node", "openclaw"] },
         "optionalRequires":
           {
-            "config": ["gateway.authToken"],
+            "config": ["gateway.auth.token"],
             "env": ["OPENCLAW_AUTH_TOKEN"],
           },
         "optionalEnv":
           [
-            "OPENCLAW_HOOK_TOKEN",
-            "OPENCLAW_LOAD_KEYS_ENV",
-            "OPENCLAW_KEYS_ENV_PATH",
-            "OPENCLAW_ENABLE_PROVIDER_AUDIT",
+            "DASHBOARD_CORS_ORIGINS",
+            "DASHBOARD_COOKIE_SECURE",
+            "OPENCLAW_CONTROL_UI_URL",
             "OPENCLAW_ENABLE_CONFIG_ENDPOINT",
-            "OPENCLAW_ENABLE_SESSION_PATCH",
-            "OPENCLAW_ALLOW_ATTACHMENT_FILEPATH_COPY",
-            "OPENCLAW_ALLOW_ATTACHMENT_COPY_FROM_TMP",
-            "OPENCLAW_ALLOW_ATTACHMENT_COPY_FROM_WORKSPACE",
-            "OPENCLAW_ALLOW_ATTACHMENT_COPY_FROM_OPENCLAW_HOME",
-            "OPENCLAW_ENABLE_SYSTEMCTL_RESTART",
-            "OPENCLAW_ENABLE_MUTATING_OPS",
-            "NOTION_API_KEY",
-            "OPENAI_ADMIN_KEY",
-            "ANTHROPIC_ADMIN_KEY",
+            "OPENCLAW_ENABLE_COPILOT",
+            "OPENCLAW_COPILOT_MODEL",
+            "OPENCLAW_COPILOT_REDIS_URL",
+            "ALIBABA_CLOUD_API_KEY",
+            "LOCAL_API_HUB_HOST",
+            "LOCAL_API_HUB_PORT",
           ],
       },
   }
 ---
 
 # OpenClaw Dashboard Skill
+
+## Preview
+
+The published screenshots use deterministic `?preview=1` sample data, never local host or workspace data.
+
+![OpenClaw Dashboard overview](screenshots/overview-v2-light.png)
+
+![OpenClaw Dashboard usage analytics](screenshots/usage-v2-dark.png)
+
+<img src="screenshots/mobile-v2-dark.png" alt="OpenClaw Dashboard mobile layout" width="390">
 
 ## 🛠️ Installation
 
@@ -44,7 +48,7 @@ Tell OpenClaw: *"Install the openclaw-dashboard skill."* The agent will handle t
 
 ### 2. Manual Installation (CLI)
 ```bash
-clawhub install openclaw-dashboard
+openclaw skills install @jonathanjing/openclaw-dashboard
 ```
 
 ## Mission
@@ -72,10 +76,13 @@ The dashboard uses a **modular backend + tab-based frontend** architecture.
 | `watchdog.js` | `/ops/watchdog` | Watchdog state + timeline |
 | `spark.js` | `/ops/dgx-status`, `/api/spark/*` | DGX Spark inference node |
 | `system.js` | `/ops/system` | Host metrics (CPU/RAM/disk) |
+| `local-api-hub.js` | `/ops/local-api-hub/*` | Unified local control-plane status |
+| `spark-tasks.js` | `/api/spark/tasks/*` | DGX task history and PR Hunter output |
+| `copilot.js` | `/api/copilot/status`, `/api/copilot/ws` | Opt-in realtime transcript/RAG/insights |
 | `ground-truth.js` | `/api/ground-truth/*`, `/ops/models` | Model registry + colors |
-| `tasks.js` | `/tasks`, `/tasks/:id` | Task CRUD + notes |
-| `config.js` | `/ops/config`, `/files`, `/skills` | Config viewer + file editor |
-| `ops-legacy.js` | `/ops/*` (remaining) | Audit, channels, model switch, restart |
+| `tasks.js` | `/tasks`, `/tasks/:id`, `/logs` | Read-only task/history views |
+| `config.js` | `/ops/config`, `/files`, `/skills` | Read-only config, file, and skill views |
+| `ops-legacy.js` | `/ops/channels`, `/ops/alltime`, `/ops/audit`, `/memory` | Read-only compatibility views |
 
 ### Frontend tab map
 | Tab | File | Key functions |
@@ -84,6 +91,8 @@ The dashboard uses a **modular backend + tab-based frontend** architecture.
 | Cost | `tabs/cost.js` | `loadOpsChannels()`, `loadOpsAlltime()` |
 | Cron | `tabs/cron.js` | `loadCronEnhanced()`, `loadCronCosts()`, `loadCronRuns()` |
 | Health | `tabs/health.js` | `renderAgentMonitor()`, `loadSystemInfo()`, `renderWatchdogStatus()` |
+| Spark | `tabs/spark-monitor.js` | `loadSparkMonitor()`, task history, GPU activity |
+| Copilot | `tabs/copilot.js` | capability check, microphone stream, transcript/RAG/insights |
 | Config | `tabs/config.js` | `loadConfig()`, `loadSkills()`, `loadFileList()` |
 | Shared | `shared/api.js` | Auth, `apiFetch()`, watchdog renderers, toast, markdown |
 | Shared | `shared/ui-utils.js` | `timeSince()`, task state |
@@ -106,6 +115,23 @@ Use this skill for:
 4. **`/ops/models` returns `{ registry: {...object...}, colors, displayNames, models }`** — `registry` must be an object keyed by alias, not an array.
 5. **`/ops/cron-costs` returns `{ summary, jobs, dailyTrend, review, rows }`** — all five keys required for Cron tab to render correctly.
 6. **`hideStale` query param** on `/ops/sessions` filters sessions with no activity for 7+ days.
+7. **Frontend API calls are same-origin**. Never reintroduce a hardcoded dashboard/gateway port list.
+8. **Copilot is opt-in**. Require `OPENCLAW_ENABLE_COPILOT=1`, an API key, authenticated WebSocket upgrade, and safe dependency failure states.
+9. **Parse request URLs against a fixed internal base**. Never build a URL from the request `Host` header.
+10. **Treat query-token login as a compatibility handoff only**. Set the cookie and redirect before serving HTML; never accept query tokens on API routes.
+11. **Parse cookies per fragment**. Split on the first `=`, catch percent-decoding errors, and encode cookie values when setting them.
+12. **Keep the shipped dashboard read-only**. Do not add task/file mutations, restart/doctor actions, model changes, package updates, backup/restore, or legacy proxying.
+13. **Scope Copilot Redis events by meeting ID**. Permit unscoped legacy channels only for the first active meeting.
+14. **Track the launcher and test harness**. Keep `start.sh` and `scripts/test-dashboard.js` in both Git and `package.json#files`.
+15. **Use theme tokens in canvas rendering**. Never hardcode light-only chart text or borders.
+
+## OpenClaw design alignment
+
+- Reuse the current Control UI tokens: Inter/system typography, layered neutral surfaces, thin borders, 10–14px radii, red primary accent, semantic green/yellow/red/blue.
+- Keep the desktop shell as left navigation + sticky topbar; use bottom navigation on narrow screens.
+- Prefer flat cards and strong information hierarchy over gradients, glow, or decorative motion.
+- Support dark and light modes, visible focus states, reduced motion, and responsive layouts.
+- Keep IDs and `data-tab` contracts stable when changing navigation or visual structure.
 
 ## Public-safety guardrails
 
@@ -125,15 +151,14 @@ The bundled server can access local OpenClaw files for dashboard views:
 - Task attachments in `~/.openclaw/dashboard/attachments/`
 
 High-sensitivity features are disabled by default and require explicit env flags:
-- `OPENCLAW_LOAD_KEYS_ENV=1` to load `keys.env`
-- `OPENCLAW_ENABLE_PROVIDER_AUDIT=1` to call OpenAI/Anthropic org APIs
 - `OPENCLAW_ENABLE_CONFIG_ENDPOINT=1` to expose `/ops/config`
-- `OPENCLAW_ALLOW_ATTACHMENT_FILEPATH_COPY=1` for absolute-path attachment copy
-- `OPENCLAW_ENABLE_MUTATING_OPS=1` to enable model-switch, backup, update ops
+- `OPENCLAW_ENABLE_COPILOT=1` plus `ALIBABA_CLOUD_API_KEY` to enable meeting Copilot
 
 Network security:
 - CORS restricted to loopback by default.
 - Auth via HttpOnly cookie (`ds`) or `Authorization: Bearer` header.
+- Set `DASHBOARD_COOKIE_SECURE=1` only when the dashboard origin uses HTTPS.
+- Set `OPENCLAW_CONTROL_UI_URL` to the complete runtime URL when Gateway TLS or `gateway.controlUi.basePath` is enabled.
 - Set `DASHBOARD_CORS_ORIGINS` (comma-separated) for external origins.
 
 ## Default implementation workflow
@@ -142,7 +167,8 @@ Network security:
 2. Implement the smallest change that preserves behavior.
 3. Check: does any other tab/shared file also define the same function? If yes, deduplicate.
 4. Run a sensitive-string scan before finalizing.
-5. Ensure docs match the actual runtime defaults.
+5. Run `npm test`, `git diff --check`, and `npm pack --dry-run --json`.
+6. Ensure docs match the actual runtime defaults.
 
 ## Sensitive-data checks
 

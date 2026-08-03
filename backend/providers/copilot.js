@@ -1,182 +1,227 @@
 'use strict';
+
+const crypto = require('crypto');
 const WebSocket = require('ws');
 const redis = require('redis');
-const fs = require('fs');
-const path = require('path');
-
-// Read API Key
-let alibabaApiKey = process.env.ALIBABA_CLOUD_API_KEY;
-if (!alibabaApiKey) {
-  try {
-    const envFile = fs.readFileSync(path.join(process.env.HOME, '.openclaw/.env'), 'utf8');
-    const match = envFile.match(/ALIBABA_CLOUD_API_KEY=(.+)/);
-    if (match) alibabaApiKey = match[1].trim();
-  } catch (e) {}
-}
+const cfg = require('../lib/config');
+const helpers = require('../lib/http-helpers');
 
 let redisPubClient = null;
+let redisPubConnectPromise = null;
+const activeMeetingIds = new Set();
+let legacyMeetingId = null;
+
+function isConfigured() {
+  return cfg.ENABLE_COPILOT && Boolean(cfg.COPILOT_API_KEY);
+}
 
 async function getRedisPubClient() {
-  if (!redisPubClient) {
-    redisPubClient = redis.createClient({ url: 'redis://127.0.0.1:6379' });
-    redisPubClient.on('error', err => console.error('[copilot] Redis pub error:', err));
-    await redisPubClient.connect();
+  if (redisPubClient?.isReady) return redisPubClient;
+  if (!redisPubConnectPromise) {
+    const client = redis.createClient({ url: cfg.COPILOT_REDIS_URL });
+    client.on('error', (err) => console.error('[copilot] Redis pub error:', err.message));
+    redisPubClient = client;
+    redisPubConnectPromise = client.connect()
+      .then(() => client)
+      .catch((err) => {
+        if (redisPubClient === client) redisPubClient = null;
+        throw err;
+      })
+      .finally(() => {
+        redisPubConnectPromise = null;
+      });
   }
-  return redisPubClient;
+  return redisPubConnectPromise;
 }
 
-function generateId() {
-  return 'evt_' + Math.random().toString(36).substr(2, 9);
+function generateId(prefix = 'evt') {
+  return `${prefix}_${crypto.randomUUID()}`;
 }
 
-async function handleWsConnection(clientWs, req) {
-  console.log('[copilot] Client connected via WebSocket');
+function meetingChannel(meetingId, eventName) {
+  return `meeting.${meetingId}.${eventName}`;
+}
 
-  if (!alibabaApiKey) {
-    clientWs.send(JSON.stringify({ type: 'error', message: 'ALIBABA_CLOUD_API_KEY not found in env' }));
-    clientWs.close();
+function safeJsonParse(value) {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
+function sendJson(ws, data) {
+  if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(data));
+}
+
+function publishJson(client, channel, data) {
+  void client.publish(channel, JSON.stringify(data)).catch((err) => {
+    console.error(`[copilot] Redis publish failed for ${channel}:`, err.message);
+  });
+}
+
+async function handleWsConnection(clientWs) {
+  if (!isConfigured()) {
+    sendJson(clientWs, {
+      type: 'error',
+      message: 'Copilot is disabled or missing ALIBABA_CLOUD_API_KEY.',
+    });
+    clientWs.close(1013, 'Copilot unavailable');
     return;
   }
 
-  const pub = await getRedisPubClient();
+  let dashWs = null;
+  let sub = null;
+  let cleanupStarted = false;
+  const meetingId = generateId('meeting');
+  activeMeetingIds.add(meetingId);
+  if (!legacyMeetingId) legacyMeetingId = meetingId;
+  const legacyCompat = legacyMeetingId === meetingId;
 
-  // 1. Connect to DashScope WebSocket
-  const dashUrl = 'wss://dashscope-intl.aliyuncs.com/api-ws/v1/realtime?model=qwen3-omni-flash-2025-12-01';
-  const dashWs = new WebSocket(dashUrl, {
-    headers: {
-      'Authorization': `Bearer ${alibabaApiKey}`
-    }
-  });
-
-  // 2. Setup Redis Subscriber for RAG and Insights
-  const sub = redis.createClient({ url: 'redis://127.0.0.1:6379' });
-  sub.on('error', err => console.error('[copilot] Redis sub error:', err));
-  await sub.connect();
-
-  await sub.subscribe('meeting.rag_hits', (message) => {
-    if (clientWs.readyState === WebSocket.OPEN) {
-      clientWs.send(JSON.stringify({ type: 'rag_hits', data: JSON.parse(message) }));
-    }
-  });
-
-  await sub.subscribe('meeting.insights', (message) => {
-    if (clientWs.readyState === WebSocket.OPEN) {
-      clientWs.send(JSON.stringify({ type: 'insight', data: JSON.parse(message) }));
-    }
-  });
-
-  dashWs.on('open', () => {
-    console.log('[copilot] Connected to DashScope');
-    clientWs.send(JSON.stringify({ type: 'system', message: 'Connected to Omni Realtime' }));
-    
-    // Configure session
-    const sessionUpdate = {
-      event_id: generateId(),
-      type: 'session.update',
-      session: {
-        modalities: ['text'], // Only request text back, no audio playing from server
-        voice: 'Cherry',
-        input_audio_format: 'pcm',
-        output_audio_format: 'pcm',
-        instructions: '你是一个专业的会议速记员，只需安静地把听到的对话逐字记录下来。请务必根据音色或语气区分出不同的说话人，并用“发言人A：”、“发言人B：”等格式输出。除转写外，绝对不要发表你自己的意见、不要回答问题、不要总结。',
-        turn_detection: {
-          type: 'server_vad',
-          threshold: 0.5,
-          silence_duration_ms: 800
-        }
-      }
-    };
-    dashWs.send(JSON.stringify(sessionUpdate));
-  });
-
-  dashWs.on('message', (data) => {
+  const cleanup = async () => {
+    if (cleanupStarted) return;
+    cleanupStarted = true;
+    activeMeetingIds.delete(meetingId);
+    if (activeMeetingIds.size === 0) legacyMeetingId = null;
     try {
-      const resp = JSON.parse(data);
-      const evtType = resp.type;
-
-      // 1. Forward raw event type to frontend for Debug Log
-      if (clientWs.readyState === WebSocket.OPEN) {
-        clientWs.send(JSON.stringify({ type: 'debug', event: evtType }));
+      if (dashWs && dashWs.readyState !== WebSocket.CLOSED) dashWs.terminate();
+    } catch {
+      // Best-effort provider cleanup.
+    }
+    try {
+      if (sub?.isOpen) {
+        await sub.unsubscribe();
+        await sub.quit();
       }
+    } catch {
+      // Best-effort Redis cleanup.
+    }
+  };
+
+  clientWs.once('close', () => { void cleanup(); });
+  clientWs.once('error', () => { void cleanup(); });
+  sendJson(clientWs, { type: 'session', meetingId, legacyCompat });
+
+  try {
+    const pub = await getRedisPubClient();
+    if (clientWs.readyState !== WebSocket.OPEN) throw new Error('Client disconnected during setup');
+    const dashUrl = `wss://dashscope-intl.aliyuncs.com/api-ws/v1/realtime?model=${encodeURIComponent(cfg.COPILOT_MODEL)}`;
+    dashWs = new WebSocket(dashUrl, {
+      headers: { Authorization: `Bearer ${cfg.COPILOT_API_KEY}` },
+    });
+
+    sub = redis.createClient({ url: cfg.COPILOT_REDIS_URL });
+    sub.on('error', (err) => console.error('[copilot] Redis sub error:', err.message));
+    await sub.connect();
+
+    const forwardRagHits = (message) => {
+      const data = safeJsonParse(message);
+      if (data) sendJson(clientWs, { type: 'rag_hits', data });
+    };
+    const forwardInsight = (message) => {
+      const data = safeJsonParse(message);
+      if (data) sendJson(clientWs, { type: 'insight', data });
+    };
+    await sub.subscribe(meetingChannel(meetingId, 'rag_hits'), forwardRagHits);
+    await sub.subscribe(meetingChannel(meetingId, 'insights'), forwardInsight);
+    if (legacyCompat) {
+      // Preserve the existing single-meeting worker contract without allowing
+      // additional concurrent meetings to share unscoped events.
+      await sub.subscribe('meeting.rag_hits', forwardRagHits);
+      await sub.subscribe('meeting.insights', forwardInsight);
+    }
+
+    dashWs.on('open', () => {
+      sendJson(clientWs, {
+        type: 'system',
+        message: legacyCompat
+          ? 'Connected to Omni Realtime'
+          : 'Connected with isolated meeting channels',
+      });
+      dashWs.send(JSON.stringify({
+        event_id: generateId(),
+        type: 'session.update',
+        session: {
+          modalities: ['text'],
+          voice: 'Cherry',
+          input_audio_format: 'pcm',
+          output_audio_format: 'pcm',
+          instructions: '你是一个专业的会议速记员，只需安静地把听到的对话逐字记录下来。请务必根据音色或语气区分出不同的说话人，并用“发言人A：”、“发言人B：”等格式输出。除转写外，不要发表意见、回答问题或总结。',
+          turn_detection: {
+            type: 'server_vad',
+            threshold: 0.5,
+            silence_duration_ms: 800,
+          },
+        },
+      }));
+    });
+
+    dashWs.on('message', (data) => {
+      const resp = safeJsonParse(data);
+      if (!resp) return;
+      const evtType = resp.type;
+      sendJson(clientWs, { type: 'debug', event: evtType });
 
       if (evtType === 'error') {
-        console.error('[copilot] DashScope error:', resp);
-        if (clientWs.readyState === WebSocket.OPEN) {
-          clientWs.send(JSON.stringify({ type: 'error', message: resp.error?.message || JSON.stringify(resp) }));
-        }
+        sendJson(clientWs, { type: 'error', message: resp.error?.message || 'DashScope error' });
       } else if (evtType === 'input_audio_buffer.speech_started') {
-        if (clientWs.readyState === WebSocket.OPEN) {
-          clientWs.send(JSON.stringify({ type: 'state', message: '🎙️ VAD Detected Speech' }));
-        }
+        sendJson(clientWs, { type: 'state', message: 'Speech detected' });
       } else if (evtType === 'input_audio_buffer.speech_stopped') {
-        if (clientWs.readyState === WebSocket.OPEN) {
-          clientWs.send(JSON.stringify({ type: 'state', message: '⏳ Processing Speech...' }));
-        }
+        sendJson(clientWs, { type: 'state', message: 'Processing speech…' });
       } else if (evtType === 'conversation.item.input_audio_transcription.completed') {
         const text = resp.transcript?.trim();
-        if (text) {
-          const payload = { speaker: 'user', text, timestamp: Date.now() / 1000 };
-          pub.publish('meeting.transcript', JSON.stringify(payload));
-          if (clientWs.readyState === WebSocket.OPEN) {
-            clientWs.send(JSON.stringify({ type: 'transcript', data: payload }));
-          }
-        }
+        if (!text) return;
+        const payload = { meetingId, speaker: 'user', text, timestamp: Date.now() / 1000 };
+        publishJson(pub, meetingChannel(meetingId, 'transcript'), payload);
+        if (legacyCompat) publishJson(pub, 'meeting.transcript', payload);
+        sendJson(clientWs, { type: 'transcript', data: payload });
       } else if (evtType === 'response.audio_transcript.done' || evtType === 'response.text.done') {
         const text = (resp.transcript || resp.text || '').trim();
-        if (text) {
-          // Since the prompt tells Omni to act as a diarization transcriber, we label it as 'omni_diarized'
-          // We can parse '发言人A: ...' if needed, but for now we just pass it to transcript
-          const payload = { speaker: 'omni', text, timestamp: Date.now() / 1000 };
-          pub.publish('meeting.transcript', JSON.stringify(payload));
-          if (clientWs.readyState === WebSocket.OPEN) {
-            clientWs.send(JSON.stringify({ type: 'transcript', data: payload }));
-          }
-        }
+        if (!text) return;
+        const payload = { meetingId, speaker: 'omni', text, timestamp: Date.now() / 1000 };
+        publishJson(pub, meetingChannel(meetingId, 'transcript'), payload);
+        if (legacyCompat) publishJson(pub, 'meeting.transcript', payload);
+        sendJson(clientWs, { type: 'transcript', data: payload });
       }
-    } catch (e) {
-      console.error('[copilot] DashScope parse error:', e);
-    }
-  });
+    });
 
-  dashWs.on('close', () => {
-    console.log('[copilot] DashScope closed');
-    if (clientWs.readyState === WebSocket.OPEN) {
-      clientWs.send(JSON.stringify({ type: 'system', message: 'DashScope disconnected' }));
-    }
-  });
-
-  dashWs.on('error', (e) => console.error('[copilot] DashScope WS error', e));
-
-  // Handle incoming from Client (Browser)
-  clientWs.on('message', (message, isBinary) => {
-    if (isBinary) {
-      // Audio chunk (PCM 16kHz 16bit)
-      if (dashWs.readyState === WebSocket.OPEN) {
-        const base64Audio = message.toString('base64');
-        const payload = {
-          event_id: generateId(),
-          type: 'input_audio_buffer.append',
-          audio: base64Audio
-        };
-        dashWs.send(JSON.stringify(payload));
+    dashWs.on('close', () => {
+      sendJson(clientWs, { type: 'system', message: 'DashScope disconnected' });
+      if (clientWs.readyState === WebSocket.OPEN) {
+        clientWs.close(1011, 'Realtime provider disconnected');
       }
-    } else {
-      // JSON messages from client
-    }
-  });
+    });
+    dashWs.on('error', (err) => {
+      console.error('[copilot] DashScope WS error:', err.message);
+      sendJson(clientWs, { type: 'error', message: 'Realtime provider connection failed.' });
+    });
 
-  clientWs.on('close', async () => {
-    console.log('[copilot] Client closed WS');
-    try {
-      if (dashWs.readyState === WebSocket.OPEN) dashWs.close();
-      await sub.unsubscribe();
-      await sub.quit();
-    } catch (e) {}
-  });
+    clientWs.on('message', (message, isBinary) => {
+      if (!isBinary || dashWs?.readyState !== WebSocket.OPEN) return;
+      dashWs.send(JSON.stringify({
+        event_id: generateId(),
+        type: 'input_audio_buffer.append',
+        audio: message.toString('base64'),
+      }));
+    });
+  } catch (err) {
+    console.error('[copilot] Connection setup failed:', err.message);
+    sendJson(clientWs, { type: 'error', message: 'Copilot dependency connection failed.' });
+    await cleanup();
+    if (clientWs.readyState === WebSocket.OPEN) clientWs.close(1011, 'Copilot setup failed');
+  }
 }
 
 function register(router) {
-  // We don't register normal HTTP routes for this since it's WS only
+  router.add('GET', '/api/copilot/status', (_req, res) => {
+    helpers.jsonReply(res, 200, {
+      enabled: cfg.ENABLE_COPILOT,
+      configured: isConfigured(),
+      model: cfg.ENABLE_COPILOT ? cfg.COPILOT_MODEL : null,
+      activeMeetings: activeMeetingIds.size,
+      channelIsolation: true,
+    });
+  });
 }
 
-module.exports = { register, handleWsConnection };
+module.exports = { register, handleWsConnection, isConfigured };

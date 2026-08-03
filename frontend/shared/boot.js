@@ -10,8 +10,21 @@ window.escHtml = window.escHtml || function escHtml(s) {
 /* Boot & Init — runs after all tab modules loaded */
 
 function activateTab(tabName) {
-  document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.toggle('active', btn.dataset.tab === tabName));
+  let activeButton = null;
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    const active = btn.dataset.tab === tabName;
+    btn.classList.toggle('active', active);
+    btn.setAttribute('aria-current', active ? 'page' : 'false');
+    if (active) activeButton = btn;
+  });
   document.querySelectorAll('.tab-panel').forEach(panel => panel.classList.toggle('active', panel.id === `panel-${tabName}`));
+  const pageTitle = document.getElementById('pageTitle');
+  const pageDescription = document.getElementById('pageDescription');
+  const titleKey = isZh() ? 'titleZh' : 'title';
+  const descriptionKey = isZh() ? 'descriptionZh' : 'description';
+  if (activeButton && pageTitle) pageTitle.textContent = activeButton.dataset[titleKey] || activeButton.textContent.trim();
+  if (activeButton && pageDescription) pageDescription.textContent = activeButton.dataset[descriptionKey] || '';
+  if (tabName === 'copilot' && typeof initCopilot === 'function') initCopilot();
 }
 
 async function refreshTabData(tabName) {
@@ -40,7 +53,9 @@ async function refreshTabData(tabName) {
     return;
   }
   if (tabName === 'config') {
-    try { await loadTasks(true); } catch {}
+    try { await loadConfig(); } catch {}
+    try { await loadSkills(); } catch {}
+    try { await loadFileList(); } catch {}
     return;
   }
 }
@@ -53,51 +68,6 @@ function initTabs() {
       await refreshTabData(tabName);
     };
   });
-}
-
-// Dashboard is read-only. Only restart and doctor --fix are allowed as control actions.
-async function opsAction(action) {
-  const btnMap  = { restart: 'btnRestart', doctor: 'btnDoctor' };
-  const badgeMap = { restart: 'badgeRestart', doctor: 'badgeDoctor' };
-  const btn = document.getElementById(btnMap[action]);
-  const badge = document.getElementById(badgeMap[action]);
-  const resultBox = document.getElementById('opsMgmtResult');
-  const resultInner = document.getElementById('opsMgmtResultInner');
-
-  if (badge) badge.textContent = '⏳';
-  if (btn) btn.classList.add('loading');
-  if (resultBox) resultBox.style.display = 'none';
-
-  try {
-    let html = '';
-
-    if (action === 'restart') {
-      const r = await apiFetch('/ops/restart', { method: 'POST' });
-      if (r?.error) throw new Error(r.error);
-      if (badge) badge.textContent = '✅';
-      html = '<span style="color:var(--green)">✅ Restart signal sent to OpenClaw gateway.</span>';
-
-    } else if (action === 'doctor') {
-      if (badge) badge.textContent = '🩺';
-      const data = await apiFetch('/ops/doctor', { method: 'POST' });
-      if (badge) badge.textContent = data?.ok ? '✅' : '⚠️';
-      html = `<span style="color:${data?.ok ? 'var(--green)' : 'var(--yellow)'}">${data?.ok ? '✅' : '⚠️'} openclaw doctor --fix</span>
-        <pre style="margin-top:8px;font-size:.72rem;color:var(--text2);white-space:pre-wrap;word-break:break-all;max-height:200px;overflow:auto">${escHtml(data?.output || 'No output.')}</pre>`;
-
-    } else {
-      throw new Error(`Unknown action: ${action}`);
-    }
-
-    if (resultInner) resultInner.innerHTML = html;
-    if (resultBox) resultBox.style.display = 'block';
-  } catch (e) {
-    if (badge) badge.textContent = '❌';
-    if (resultInner) resultInner.innerHTML = `<span style="color:var(--red)">❌ ${escHtml(e.message)}</span>`;
-    if (resultBox) resultBox.style.display = 'block';
-  } finally {
-    if (btn) btn.classList.remove('loading');
-    pollWatchdogStatus();
-  }
 }
 
 // ─── Week Navigation ───
@@ -175,8 +145,9 @@ function _drawWeeklyStackedChart(canvas, days, valueKey, modelKeys, providersByM
   const maxVal = Math.max(...totals, 1);
   const step = innerW / days.length;
   const barW = Math.max(12, step * 0.58);
+  const theme = getChartThemeColors();
 
-  ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+  ctx.strokeStyle = theme.border;
   ctx.lineWidth = 1;
   for (let i = 0; i <= 3; i++) {
     const y = pad.t + (innerH / 3) * i;
@@ -195,7 +166,7 @@ function _drawWeeklyStackedChart(canvas, days, valueKey, modelKeys, providersByM
       if (!v) continue;
       const h = Math.max(1, (v / maxVal) * innerH);
       yCursor -= h;
-      const visual = typeof getModelVisual === 'function' ? getModelVisual(mk, providersByModel?.[mk]) : { color: '#7c5cff' };
+      const visual = typeof getModelVisual === 'function' ? getModelVisual(mk, providersByModel?.[mk]) : { color: theme.accent };
       ctx.fillStyle = visual.color;
       ctx.fillRect(x, yCursor, barW, h);
     }
@@ -205,14 +176,14 @@ function _drawWeeklyStackedChart(canvas, days, valueKey, modelKeys, providersByM
       const label = valueKey === 'totalCost'
         ? ('$' + (total >= 100 ? total.toFixed(0) : total.toFixed(2)))
         : (typeof fmtTokens === 'function' ? fmtTokens(total) : String(total));
-      ctx.fillStyle = 'rgba(255,255,255,0.92)';
+      ctx.fillStyle = theme.text;
       ctx.font = '10px system-ui, sans-serif';
       ctx.textAlign = 'center';
       ctx.fillText(label, x + barW / 2, Math.max(10, yCursor - 4));
     }
   });
 
-  ctx.fillStyle = 'rgba(255,255,255,0.7)';
+  ctx.fillStyle = theme.muted;
   ctx.font = '10px system-ui, sans-serif';
   ctx.textAlign = 'center';
   days.forEach((d, i) => {
@@ -223,7 +194,7 @@ function _drawWeeklyStackedChart(canvas, days, valueKey, modelKeys, providersByM
   const legendEl = legendSelector ? document.querySelector(legendSelector) : null;
   if (legendEl) {
     legendEl.innerHTML = (modelKeys || []).slice(0, 8).map(mk => {
-      const visual = typeof getModelVisual === 'function' ? getModelVisual(mk, providersByModel?.[mk]) : { color: '#7c5cff', providerColor: '#7c5cff' };
+      const visual = typeof getModelVisual === 'function' ? getModelVisual(mk, providersByModel?.[mk]) : { color: theme.accent, providerColor: theme.accent };
       return `<span class="pill" style="border-color:${visual.borderColor};color:${visual.textColor};background:${visual.softBg}"><span style="display:inline-block;width:8px;height:8px;border-radius:999px;background:${visual.color};margin-right:6px"></span>${escHtml(shortModel(mk))}</span>`;
     }).join('');
   }
@@ -265,6 +236,7 @@ async function bootstrapDashboard() {
   try { applyLanguageUI(); } catch {}
   try { initTabs(); } catch {}
   try { await refreshCapabilities(); } catch {}
+  try { if (typeof loadCopilotStatus === 'function') await loadCopilotStatus(); } catch {}
   try { await loadAgentMonitor(); } catch {}
   try { await loadSessions(); } catch {}
   try { await loadCronEnhanced(); } catch {}

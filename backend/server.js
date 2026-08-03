@@ -12,7 +12,7 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
-const url = require('url');
+const packageInfo = require('../package.json');
 
 const cfg    = require('./lib/config');
 const helpers = require('./lib/http-helpers');
@@ -96,8 +96,6 @@ const providers = [
   require('./providers/ops-legacy'),    // proxy remaining routes to old api-server.js
 ];
 
-const opsLegacy = require('./providers/ops-legacy');
-
 for (const p of providers) {
   p.register(router);
 }
@@ -171,14 +169,31 @@ function serveDashboard(req, res) {
   }
 }
 
+function parseRequestUrl(req) {
+  try {
+    return new URL(req?.url || '/', 'http://dashboard.invalid');
+  } catch {
+    return null;
+  }
+}
+
 // ── Health (no auth) ────────────────────────────────────────────────
 router.add('GET', '/health', (_req, res) => {
   helpers.jsonReply(res, 200, {
     status: 'ok',
     uptime: process.uptime(),
-    version: '2.0.0',
+    version: packageInfo.version,
     providers: providers.length,
     routes: router.list().length,
+    capabilities: {
+      copilot: copilot.isConfigured(),
+      configEndpoint: cfg.ENABLE_CONFIG_ENDPOINT,
+      mutatingOps: false,
+      operatorActions: false,
+    },
+    links: {
+      controlUi: cfg.CONTROL_UI_URL || null,
+    },
   });
 });
 
@@ -189,7 +204,7 @@ router.add('POST', '/login', async (req, res) => {
     if (body.token === cfg.AUTH_TOKEN) {
       res.writeHead(200, {
         'Content-Type': 'application/json',
-        'Set-Cookie': `ds=${cfg.AUTH_TOKEN}; Path=/; HttpOnly; SameSite=Strict; Max-Age=604800`,
+        'Set-Cookie': helpers.authCookie(604800),
       });
       res.end(JSON.stringify({ ok: true }));
     } else {
@@ -202,7 +217,7 @@ router.add('POST', '/login', async (req, res) => {
 
 router.add('GET', '/logout', (_req, res) => {
   res.writeHead(302, {
-    'Set-Cookie': 'ds=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0',
+    'Set-Cookie': helpers.authCookie(0),
     'Location': '/',
   });
   res.end();
@@ -210,8 +225,10 @@ router.add('GET', '/logout', (_req, res) => {
 
 // ── HTTP Server ─────────────────────────────────────────────────────
 const server = http.createServer((req, res) => {
-  const parsed = url.parse(req.url, true);
-  const pathname = parsed.pathname.replace(/\/+$/, '') || '/';
+  const requestUrl = parseRequestUrl(req);
+  if (!requestUrl) return helpers.errorReply(res, 400, 'Bad request');
+  const pathname = requestUrl.pathname.replace(/\/+$/, '') || '/';
+  const query = Object.fromEntries(requestUrl.searchParams.entries());
   const method = req.method.toUpperCase();
 
   // CORS preflight
@@ -225,7 +242,7 @@ const server = http.createServer((req, res) => {
   // Health: no auth
   if (pathname === '/health' && method === 'GET') {
     const match = router.resolve('GET', '/health');
-    if (match?.handler) return match.handler(req, res, parsed.query);
+    if (match?.handler) return match.handler(req, res, query);
     return helpers.errorReply(res, 404, 'Health handler not found');
   }
 
@@ -234,9 +251,9 @@ const server = http.createServer((req, res) => {
 
   // Login: no auth
   if (pathname === '/login' && method === 'GET') {
-    if (parsed.query?.token && parsed.query.token === cfg.AUTH_TOKEN) {
+    if (query.token && query.token === cfg.AUTH_TOKEN) {
       res.writeHead(302, {
-        'Set-Cookie': `ds=${cfg.AUTH_TOKEN}; Path=/; HttpOnly; SameSite=Strict; Max-Age=2592000`,
+        'Set-Cookie': helpers.authCookie(2592000),
         'Location': '/',
       });
       return res.end();
@@ -245,12 +262,15 @@ const server = http.createServer((req, res) => {
 <html lang="en"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>OpenClaw Dashboard Login</title>
 <style>
-  body{margin:0;min-height:100vh;display:grid;place-items:center;background:#0b1220;color:#e5e7eb;font-family:Inter,-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif}
-  .card{width:min(420px,92vw);background:#111827;border:1px solid #334155;border-radius:14px;padding:24px;box-shadow:0 8px 32px rgba(0,0,0,.35)}
-  h1{margin:0 0 6px;font-size:1.1rem} p{margin:0 0 14px;color:#94a3b8;font-size:.9rem}
-  input{width:100%;padding:10px 12px;border-radius:10px;border:1px solid #334155;background:#0b1220;color:#e5e7eb;box-sizing:border-box}
-  button{margin-top:10px;width:100%;padding:10px 12px;border:0;border-radius:10px;background:#7c5cfc;color:#fff;font-weight:600;cursor:pointer}
-  .err{margin-top:10px;color:#f87171;font-size:.85rem;display:none}
+  :root{color-scheme:dark}
+  body{margin:0;min-height:100vh;display:grid;place-items:center;background:#0e1015;color:#d4d4d8;font-family:Inter,-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif}
+  .card{width:min(420px,92vw);background:#161920;border:1px solid #1e2028;border-radius:14px;padding:28px;box-shadow:0 12px 32px rgba(0,0,0,.35)}
+  h1{margin:0 0 6px;font-size:1.2rem;color:#f4f4f5;letter-spacing:-.02em} p{margin:0 0 18px;color:#838387;font-size:.88rem}
+  input{width:100%;padding:11px 12px;border-radius:10px;border:1px solid #2e3040;background:#0e1015;color:#f4f4f5;box-sizing:border-box;outline:none}
+  input:focus{border-color:#ff5c5c;box-shadow:0 0 0 3px rgba(255,92,92,.15)}
+  button{margin-top:10px;width:100%;padding:11px 12px;border:0;border-radius:10px;background:#ff5c5c;color:#fff;font-weight:650;cursor:pointer}
+  button:hover{background:#ff7070}
+  .err{margin-top:10px;color:#ef4444;font-size:.82rem;display:none}
 </style></head><body>
   <div class="card">
     <h1>🦞 OpenClaw Dashboard</h1>
@@ -274,16 +294,25 @@ const server = http.createServer((req, res) => {
   }
   if (pathname === '/login' && method === 'POST') {
     const match = router.resolve('POST', '/login');
-    if (match?.handler) return match.handler(req, res, parsed.query);
+    if (match?.handler) return match.handler(req, res, query);
   }
   if (pathname === '/logout') {
     const match = router.resolve('GET', '/logout');
-    if (match?.handler) return match.handler(req, res, parsed.query);
+    if (match?.handler) return match.handler(req, res, query);
   }
 
-  // If token is passed once in URL, persist auth to cookie for cookie-only follow-ups.
-  if (parsed.query?.token && parsed.query.token === cfg.AUTH_TOKEN) {
-    res.setHeader('Set-Cookie', `ds=${cfg.AUTH_TOKEN}; Path=/; HttpOnly; SameSite=Strict; Max-Age=2592000`);
+  // Accept a URL token only for the initial dashboard handoff, then persist a
+  // cookie. API routes never authenticate from query parameters.
+  const initialTokenAccepted = pathname === '/'
+    && method === 'GET'
+    && query.token
+    && query.token === cfg.AUTH_TOKEN;
+  if (initialTokenAccepted) {
+    res.writeHead(302, {
+      'Set-Cookie': helpers.authCookie(2592000),
+      'Location': '/',
+    });
+    return res.end();
   }
 
   // Auth check
@@ -306,14 +335,9 @@ const server = http.createServer((req, res) => {
     const match = router.resolve(method, pathname);
     if (match?.handler) {
       req.params = match.params || {};
-      return match.handler(req, res, parsed.query || {});
+      return match.handler(req, res, query);
     }
 
-    // v2.6: legacy proxy fallback is disabled by default.
-    // Enable only for emergency rollback: DASHBOARD_ENABLE_LEGACY_PROXY=1
-    if (cfg.ENABLE_LEGACY_PROXY) {
-      return opsLegacy.proxyToOld(req, res);
-    }
     return helpers.errorReply(res, 404, `Route not found: ${method} ${pathname}`);
   } catch (e) {
     console.error('Unhandled error:', e);
@@ -326,27 +350,49 @@ server.on('error', (e) => {
   process.exit(1);
 });
 
+const loopbackHosts = new Set(['127.0.0.1', '::1', 'localhost']);
+if (!loopbackHosts.has(cfg.HOST) && !cfg.AUTH_TOKEN) {
+  console.error('[server] Refusing non-loopback bind without OPENCLAW_AUTH_TOKEN.');
+  process.exit(1);
+}
+
 server.listen(cfg.PORT, cfg.HOST, () => {
-  console.log(`[server] Dashboard v2 listening on ${cfg.HOST}:${cfg.PORT}`);
+  console.log(`[server] Dashboard ${packageInfo.version} listening on ${cfg.HOST}:${cfg.PORT}`);
   console.log(`[server] Routes: ${router.list().length} | Providers: ${providers.length}`);
 });
 
 const { WebSocketServer } = require('ws');
-const wss = new WebSocketServer({ noServer: true });
+const wss = new WebSocketServer({ noServer: true, maxPayload: 64 * 1024 });
 
 const copilot = require('./providers/copilot');
 
 wss.on('connection', (ws, req) => {
-  const parsed = url.parse(req.url, true);
-  if (parsed.pathname === '/api/copilot/ws') {
+  const requestUrl = parseRequestUrl(req);
+  if (requestUrl?.pathname === '/api/copilot/ws') {
     copilot.handleWsConnection(ws, req);
+  } else {
+    ws.close(1008, 'Invalid request');
   }
 });
 
 server.on('upgrade', (request, socket, head) => {
-  const parsed = url.parse(request.url, true);
-  if (parsed.pathname === '/api/copilot/ws') {
-    // Ideally check auth token here, but ignoring for PoC
+  const requestUrl = parseRequestUrl(request);
+  if (!requestUrl) {
+    socket.write('HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n');
+    socket.destroy();
+    return;
+  }
+  if (requestUrl.pathname === '/api/copilot/ws') {
+    if (!helpers.authenticate(request)) {
+      socket.write('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n');
+      socket.destroy();
+      return;
+    }
+    if (!copilot.isConfigured()) {
+      socket.write('HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\n\r\n');
+      socket.destroy();
+      return;
+    }
     wss.handleUpgrade(request, socket, head, (ws) => {
       wss.emit('connection', ws, request);
     });

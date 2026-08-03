@@ -13,6 +13,8 @@ module.exports = {
   PORT:   parseInt(process.env.DASHBOARD_PORT || '18791', 10),
   HOST:   process.env.DASHBOARD_HOST || '127.0.0.1',
   AUTH_TOKEN: process.env.OPENCLAW_AUTH_TOKEN || '',
+  COOKIE_SECURE: process.env.DASHBOARD_COOKIE_SECURE === '1',
+  CONTROL_UI_URL: process.env.OPENCLAW_CONTROL_UI_URL || 'http://127.0.0.1:18789/',
 
   // Paths
   HOME,
@@ -57,26 +59,8 @@ module.exports = {
 
   // Feature flags
   ENABLE_CONFIG_ENDPOINT:  process.env.OPENCLAW_ENABLE_CONFIG_ENDPOINT === '1',
-  ENABLE_MUTATING_OPS:     process.env.OPENCLAW_ENABLE_MUTATING_OPS === '1',
-  ENABLE_PROVIDER_AUDIT:   process.env.OPENCLAW_ENABLE_PROVIDER_AUDIT === '1',
-  ENABLE_SESSION_PATCH:    process.env.OPENCLAW_ENABLE_SESSION_PATCH === '1',
-  ENABLE_LEGACY_PROXY:     process.env.DASHBOARD_ENABLE_LEGACY_PROXY === '1',
-  LEGACY_PROXY_PORT:       parseInt(process.env.DASHBOARD_LEGACY_PORT || '18790', 10),
+  ENABLE_COPILOT:          process.env.OPENCLAW_ENABLE_COPILOT === '1',
   CORS_ALLOWED_ORIGINS:    (process.env.DASHBOARD_CORS_ORIGINS || '').split(',').filter(Boolean),
-
-  // Attachment security
-  ALLOW_ATTACHMENT_FILEPATH_COPY:      process.env.OPENCLAW_ALLOW_ATTACHMENT_FILEPATH_COPY === '1',
-  ALLOW_ATTACHMENT_COPY_FROM_TMP:      process.env.OPENCLAW_ALLOW_ATTACHMENT_COPY_FROM_TMP === '1',
-  ALLOW_ATTACHMENT_COPY_FROM_WORKSPACE:process.env.OPENCLAW_ALLOW_ATTACHMENT_COPY_FROM_WORKSPACE === '1',
-  ALLOW_ATTACHMENT_COPY_FROM_OPENCLAW_HOME: process.env.OPENCLAW_ALLOW_ATTACHMENT_COPY_FROM_OPENCLAW_HOME === '1',
-
-  // Backup
-  BACKUP_REMOTE: process.env.OPENCLAW_BACKUP_REMOTE || 'origin',
-  BACKUP_BRANCH: process.env.OPENCLAW_BACKUP_BRANCH || '',
-
-  // Gateway
-  GATEWAY_HOOKS_URL: 'http://127.0.0.1:18789/hooks',
-  HOOK_TOKEN: process.env.OPENCLAW_HOOK_TOKEN || '',
 
   // Local API Hub
   LOCAL_API_HUB_PORT: parseInt(process.env.LOCAL_API_HUB_PORT || '3456', 10),
@@ -84,6 +68,11 @@ module.exports = {
   get LOCAL_API_HUB_URL() {
     return `http://${this.LOCAL_API_HUB_HOST}:${this.LOCAL_API_HUB_PORT}`;
   },
+
+  // Meeting Copilot (opt-in)
+  COPILOT_API_KEY: process.env.ALIBABA_CLOUD_API_KEY || '',
+  COPILOT_MODEL: process.env.OPENCLAW_COPILOT_MODEL || 'qwen3-omni-flash-2025-12-01',
+  COPILOT_REDIS_URL: process.env.OPENCLAW_COPILOT_REDIS_URL || 'redis://127.0.0.1:6379',
 
   // Limits
   MAX_BODY:   1 * 1024 * 1024,
@@ -105,14 +94,4 @@ module.exports = {
     'memory'
   ),
 
-  // External API keys (optional)
-  OPENAI_ADMIN_KEY:    process.env.OPENAI_ADMIN_KEY || '',
-  ANTHROPIC_ADMIN_KEY: process.env.ANTHROPIC_ADMIN_KEY || '',
-  NOTION_API_KEY:      process.env.NOTION_API_KEY || '',
-  VISION_DB: {
-    NETWORKING: process.env.VISION_DB_NETWORKING || '',
-    WINE:      process.env.VISION_DB_WINE || '',
-    CIGAR:     process.env.VISION_DB_CIGAR || '',
-    TEA:       process.env.VISION_DB_TEA || '',
-  },
 };

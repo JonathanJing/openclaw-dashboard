@@ -204,7 +204,7 @@ function buildModelSelect(currentModel, id, type) {
   }).join('');
   const color = getModelColor(currentModel);
   return `<select class="model-select" style="border-color:${color};color:${color}"
-    ${DASHBOARD_CAPS.mutatingOpsEnabled ? '' : 'disabled title="Model changes disabled by server policy"'}
+    ${DASHBOARD_CAPS.mutatingOpsEnabled ? '' : 'disabled title="Model changes are available in OpenClaw Control UI or CLI"'}
     onchange="changeModel('${type}','${id}',this.value,this)">${opts}</select>`;
 }
 
@@ -390,25 +390,26 @@ async function loadCronCosts() {
       const barW = Math.min(40, (W - 40) / trend.length - 4);
       const startX = 36;
       const chartH = H - 30;
+      const theme = getChartThemeColors();
       ctx.clearRect(0, 0, W, H);
-      ctx.fillStyle = '#8b949e'; ctx.font = '10px sans-serif'; ctx.textAlign = 'right';
+      ctx.fillStyle = theme.muted; ctx.font = '10px sans-serif'; ctx.textAlign = 'right';
       for (let i = 0; i <= 4; i++) {
         const y = 10 + chartH - (i / 4) * chartH;
         ctx.fillText('$' + (maxCost * i / 4).toFixed(0), 30, y + 3);
-        ctx.strokeStyle = 'rgba(255,255,255,0.05)'; ctx.beginPath(); ctx.moveTo(startX, y); ctx.lineTo(W, y); ctx.stroke();
+        ctx.strokeStyle = theme.border; ctx.beginPath(); ctx.moveTo(startX, y); ctx.lineTo(W, y); ctx.stroke();
       }
       trend.forEach((d, i) => {
         const x = startX + i * ((W - startX) / trend.length) + 2;
         const h = ((d.cronCost || 0) / maxCost) * chartH;
         const baseY = 10 + chartH;
-        ctx.fillStyle = 'rgba(45,212,160,0.8)';
+        ctx.fillStyle = theme.green;
         ctx.fillRect(x, baseY - h, barW, h);
-        ctx.fillStyle = '#8b949e'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center';
+        ctx.fillStyle = theme.muted; ctx.font = '9px sans-serif'; ctx.textAlign = 'center';
         ctx.fillText(d.date.slice(5), x + barW / 2, baseY + 12);
-        ctx.fillStyle = '#e6edf3'; ctx.font = 'bold 9px sans-serif';
+        ctx.fillStyle = theme.text; ctx.font = 'bold 9px sans-serif';
         ctx.fillText('$' + d.cronCost.toFixed(2), x + barW / 2, baseY - h - 3);
       });
-      if (legendEl) legendEl.innerHTML = `<span style="color:#2dd4a0">■ ${tt('Cron daily cost', 'Cron 每日成本')}</span><span style="color:#8b949e">${tt('7-day usage trend', '7 天趋势')}</span>`;
+      if (legendEl) legendEl.innerHTML = `<span style="color:var(--green)">■ ${tt('Cron daily cost', 'Cron 每日成本')}</span><span style="color:var(--text2)">${tt('7-day usage trend', '7 天趋势')}</span>`;
     } else if (legendEl) {
       legendEl.textContent = tt('Not enough trend data (need at least 2 days)', '趋势数据不足（至少需要 2 天）');
     }
@@ -416,4 +417,3 @@ async function loadCronCosts() {
     contentEl.innerHTML = `<p>${e.message}</p>`;
   }
 }
-

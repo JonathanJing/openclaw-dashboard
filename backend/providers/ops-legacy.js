@@ -1,82 +1,11 @@
 'use strict';
 /**
- * Ops Legacy Provider — bridges remaining handlers from old api-server.js
- * that haven't been fully refactored yet.
- *
- * Each handler here is a thin wrapper that delegates to the old functions.
- * They will be migrated into dedicated providers incrementally.
- *
- * Handlers covered:
- * - /ops/sessions (detailed session view)
- * - /ops/channels (today channel breakdown via JSONL scan)
- * - /ops/alltime (historical via JSONL scan)
- * - /ops/cron-costs (cron cost analysis)
- * - /ops/cron (enhanced cron list)
- * - /ops/audit, /ops/secaudit
- * - /ops/dgx-status (DGX probe via HTTP)
- * - /ops/models (dynamic model registry)
- * - /ops/session-model, /ops/cron-model (model overrides)
- * - /ops/update-openclaw, /ops/restart
- * - /agents (agent monitor)
- * - /cron (CRUD)
- * - /backup, /memory, /metrics
- * - /vision/stats
- * - /tasks/:id/*, /tasks/spawn-batch
+ * Compatibility Provider — read-only routes retained from the original
+ * dashboard while data domains move into dedicated providers.
  */
 
-const url = require('url');
-
-// We load the old api-server.js module-style by extracting its handler functions.
-// Since the old file is a monolith that starts its own server, we can't require() it directly.
-// Instead, we'll register the routes in server.js using a "catch-all" that forwards
-// unmatched routes to the old server on its original port.
-//
-// This is the cleanest approach: the old server keeps running, the new server proxies
-// anything it doesn't handle yet.
-
-const http = require('http');
 const cfg = require('../lib/config');
 const { jsonReply, errorReply } = require('../lib/http-helpers');
-
-// Legacy proxy port: set to a DIFFERENT port if you still run the old api-server.js alongside.
-// When the old server is NOT running, legacy routes will gracefully 501.
-const OLD_SERVER_PORT = cfg.LEGACY_PROXY_PORT;
-
-function proxyToOld(req, res) {
-  // If no legacy server configured, return 501 with helpful message
-  if (!OLD_SERVER_PORT) {
-    return errorReply(res, 501, `Legacy route not yet migrated. Use /api/* endpoints instead.`);
-  }
-
-  const proxyReq = http.request({
-    hostname: '127.0.0.1',
-    port: OLD_SERVER_PORT,
-    path: req.url,
-    method: req.method,
-    headers: {
-      ...req.headers,
-      'authorization': req.headers['authorization'] || `Bearer ${cfg.AUTH_TOKEN}`,
-    },
-    timeout: 30000,
-  }, (proxyRes) => {
-    res.writeHead(proxyRes.statusCode, proxyRes.headers);
-    proxyRes.pipe(res);
-  });
-
-  proxyReq.on('error', (e) => {
-    errorReply(res, 502, `Legacy backend unavailable: ${e.message}`);
-  });
-
-  proxyReq.on('timeout', () => {
-    proxyReq.destroy();
-    errorReply(res, 504, 'Legacy backend timeout');
-  });
-
-  req.pipe(proxyReq);
-}
-
-// v2.6: legacy proxy is optional fallback only. Keep list as metadata for emergency rollback.
-const LEGACY_ROUTES = [];
 
 // ── Stub handlers for routes not yet fully migrated ─────────────────
 const fs = require('fs');
@@ -333,8 +262,13 @@ function register(router) {
 
   // ── Memory files ──────────────────────────────────────────────────
   router.add('GET', '/memory', (req, res) => {
-    const parsed = url.parse(req.url, true);
-    const file = parsed.query?.file || '';
+    let requestUrl;
+    try {
+      requestUrl = new URL(req.url || '/', 'http://dashboard.invalid');
+    } catch {
+      return errorReply(res, 400, 'Invalid request URL');
+    }
+    const file = requestUrl.searchParams.get('file') || '';
     if (!file || file.includes('/') || file.includes('..')) return errorReply(res, 400, 'Invalid file param');
     const memDir = path.join(os.homedir(), '.openclaw/workspace/memory');
     try {
@@ -348,19 +282,7 @@ function register(router) {
     jsonReply(res, 200, { total: 0, byCategory: {}, note: 'Vision stats not available in modular backend yet' });
   });
 
-  // ── Control ops are disabled in hardened mode ──────────────────────
-  // Do not execute local binaries from this provider.
-  router.add('POST', '/ops/restart', (req, res) => {
-    errorReply(res, 403, 'Restart is disabled in hardened mode.');
-  });
-
-  router.add('POST', '/ops/doctor', (req, res) => {
-    errorReply(res, 403, 'Doctor fix is disabled in hardened mode.');
-  });
-
-  // All other mutating routes removed — dashboard is read-only.
-  // Removed: /ops/update-openclaw, /ops/session-model, /ops/cron-model, /backup, /backup/load
+  // Mutating compatibility routes are intentionally not registered.
 }
 
-// Export the proxy function for the catch-all
-module.exports = { register, proxyToOld, LEGACY_ROUTES };
+module.exports = { register };

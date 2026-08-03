@@ -2,7 +2,6 @@
 /**
  * Shared HTTP helpers: JSON replies, CORS, auth, body parsing.
  */
-const url = require('url');
 const cfg = require('./config');
 
 // ── JSON reply ──────────────────────────────────────────────────────
@@ -45,37 +44,43 @@ function setCors(res, req) {
 // ── Auth ─────────────────────────────────────────────────────────────
 function parseCookies(req) {
   const raw = req.headers['cookie'] || '';
-  return Object.fromEntries(
-    raw.split(';').map(c => c.trim().split('=').map(s => decodeURIComponent(s.trim())))
-  );
+  const cookies = {};
+  for (const part of raw.split(';')) {
+    const value = part.trim();
+    if (!value) continue;
+    const separator = value.indexOf('=');
+    const rawName = separator >= 0 ? value.slice(0, separator) : value;
+    const rawValue = separator >= 0 ? value.slice(separator + 1) : '';
+    try {
+      const name = decodeURIComponent(rawName.trim());
+      if (!name) continue;
+      cookies[name] = decodeURIComponent(rawValue.trim());
+    } catch {
+      // Ignore malformed cookie fragments instead of terminating the request.
+    }
+  }
+  return cookies;
+}
+
+function authCookie(maxAge) {
+  const parts = [
+    `ds=${encodeURIComponent(cfg.AUTH_TOKEN)}`,
+    'Path=/',
+    'HttpOnly',
+    'SameSite=Strict',
+    `Max-Age=${Math.max(0, Number(maxAge) || 0)}`,
+  ];
+  if (cfg.COOKIE_SECURE) parts.push('Secure');
+  return parts.join('; ');
 }
 
 function authenticate(req) {
   if (!cfg.AUTH_TOKEN) return true; // no token = open
-  const parsed = url.parse(req.url, true);
-  if (parsed.query.token === cfg.AUTH_TOKEN) return true;
   const authHeader = req.headers['authorization'] || '';
   if (authHeader.startsWith('Bearer ') && authHeader.slice(7).trim() === cfg.AUTH_TOKEN) return true;
   const cookies = parseCookies(req);
   if (cookies['ds'] === cfg.AUTH_TOKEN) return true;
   return false;
-}
-
-function isLoopbackRequest(req) {
-  const ip = req?.socket?.remoteAddress || '';
-  return ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1';
-}
-
-function requireMutatingOps(req, res, opName) {
-  if (!cfg.ENABLE_MUTATING_OPS) {
-    errorReply(res, 403, `${opName} disabled. Set OPENCLAW_ENABLE_MUTATING_OPS=1 to enable.`);
-    return false;
-  }
-  if (!isLoopbackRequest(req)) {
-    errorReply(res, 403, `${opName} allowed only from localhost.`);
-    return false;
-  }
-  return true;
 }
 
 // ── Body parsing ─────────────────────────────────────────────────────
@@ -138,7 +143,7 @@ function sanitizeFilename(name) {
 module.exports = {
   jsonReply, errorReply,
   getCorsOrigin, setCors,
-  authenticate, isLoopbackRequest, requireMutatingOps, parseCookies,
+  authenticate, parseCookies, authCookie,
   readBody, readJsonBody,
   formatDuration, bytesHuman,
   sanitizeUntrustedText, sanitizeFilename,

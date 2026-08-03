@@ -26,6 +26,8 @@ async function loadSystemInfo() {
       const p = sys.models.primary;
       globalDefaultModel = p.includes('/') ? p.split('/').pop() : p;
     }
+    const navVersion = document.getElementById('navVersion');
+    if (navVersion && sys.clawVersion) navVersion.textContent = `OpenClaw ${sys.clawVersion}`;
     const el = document.getElementById('systemInfoBar');
     const c = document.getElementById('systemInfoContent');
     if (!el || !c) return;

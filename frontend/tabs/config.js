@@ -12,10 +12,6 @@ async function loadConfig() {
       return;
     }
     const data = await apiFetch('/ops/config');
-    const caps = data.capabilities || {};
-    DASHBOARD_CAPS.mutatingOpsEnabled = !!caps.mutatingOpsEnabled;
-    DASHBOARD_CAPS.mutatingOpsLoopbackOnly = caps.mutatingOpsLoopbackOnly !== false;
-    DASHBOARD_CAPS.attachmentFilePathCopyEnabled = !!caps.attachmentFilePathCopyEnabled;
     applyCapabilitiesUI();
     const files = data.files || [];
     const cats = { core: '⚙️ Core Config', keys: '🔑 API Keys', personality: '🎭 Personality & Agents' };
@@ -108,39 +104,19 @@ async function loadFileList() {
 
 async function selectFile(path) {
   currentFile = path;
-  isEditMode = false;
   loadFileList();
-  const ta = document.getElementById('editorTextarea');
   const preview = document.getElementById('mdPreview');
   const fname = document.getElementById('editorFilename');
-  const saveBtn = document.getElementById('saveBtn');
-  const editBtn = document.getElementById('editToggleBtn');
-  const editLabel = document.getElementById('editToggleLabel');
 
   fname.innerHTML = `${escHtml(path)}`;
   preview.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text2)"><div class="spinner"></div><p style="margin-top:12px;font-size:.84rem">Loading…</p></div>';
-  
-  // Show preview mode by default
-  preview.style.display = '';
-  ta.style.display = 'none';
-  saveBtn.style.display = 'none';
-  editBtn.style.display = '';
-  editBtn.classList.remove('editing');
-  editLabel.textContent = 'Edit';
 
   try {
     const data = await apiFetch(`/files?path=${encodeURIComponent(path)}`);
     const content = typeof data === 'string' ? data : (data.content || JSON.stringify(data, null, 2));
-    currentFileContent = content;
-    ta.value = content;
-    ta.disabled = false;
-    saveBtn.disabled = false;
     renderMarkdownPreview(content);
   } catch(e) {
-    currentFileContent = '';
     preview.innerHTML = `<div class="md-empty-hint"><p style="color:var(--red)">Error loading file: ${escHtml(e.message)}</p></div>`;
-    saveBtn.disabled = true;
-    editBtn.style.display = 'none';
   }
 }
 
@@ -160,41 +136,6 @@ function renderMarkdownPreview(content) {
     preview.innerHTML = `<pre style="white-space:pre-wrap;color:var(--text2)">${escHtml(content)}</pre>`;
   }
 }
-
-function toggleEditMode() {
-  isEditMode = !isEditMode;
-  const ta = document.getElementById('editorTextarea');
-  const preview = document.getElementById('mdPreview');
-  const saveBtn = document.getElementById('saveBtn');
-  const editBtn = document.getElementById('editToggleBtn');
-  const editLabel = document.getElementById('editToggleLabel');
-
-  if (isEditMode) {
-    // Switch to edit mode
-    ta.value = currentFileContent;
-    ta.style.display = '';
-    preview.style.display = 'none';
-    saveBtn.style.display = '';
-    editBtn.classList.add('editing');
-    editLabel.textContent = 'Preview';
-    ta.focus();
-  } else {
-    // Switch back to preview mode — pick up any edits
-    currentFileContent = ta.value;
-    ta.style.display = 'none';
-    preview.style.display = '';
-    saveBtn.style.display = 'none';
-    editBtn.classList.remove('editing');
-    editLabel.textContent = 'Edit';
-    renderMarkdownPreview(currentFileContent);
-  }
-}
-
-function saveFile() {
-  // Dashboard is read-only. Edit files via Discord or CLI.
-  toast('Dashboard is read-only. Edit files via Discord or CLI.', 'info');
-}
-
 
 // ═══ AGENT MONITOR ═══
 let agentData = null;
@@ -226,8 +167,8 @@ async function loadTasks(force) {
     const taskCountEl = document.getElementById('taskCount');
     if (taskCountEl) taskCountEl.textContent = allTasks.length;
     renderTasks();
-    // If detail modal is open and user isn't editing content, refresh it
-    if (detailTaskId && !isContentEditing) {
+    // If detail modal is open, refresh it from the read-only source.
+    if (detailTaskId) {
       const updated = allTasks.find(t => t.id === detailTaskId);
       if (updated) openDetailModal(detailTaskId);
     }
@@ -275,11 +216,7 @@ function renderTasks() {
     list.innerHTML = `<div class="empty-state">
       <svg viewBox="0 0 80 80"><rect x="16" y="12" width="48" height="56" rx="6" fill="none" stroke="currentColor" stroke-width="1.5"/><line x1="28" y1="28" x2="52" y2="28" stroke="currentColor" stroke-width="1.5"/><line x1="28" y1="38" x2="48" y2="38" stroke="currentColor" stroke-width="1.5"/><line x1="28" y1="48" x2="44" y2="48" stroke="currentColor" stroke-width="1.5"/><circle cx="24" cy="28" r="2" fill="currentColor"/><circle cx="24" cy="38" r="2" fill="currentColor"/><circle cx="24" cy="48" r="2" fill="currentColor"/></svg>
       <h3>${currentFilter !== 'all' ? 'No matching tasks' : 'No tasks yet'}</h3>
-      <p>${currentFilter !== 'all' ? 'Try a different filter or create a new task.' : 'Create your first task to get started with agent task management.'}</p>
-      <button class="create-btn" onclick="openCreateModal()" style="margin:0 auto">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-        New Task
-      </button>
+      <p>${currentFilter !== 'all' ? 'Try a different filter.' : 'Create and update tasks through Discord or the authenticated OpenClaw CLI.'}</p>
     </div>`;
     return;
   }
@@ -310,13 +247,6 @@ function renderTasks() {
           <div class="task-content-label"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg> Content</div>
           <div class="task-content-md">${renderFullMarkdown(task.content)}</div>
         </div>` : ''}
-        <div class="task-actions">
-          <button class="spawn-btn" onclick="spawnSingleTask('${task.id}')">⚡ Spawn</button>
-          ${status !== 'in-progress' ? `<button class="action-btn primary" onclick="updateTaskStatus('${task.id}','in-progress')">▶ In Progress</button>` : ''}
-          ${status !== 'done' ? `<button class="action-btn" onclick="updateTaskStatus('${task.id}','done')" style="border-color:rgba(45,212,160,0.3);color:var(--green)">✓ Done</button>` : ''}
-          ${status !== 'failed' ? `<button class="action-btn danger" onclick="updateTaskStatus('${task.id}','failed')">✕ Failed</button>` : ''}
-          ${status !== 'new' ? `<button class="action-btn" onclick="updateTaskStatus('${task.id}','new')">↩ Reset</button>` : ''}
-        </div>
         <div class="notes-section">
           <div class="notes-title">Notes</div>
           <div class="notes-list">
@@ -327,10 +257,7 @@ function renderTasks() {
               </div>
             `).join('')}
           </div>
-          <div class="add-note-row">
-            <input type="text" class="note-input" id="note-${task.id}" placeholder="Add a note…" onkeydown="if(event.key==='Enter')addNote('${task.id}')">
-            <button class="action-btn" onclick="addNote('${task.id}')">Add</button>
-          </div>
+          <div class="read-only-notice">Task changes and notes are managed through Discord or the authenticated OpenClaw CLI.</div>
         </div>
       </div>
     </div>`;
@@ -349,16 +276,6 @@ window.escHtml = window.escHtml || function escHtml(s) {
 
 function toggleTask(id) {
   openDetailModal(id);
-}
-
-function updateTaskStatus(_id, _status) {
-  // Dashboard is read-only. Update task status via Discord or CLI.
-  toast('Dashboard is read-only. Update tasks via Discord or CLI.', 'info');
-}
-
-function addNote(_taskId) {
-  // Dashboard is read-only. Add notes via Discord or CLI.
-  toast('Dashboard is read-only. Add notes via Discord or CLI.', 'info');
 }
 
 // Filters (guarded for Ops view)
@@ -380,29 +297,6 @@ if (_taskSearch) {
     renderTasks();
   });
 }
-
-function openCreateModal() {
-  document.getElementById('createModal').classList.add('show');
-  document.getElementById('newTitle').focus();
-}
-
-function closeCreateModal() {
-  document.getElementById('createModal').classList.remove('show');
-  ['newTitle', 'newDesc', 'newContent', 'newDueDate'].forEach(id => document.getElementById(id).value = '');
-  document.getElementById('newPriority').value = 'medium';
-  document.getElementById('newAssignee').value = 'main';
-}
-
-function createTask() {
-  // Dashboard is read-only. Create tasks via Discord or CLI.
-  closeCreateModal();
-  toast('Dashboard is read-only. Create tasks via Discord or CLI.', 'info');
-}
-
-// Close modal on overlay click
-document.getElementById('createModal').addEventListener('click', e => {
-  if (e.target === e.currentTarget) closeCreateModal();
-});
 
 // ═══ KANBAN VIEW ═══
 let taskView = localStorage.getItem('taskView') || 'list';
@@ -443,8 +337,7 @@ function renderKanban() {
 
   board.innerHTML = KANBAN_COLUMNS.map(col => {
     const colTasks = filtered.filter(t => (t.status || 'new') === col.status);
-    return `<div class="kanban-column" data-status="${col.status}"
-                 ondragover="kanbanDragOver(event)" ondragleave="kanbanDragLeave(event)" ondrop="kanbanDrop(event)">
+    return `<div class="kanban-column" data-status="${col.status}">
       <div class="kanban-col-header">
         <div class="kanban-col-title">
           <span class="col-dot ${col.status}"></span>
@@ -454,7 +347,7 @@ function renderKanban() {
       </div>
       <div class="kanban-col-body${colTasks.length === 0 ? ' empty-drop' : ''}">
         ${colTasks.length === 0
-          ? '<div class="drop-hint">Drop tasks here</div>'
+          ? '<div class="drop-hint">No tasks</div>'
           : colTasks.map(task => renderKanbanCard(task)).join('')}
       </div>
     </div>`;
@@ -468,9 +361,8 @@ function renderKanban() {
 function renderKanbanCard(task) {
   const status = task.status || 'new';
   const priority = task.priority || 'medium';
-  return `<div class="kanban-card status-${status}" draggable="true"
+  return `<div class="kanban-card status-${status}"
                data-task-id="${task.id}"
-               ondragstart="kanbanDragStart(event)" ondragend="kanbanDragEnd(event)"
                onclick="kanbanCardClick('${task.id}')">
     <div class="kanban-card-title">${escHtml(task.title || 'Untitled')}</div>
     <div class="kanban-card-footer">
@@ -479,48 +371,6 @@ function renderKanbanCard(task) {
       ${task.assignee ? `<span class="kanban-card-assignee">👤 ${escHtml(task.assignee)}</span>` : ''}
     </div>
   </div>`;
-}
-
-// ─── Drag & Drop ───
-let draggedTaskId = null;
-
-function kanbanDragStart(e) {
-  draggedTaskId = e.target.dataset.taskId;
-  e.target.classList.add('dragging');
-  e.dataTransfer.effectAllowed = 'move';
-  e.dataTransfer.setData('text/plain', draggedTaskId);
-}
-
-function kanbanDragEnd(e) {
-  e.target.classList.remove('dragging');
-  draggedTaskId = null;
-  document.querySelectorAll('.kanban-column').forEach(c => c.classList.remove('drag-over'));
-}
-
-function kanbanDragOver(e) {
-  e.preventDefault();
-  e.dataTransfer.dropEffect = 'move';
-  const col = e.target.closest('.kanban-column');
-  if (col) col.classList.add('drag-over');
-}
-
-function kanbanDragLeave(e) {
-  const col = e.target.closest('.kanban-column');
-  if (col && !col.contains(e.relatedTarget)) col.classList.remove('drag-over');
-}
-
-async function kanbanDrop(e) {
-  e.preventDefault();
-  const col = e.target.closest('.kanban-column');
-  if (!col) return;
-  col.classList.remove('drag-over');
-  const taskId = e.dataTransfer.getData('text/plain') || draggedTaskId;
-  const newStatus = col.dataset.status;
-  if (!taskId || !newStatus) return;
-  const task = allTasks.find(t => t.id === taskId);
-  if (!task || (task.status || 'new') === newStatus) return;
-  // Dashboard is read-only. Update tasks via Discord or CLI.
-  toast('Dashboard is read-only. Update tasks via Discord or CLI.', 'info');
 }
 
 function kanbanCardClick(taskId) {
@@ -593,21 +443,14 @@ function openDetailModal(taskId) {
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
           Content <span style="font-weight:400;font-size:.68rem;color:var(--text2);letter-spacing:0;text-transform:none;margin-left:4px">Markdown</span>
         </span>
-        <div class="detail-content-actions">
-          <button class="content-edit-btn" id="contentEditBtn" onclick="toggleContentEdit()">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px;margin-right:3px"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-            Edit
-          </button>
-          <button class="content-save-btn" id="contentSaveBtn" onclick="saveTaskContent()" style="display:none">Save</button>
-        </div>
+        <span class="card-sub">Read-only</span>
       </div>
       <div class="detail-content-md" id="detailContentMd">
         ${task.content ? renderFullMarkdown(task.content) : `<div class="detail-content-empty">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-          No content yet — click Edit to add markdown content
+          No content available
         </div>`}
       </div>
-      <textarea class="detail-content-textarea" id="detailContentTextarea" placeholder="# Write your content here…&#10;&#10;Supports **bold**, *italic*, \`code\`, lists, tables, and more." style="display:none">${escHtml(task.content || '')}</textarea>
     </div>
   </div>`;
 
@@ -664,10 +507,7 @@ function openDetailModal(taskId) {
           </div>`;
         }).join('')}
       </div>
-      <div class="detail-add-note">
-        <input type="text" class="detail-note-input" id="detailNoteInput" placeholder="Add a comment…" onkeydown="if(event.key==='Enter')addDetailNote()">
-        <button class="action-btn primary" onclick="addDetailNote()">Add</button>
-      </div>
+      <div class="read-only-notice">Comments and status changes are managed through Discord or the authenticated OpenClaw CLI.</div>
     </div>
   </div>`;
 
@@ -675,13 +515,7 @@ function openDetailModal(taskId) {
 
   // Actions footer
   document.getElementById('detailActions').innerHTML = `
-    <button class="spawn-btn" onclick="spawnSingleTask('${taskId}')">⚡ Run as Sub-Agent</button>
-    ${status !== 'in-progress' ? '<button class="action-btn primary" onclick="detailUpdateStatus(\'in-progress\')">▶ In Progress</button>' : ''}
-    ${status !== 'done' ? '<button class="action-btn" style="border-color:rgba(45,212,160,0.3);color:var(--green)" onclick="detailUpdateStatus(\'done\')">✓ Done</button>' : ''}
-    ${status !== 'failed' ? '<button class="action-btn danger" onclick="detailUpdateStatus(\'failed\')">✕ Failed</button>' : ''}
-    ${status !== 'new' ? '<button class="action-btn" onclick="detailUpdateStatus(\'new\')">↩ Reset</button>' : ''}
-    <span style="flex:1"></span>
-    <button class="action-btn danger" onclick="deleteTaskConfirm('${taskId}')">🗑 Delete</button>
+    <span class="card-sub">Read-only task view</span>
   `;
 
   document.getElementById('detailModal').classList.add('show');
@@ -690,22 +524,6 @@ function openDetailModal(taskId) {
 function closeDetailModal() {
   document.getElementById('detailModal').classList.remove('show');
   detailTaskId = null;
-  isContentEditing = false;
-}
-
-function detailUpdateStatus(_newStatus) {
-  // Dashboard is read-only. Update tasks via Discord or CLI.
-  toast('Dashboard is read-only. Update tasks via Discord or CLI.', 'info');
-}
-
-function addDetailNote() {
-  // Dashboard is read-only. Add notes via Discord or CLI.
-  toast('Dashboard is read-only. Add notes via Discord or CLI.', 'info');
-}
-
-function deleteTask(_taskId) {
-  // Dashboard is read-only. Delete tasks via Discord or CLI.
-  toast('Dashboard is read-only. Delete tasks via Discord or CLI.', 'info');
 }
 
 function toggleNoteExpand(noteId, btn) {
@@ -720,43 +538,6 @@ function copyOutput(btn, text) {
     btn.textContent = 'Copied!';
     setTimeout(() => { btn.textContent = 'Copy'; }, 2000);
   }).catch(() => toast('Copy failed', 'error'));
-}
-
-// ─── Content Edit/Save ───
-let isContentEditing = false;
-
-function toggleContentEdit() {
-  isContentEditing = !isContentEditing;
-  const mdView = document.getElementById('detailContentMd');
-  const textarea = document.getElementById('detailContentTextarea');
-  const editBtn = document.getElementById('contentEditBtn');
-  const saveBtn = document.getElementById('contentSaveBtn');
-
-  if (isContentEditing) {
-    mdView.style.display = 'none';
-    textarea.style.display = '';
-    textarea.focus();
-    editBtn.classList.add('active');
-    editBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px;margin-right:3px"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg> Preview';
-    saveBtn.style.display = '';
-  } else {
-    // Update preview with current textarea content
-    const content = textarea.value;
-    mdView.innerHTML = content.trim()
-      ? renderFullMarkdown(content)
-      : '<div class="detail-content-empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>No content yet — click Edit to add markdown content</div>';
-    mdView.style.display = '';
-    textarea.style.display = 'none';
-    editBtn.classList.remove('active');
-    editBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px;margin-right:3px"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg> Edit';
-    saveBtn.style.display = 'none';
-  }
-}
-
-function saveTaskContent() {
-  // Dashboard is read-only. Edit task content via Discord or CLI.
-  toast('Dashboard is read-only. Edit tasks via Discord or CLI.', 'info');
-  if (isContentEditing) toggleContentEdit();
 }
 
 function timeAgo(date) {
@@ -780,6 +561,3 @@ if (taskView === 'kanban') {
 const WORKSPACE_FILES = ['MEMORY.md', 'SOUL.md', 'USER.md', 'AGENTS.md', 'TOOLS.md', 'IDENTITY.md', 'HEARTBEAT.md'];
 let currentFile = null;
 let memoryFiles = [];
-let isEditMode = false;
-let currentFileContent = '';
-

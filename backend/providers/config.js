@@ -14,9 +14,10 @@ const { jsonReply, errorReply } = require('../lib/http-helpers');
 // ── Capability flags (read from env / config) ────────────────────────
 function getCapabilities() {
   return {
-    mutatingOpsEnabled:              cfg.ENABLE_MUTATING_OPS,
+    readOnly:                         true,
+    mutatingOpsEnabled:              false,
     mutatingOpsLoopbackOnly:         true,
-    attachmentFilePathCopyEnabled:   cfg.ALLOW_ATTACHMENT_FILEPATH_COPY,
+    attachmentFilePathCopyEnabled:   false,
   };
 }
 
@@ -123,7 +124,7 @@ function isAllowedPath(p) {
   return false;
 }
 
-function handleFiles(req, res, query) {
+function handleFiles(_req, res, query) {
   const filePath = query.path || '';
   const isList   = query.list === 'true';
   const ws       = cfg.WORKSPACE;
@@ -138,22 +139,6 @@ function handleFiles(req, res, query) {
       const files = fs.readdirSync(dirPath).filter(f => f.endsWith('.md')).map(f => `${cleanDir}/${f}`);
       return jsonReply(res, 200, { files });
     } catch { return jsonReply(res, 200, { files: [] }); }
-  }
-
-  // PUT — save file
-  if (req.method === 'PUT') {
-    if (!filePath || !isAllowedPath(filePath)) return errorReply(res, 403, 'Path not allowed');
-    let body = '';
-    req.on('data', d => body += d);
-    req.on('end', () => {
-      try {
-        const { content } = JSON.parse(body);
-        if (typeof content !== 'string') return errorReply(res, 400, 'content must be a string');
-        fs.writeFileSync(path.join(ws, filePath), content, 'utf8');
-        jsonReply(res, 200, { ok: true });
-      } catch (e) { errorReply(res, 500, e.message); }
-    });
-    return;
   }
 
   if (!filePath) {

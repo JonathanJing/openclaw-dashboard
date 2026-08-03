@@ -1,177 +1,151 @@
 # OpenClaw Dashboard
 
-A real-time operations dashboard for OpenClaw — built for teams running multi-agent workflows in production.
+A local-first operations dashboard for OpenClaw. It combines system health, session activity, token and cost analytics, cron visibility, DGX Spark workloads, Local API Hub status, and an opt-in meeting Copilot.
 
-It helps you answer, fast:
-- Is the system healthy right now?
-- Where are tokens and cost going?
-- Which cron job or agent needs attention first?
+## What is included
 
----
+- **Overview** — today cost, tokens, alerts, watchdog, model mix, and active sessions
+- **Usage** — model/source breakdowns, daily token and cost charts, and heatmaps
+- **Cron** — run history, per-job costs, and daily trends
+- **Health** — host status, watchdog signals, and runtime diagnostics
+- **Spark** — DGX task history, GPU activity, token totals, and PR Hunter output
+- **Copilot** — opt-in realtime transcript, PM insights, and RAG evidence
+- **Config** — capabilities, installed skills, and workspace document views
 
-## Screenshots
+The frontend follows the OpenClaw 2026.7 Control UI language: neutral layered surfaces, thin borders, red primary accent, left navigation on desktop, bottom navigation on small screens, and dark/light themes.
 
-| Overview | Cost | Cron | Health |
-|---|---|---|---|
-| ![Overview](screenshots/overview.jpg) | ![Cost](screenshots/cost.jpg) | ![Cron](screenshots/cron.jpg) | ![Health](screenshots/health.jpg) |
+## Preview
 
----
+These screenshots use the built-in `?preview=1` sample-data mode. No local hostnames, session names, tokens, or workspace details are included.
 
-## Why OpenClaw Dashboard
+![OpenClaw Dashboard overview](screenshots/overview-v2-light.png)
 
-Most AI dashboards stop at pretty charts.  
-OpenClaw Dashboard is designed for **operational decisions**:
-- top-level signals (cost, tokens, alerts, model mix, infra state)
-- deep drill-down per session / channel / cron job
-- architecture readable by both humans and agents
+![OpenClaw Dashboard usage analytics](screenshots/usage-v2-dark.png)
 
----
+<img src="screenshots/mobile-v2-dark.png" alt="OpenClaw Dashboard mobile layout" width="390">
 
-## Architecture (v2.0)
+## Quick start
 
-v2.0 replaced the monolithic `api-server.js` + `agent-dashboard.html` with a **modular backend + tab-based frontend**.
-
+```bash
+openclaw skills install @jonathanjing/openclaw-dashboard
+cd ~/.openclaw/workspace/skills/openclaw-dashboard
+cp env.example .env
+./start.sh
 ```
+
+Open `http://127.0.0.1:18791/`.
+
+Set `OPENCLAW_AUTH_TOKEN` in `.env` before exposing the dashboard beyond loopback. The launcher uses Node's env-file parser and starts `backend/server.js`.
+
+Use the `/login` form for normal authentication. A compatibility `/?token=...` handoff is accepted only at the root and returns an immediate server-side redirect before dashboard HTML is served. Because the first request URL can still appear in upstream access logs, do not use query-token handoff through an untrusted proxy.
+
+The header's **Control UI** link is supplied at runtime through `OPENCLAW_CONTROL_UI_URL`. Set the complete URL when your Gateway uses TLS, a non-default host, or `gateway.controlUi.basePath`.
+
+## Architecture
+
+```text
 backend/
-  server.js              ← thin HTTP router shell
+  server.js
   lib/
-    config.js            ← all paths and env vars
-    http-helpers.js      ← auth, CORS, JSON helpers
-    sqlite-helper.js     ← safe SQLite query wrapper
+    config.js
+    http-helpers.js
+    sqlite-helper.js
   providers/
-    sessions.js          ← /ops/sessions — session stats + model
-    ledger.js            ← /ops/ledger/* — token/cost from SQLite
-    cron.js              ← /ops/cron, /ops/cron-costs, /cron/today
-    watchdog.js          ← /ops/watchdog — health timeline
-    spark.js             ← /ops/dgx-status — local inference node
-    system.js            ← /ops/system — CPU/RAM/disk
-    ground-truth.js      ← /ops/models — model registry + colors
-    tasks.js             ← /tasks — task CRUD + notes
-    config.js            ← /ops/config, /files, /skills
-    ops-legacy.js        ← /ops/* remaining — audit, channels, restart
+    sessions.js
+    ledger.js
+    cron.js
+    watchdog.js
+    system.js
+    local-api-hub.js
+    spark.js
+    spark-tasks.js
+    copilot.js
+    config.js
+    tasks.js
 
 frontend/
-  index.html             ← shell (loads tabs as <script> modules)
+  index.html
   shared/
-    api.js               ← auth, apiFetch(), watchdog renderers, toast, markdown
-    ui-utils.js          ← timeSince(), task state
-    boot.js              ← init, charts, confirm dialog
-    styles.css           ← dark theme
+    api.js
+    boot.js
+    styles.css
+    ui-utils.js
   tabs/
-    overview.js          ← Sessions table + Tasks list
-    cost.js              ← Channel breakdown + all-time charts
-    cron.js              ← Cron jobs + cost analysis + trend chart
-    health.js            ← System info + DGX Spark + Watchdog
-    config.js            ← Config viewer + file editor + Skills
+    overview.js
+    cost.js
+    cron.js
+    health.js
+    spark-monitor.js
+    copilot.js
+    config.js
+```
 
-~/.openclaw/dashboard/   ← runtime data (NOT in Git)
+Runtime task data stays outside the skill directory:
+
+```text
+~/.openclaw/dashboard/
   tasks.json
   attachments/
 ```
 
----
+## Core environment variables
 
-## Key Capabilities
+| Variable | Default | Purpose |
+|---|---|---|
+| `DASHBOARD_HOST` | `127.0.0.1` | Bind address |
+| `DASHBOARD_PORT` | `18791` | Dashboard port |
+| `OPENCLAW_AUTH_TOKEN` | empty | Cookie/Bearer authentication |
+| `OPENCLAW_WORKSPACE` | `~/.openclaw/workspace` | Workspace root |
+| `DASHBOARD_CORS_ORIGINS` | loopback only | Explicit allowed origins |
+| `DASHBOARD_COOKIE_SECURE` | `0` | Add `Secure` to the auth cookie when this dashboard is served over HTTPS |
+| `OPENCLAW_CONTROL_UI_URL` | `http://127.0.0.1:18789/` | Runtime Control UI link |
+| `OPENCLAW_ENABLE_CONFIG_ENDPOINT` | `0` | Expose config details |
 
-### Overview
-- Today cost / token usage + model mix
-- Alert snapshot (sessions / cron / watchdog)
-- DGX Spark active job + slot visibility
-- Session table: model, tokens, cost, per-channel
+See `env.example` for the complete list.
 
-### Cost Tab
-- Model-level token + cost breakdown
-- Channel-level drill-down
-- Weekly/monthly charts with model stacking
-- Cost heatmap (model × day)
+## Meeting Copilot
 
-### Cron Tab
-- All cron jobs with last-run status and model selector
-- Today's run timeline
-- Per-job cost analysis: tokens/run, $/run, daily breakdown
-- Fixed vs variable cost trend chart (30 days)
-
-### Health Tab
-- Host status: macOS, CPU, RAM, disk, Node, OpenClaw version
-- DGX Spark: GPU util, temp, power, RAM, slot busy/total
-- Watchdog: 24h uptime bar, incidents, downtime windows
-- Operations: backup, restore, update, restart
-
-### Config Tab
-- Live config viewer (core / keys / personality files)
-- Workspace file browser + markdown editor
-- Installed skills list
-
----
-
-## Quick Start
+Copilot is disabled by default. Enable it only when its dependencies are configured:
 
 ```bash
-# 1. Install (or update)
-clawhub install openclaw-dashboard
-
-# 2. Configure
-cd ~/.openclaw/workspace/skills/openclaw-dashboard
-cp env.example .env
-# Edit .env and set OPENCLAW_AUTH_TOKEN
-
-# 3. Start
-node backend/server.js
+OPENCLAW_ENABLE_COPILOT=1
+ALIBABA_CLOUD_API_KEY=your_alibaba_cloud_api_key
+OPENCLAW_COPILOT_REDIS_URL=redis://127.0.0.1:6379
 ```
 
-Open: `http://127.0.0.1:18791/`
+The browser requests microphone access only after the operator clicks **Start**. Its WebSocket upgrade requires dashboard authentication and rejects disabled or incomplete configurations.
 
-First visit redirects to `/login` — paste your token once, then cookie auth takes over.
+Each connection receives a unique meeting ID and scoped Redis channels:
 
----
-
-## Environment Variables
-
-| Variable | Default | Description |
-|---|---|---|
-| `DASHBOARD_PORT` | `18791` | Port to listen on |
-| `DASHBOARD_HOST` | `127.0.0.1` | Bind address |
-| `OPENCLAW_AUTH_TOKEN` | *(none)* | Auth token (required for non-loopback) |
-| `OPENCLAW_DASHBOARD_TASKS` | `~/.openclaw/dashboard/tasks.json` | Task data path |
-| `OPENCLAW_ENABLE_MUTATING_OPS` | `0` | Enable model switch, backup, update ops |
-| `OPENCLAW_ENABLE_CONFIG_ENDPOINT` | `0` | Expose `/ops/config` |
-| `DASHBOARD_CORS_ORIGINS` | loopback only | Comma-separated allowed origins |
-
-See `env.example` for the full list.
-
----
-
-## Runtime Data
-
-Task data and attachments are stored **outside the skill directory** so they are never accidentally committed:
-
-```
-~/.openclaw/dashboard/
-  tasks.json        ← task list
-  attachments/      ← file uploads
+```text
+meeting.<meetingId>.transcript
+meeting.<meetingId>.rag_hits
+meeting.<meetingId>.insights
 ```
 
-Override with `OPENCLAW_DASHBOARD_TASKS` env var if needed.
+For compatibility, only the first active meeting also publishes/subscribes on the original unscoped channels. Additional concurrent meetings never share those global channels.
 
----
+## Security defaults
 
-## Security
+- Loopback bind by default; non-loopback bind is refused when no auth token is set
+- Same-origin frontend API requests, so custom ports and reverse proxies work
+- URL-encoded HttpOnly + SameSite=Strict cookie login; optional `Secure`; Bearer auth for API clients
+- No API authentication through query parameters
+- No automatic loading of `keys.env` or `~/.openclaw/.env`
+- No task, file, restart, doctor, model-change, package-update, or legacy-proxy mutation routes
+- Use the authenticated OpenClaw Control UI or CLI for operator actions
+- Copilot and config-detail reads are opt-in
+- Runtime data and secrets are excluded from the public skill bundle
 
-- **Local-first**: binds to `127.0.0.1` by default
-- **Token auth**: HttpOnly cookie after first login; `Authorization: Bearer` header also accepted
-- **Mutating ops disabled** by default: model switches, backup, update require `OPENCLAW_ENABLE_MUTATING_OPS=1`
-- **No secrets in source**: all sensitive values via env vars
-- **CORS**: loopback-only by default; use `DASHBOARD_CORS_ORIGINS` for Tailscale/remote access
+See `SECURITY.md` for the complete threat model.
 
----
+## Validation
 
-## Who This Is For
+```bash
+npm test
+```
 
-- Builders running always-on agent systems
-- Operators managing cron-heavy AI workflows
-- Teams needing both observability and operational control
-
----
+The test suite checks startup, malformed Host/cookie resilience, cookie values containing `=`, token handoff redirects, read-only route boundaries, design contracts, tracked launch/test files, and public-safety patterns.
 
 ## License
 

@@ -10,19 +10,66 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="OpenClaw">
-<meta name="theme-color" content="#06080e">
+<meta name="theme-color" content="#0e1015">
 <script src="/marked.min.js"></script>
 <script src="/purify.min.js"></script>
-<link rel="stylesheet" href="/frontend/shared/styles.css">
+<link rel="stylesheet" href="/frontend/shared/styles.css?v=20260803e">
 </head>
 <body>
 <div class="bg-mesh"></div>
-<div class="container">
+<div class="app-shell">
+  <aside class="shell-nav" aria-label="Dashboard navigation">
+    <div class="nav-brand">
+      <img src="/icon.svg" alt="" class="nav-brand-mark">
+      <div class="nav-brand-copy">
+        <div class="logo">OpenClaw</div>
+        <div class="logo-sub">Operations Dashboard</div>
+      </div>
+    </div>
+    <div class="nav-section-label">Workspace</div>
+    <nav class="tab-bar">
+      <button class="tab-btn active" data-tab="overview" data-title="Overview" data-title-zh="总览" data-description="System activity and attention signals" data-description-zh="系统活动与待处理信号">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        <span id="tabOverviewLabel">Overview</span>
+      </button>
+      <button class="tab-btn" data-tab="copilot" data-title="Copilot" data-title-zh="会议助手" data-description="Realtime transcript, insight, and retrieval" data-description-zh="实时转写、洞察与知识检索">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a4 4 0 0 0-4 4v6a4 4 0 0 0 8 0V6a4 4 0 0 0-4-4Z"/><path d="M5 10v2a7 7 0 0 0 14 0v-2"/><path d="M12 19v3"/></svg>
+        <span id="tabCopilotLabel">Copilot</span>
+        <span class="nav-badge" id="copilotNavBadge">Beta</span>
+      </button>
+      <button class="tab-btn" data-tab="ops" data-title="Usage" data-title-zh="用量" data-description="Tokens, cost, model mix, and source analysis" data-description-zh="Token、成本、模型组合与来源分析">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V9"/><path d="M10 19V5"/><path d="M16 19v-7"/><path d="M22 19V3"/></svg>
+        <span id="tabCostLabel">Usage</span>
+      </button>
+      <button class="tab-btn" data-tab="tasks" data-title="Cron" data-title-zh="定时任务" data-description="Scheduled work, runs, and cost trends" data-description-zh="计划任务、执行记录与成本趋势">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+        <span id="tabCronLabel">Cron</span>
+      </button>
+      <button class="tab-btn" data-tab="health" data-title="Health" data-title-zh="健康" data-description="Gateway, watchdog, and runtime signals" data-description-zh="Gateway、Watchdog 与运行状态">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h4l2-5 4 10 2-5h6"/><path d="M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20Z"/></svg>
+        <span id="tabHealthLabel">Health</span>
+      </button>
+      <button class="tab-btn" data-tab="spark" data-title="Spark" data-title-zh="算力" data-description="DGX task execution and GPU activity" data-description-zh="DGX 任务执行与 GPU 活动">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m13 2-9 12h7l-1 8 9-12h-7l1-8Z"/></svg>
+        <span id="tabSparkLabel">Spark</span>
+      </button>
+      <button class="tab-btn" data-tab="config" data-title="Config" data-title-zh="配置" data-description="Capabilities, skills, and workspace documents" data-description-zh="能力、Skills 与工作区文档">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.4 1.1V21h-4v-.1A1.7 1.7 0 0 0 8.6 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.6-1 1.7 1.7 0 0 0-1.1-.4H3v-4h.1A1.7 1.7 0 0 0 4.6 8.6a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-.6 1.7 1.7 0 0 0 .4-1.1V3h4v.1A1.7 1.7 0 0 0 15.4 4a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.4 9c.38.27.74.6 1 .99.25.39.4.84.4 1.31V12h.1v4h-.1a1.7 1.7 0 0 0-1.4-1Z"/></svg>
+        <span id="tabConfigLabel">Config</span>
+      </button>
+    </nav>
+    <div class="nav-footer">
+      <span class="status-dot ok" id="navStatusDot" aria-hidden="true"></span>
+      <span id="navVersion">OpenClaw runtime</span>
+    </div>
+  </aside>
+
+  <div class="shell-main">
   <!-- Header -->
-  <header>
-    <div>
-      <div class="logo">🦞 OpenClaw Dashboard</div>
-      <div class="logo-sub">24/7 Online</div>
+  <header class="topbar">
+    <div class="page-heading">
+      <div class="breadcrumb"><span>OpenClaw</span><span aria-hidden="true">›</span><strong id="pageTitle">Overview</strong></div>
+      <div class="page-description" id="pageDescription">System activity and attention signals</div>
     </div>
     <div class="header-right">
       <span class="status-dot ok" id="statusDot"></span>
@@ -30,17 +77,23 @@
       <button class="live-indicator active" id="liveIndicator" onclick="toggleLivePolling()" title="Toggle live updates">
         <span class="live-dot"></span> LIVE
       </button>
+      <span class="preview-indicator" id="previewModeBadge" hidden>Preview data</span>
       <button class="lang-btn" id="langToggleBtn" onclick="toggleLanguage()" title="Switch language">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
         <span id="langToggleLabel">EN</span>
       </button>
+      <button class="theme-btn" id="themeToggleBtn" onclick="toggleThemeMode()" title="Toggle theme" aria-label="Toggle theme">
+        <svg class="theme-icon-dark" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8Z"/></svg>
+        <svg class="theme-icon-light" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.42 1.42M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.42-1.41M17.66 6.34l1.41-1.41"/></svg>
+      </button>
       <button class="refresh-btn" onclick="refreshCurrentTab()" title="Refresh">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
       </button>
-      <a href="/" class="back-link">← Control UI</a>
+      <a id="controlUiLink" href="#" class="back-link" hidden>Control UI ↗</a>
     </div>
   </header>
 
+  <main class="container">
   <!-- Agent Monitor Bar -->
   <div class="agent-monitor" id="agentMonitor">
     <div class="agent-stat stat-main">
@@ -93,7 +146,7 @@
         <span class="agent-stat-icon">🧠</span>
         <span class="agent-stat-badge idle" id="totalBadge">—</span>
       </div>
-      <div class="agent-stat-value val-purple" id="totalValue">—</div>
+      <div class="agent-stat-value val-mix" id="totalValue">—</div>
       <div class="agent-stat-label">Model Mix</div>
       <div id="modelMixBars" style="margin-top:8px"></div>
     </div>
@@ -123,47 +176,54 @@
     <div class="agent-sessions-body" id="cronRunsBody" style="max-height:400px;transition:max-height .4s"></div>
   </div>
 
-  <!-- Tab Bar -->
-  <div class="tab-bar">
-    <button class="tab-btn active" data-tab="overview"><span id="tabOverviewLabel">Overview</span></button>
-    <button class="tab-btn" data-tab="copilot"><span id="tabCopilotLabel">Copilot</span></button>
-    <button class="tab-btn" data-tab="ops"><span id="tabCostLabel">Cost</span></button>
-    <button class="tab-btn" data-tab="tasks"><span id="tabCronLabel">Cron</span></button>
-    <button class="tab-btn" data-tab="health"><span id="tabHealthLabel">Health</span></button>
-    <button class="tab-btn" data-tab="spark"><span id="tabSparkLabel">Spark</span></button>
-    <button class="tab-btn" data-tab="config"><span id="tabConfigLabel">Config</span></button>
-  </div>
-
   <!-- ═══ Copilot Panel ═══ -->
   <div class="tab-panel" id="panel-copilot">
-    <div style="display: flex; gap: 16px; height: 75vh;">
-      <div style="flex: 3; background: #111827; border-radius: 8px; border: 1px solid #334155; display: flex; flex-direction: column;">
-        <div style="padding: 12px; border-bottom: 1px solid #334155; font-weight: 600; display: flex; justify-content: space-between; align-items: center;">
-          <span>🗣️ Live Transcript</span>
-          <div style="display: flex; gap: 8px; align-items: center;">
-            <div id="audioMeter" style="width: 50px; height: 10px; background: #374151; border-radius: 5px; overflow: hidden; display: none;">
-              <div id="audioMeterFill" style="width: 0%; height: 100%; background: #10b981; transition: width 0.1s;"></div>
+    <div class="copilot-notice" id="copilotNotice" role="status">
+      Copilot is opt-in. Enable it with <code>OPENCLAW_ENABLE_COPILOT=1</code> and an API key.
+    </div>
+    <div class="copilot-layout">
+      <section class="copilot-panel copilot-transcript-panel">
+        <div class="copilot-panel-header">
+          <div>
+            <div class="card-title">Live Transcript</div>
+            <div class="card-sub">Realtime audio transcription with speaker-aware output</div>
+          </div>
+          <div class="copilot-controls">
+            <div id="audioMeter" class="audio-meter" aria-hidden="true">
+              <div id="audioMeterFill"></div>
             </div>
-            <span id="copilotStatus" style="font-size: 0.85rem; color: #9ca3af;">⏹️ Stopped</span>
-            <button id="btnStartCopilot" style="padding: 4px 12px; background: #10b981; color: white; border: none; border-radius: 4px; cursor: pointer;">Start</button>
-            <button id="btnStopCopilot" style="padding: 4px 12px; background: #ef4444; color: white; border: none; border-radius: 4px; cursor: pointer;" disabled>Stop</button>
+            <span id="copilotStatus" class="copilot-status">Stopped</span>
+            <button id="btnStartCopilot" class="action-btn primary" disabled>Start</button>
+            <button id="btnStopCopilot" class="action-btn danger" disabled>Stop</button>
           </div>
         </div>
-        <div id="copilotTranscript" style="flex: 1; padding: 12px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px;"></div>
-        <div style="height: 120px; background: #0b1220; border-top: 1px solid #334155; display: flex; flex-direction: column;">
-          <div style="padding: 4px 12px; font-size: 0.75rem; color: #9ca3af; border-bottom: 1px solid #1f2937;">🐛 WebSocket Debug Log</div>
-          <div id="copilotDebugLog" style="flex: 1; padding: 8px 12px; overflow-y: auto; font-family: monospace; font-size: 0.75rem; color: #d1d5db; display: flex; flex-direction: column; gap: 2px;"></div>
+        <div id="copilotTranscript" class="copilot-stream">
+          <div class="empty-state compact"><p>Transcript events will appear here.</p></div>
         </div>
-      </div>
-      <div style="flex: 2; display: flex; flex-direction: column; gap: 16px;">
-        <div style="flex: 1; background: #111827; border-radius: 8px; border: 1px solid #334155; display: flex; flex-direction: column;">
-          <div style="padding: 12px; border-bottom: 1px solid #334155; font-weight: 600; color: #facc15;">⚠️ PM Insights</div>
-          <div id="copilotInsights" style="flex: 1; padding: 12px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px;"></div>
+        <div class="copilot-debug">
+          <div class="copilot-debug-title">Connection log</div>
+          <div id="copilotDebugLog"></div>
         </div>
-        <div style="flex: 1; background: #111827; border-radius: 8px; border: 1px solid #334155; display: flex; flex-direction: column;">
-          <div style="padding: 12px; border-bottom: 1px solid #334155; font-weight: 600; color: #60a5fa;">📚 RAG Knowledge</div>
-          <div id="copilotRagHits" style="flex: 1; padding: 12px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; font-size: 0.9em;"></div>
-        </div>
+      </section>
+      <div class="copilot-side">
+        <section class="copilot-panel">
+          <div class="copilot-panel-header">
+            <div>
+              <div class="card-title">PM Insights</div>
+              <div class="card-sub">Decision signals and follow-up prompts</div>
+            </div>
+          </div>
+          <div id="copilotInsights" class="copilot-feed"></div>
+        </section>
+        <section class="copilot-panel">
+          <div class="copilot-panel-header">
+            <div>
+              <div class="card-title">RAG Knowledge</div>
+              <div class="card-sub">Relevant evidence retrieved during the conversation</div>
+            </div>
+          </div>
+          <div id="copilotRagHits" class="copilot-feed"></div>
+        </section>
       </div>
     </div>
   </div>
@@ -256,26 +316,14 @@
   <div class="tab-panel" id="panel-health">
     <div class="glass-card" style="padding:16px;margin-bottom:16px">
       <div class="card-title" style="margin-bottom:4px">System Health</div>
-      <div class="card-sub">Operations control & system status</div>
+      <div class="card-sub">Gateway, host, and watchdog status</div>
     </div>
 
     <div class="glass-card" style="padding:16px">
-      <div class="card-title" style="margin-bottom:4px">⚙️ Operations Control</div>
-      <div class="card-sub" style="margin-bottom:16px">Dashboard is read-only · Only restart and doctor --fix are allowed</div>
-      <div class="ops-mgmt-grid">
-        <button class="ops-mgmt-btn" id="btnRestart" onclick="opsAction('restart')">
-          <span class="btn-icon">🔄</span>
-          <span class="btn-label">Restart OpenClaw</span>
-          <span class="btn-badge" id="badgeRestart"></span>
-        </button>
-        <button class="ops-mgmt-btn" id="btnDoctor" onclick="opsAction('doctor')">
-          <span class="btn-icon">🩺</span>
-          <span class="btn-label">Doctor --fix</span>
-          <span class="btn-badge" id="badgeDoctor"></span>
-        </button>
-      </div>
-      <div id="opsMgmtResult" style="margin-top:14px;display:none">
-        <div class="glass-card" style="padding:12px;background:rgba(0,0,0,0.3);border-color:var(--border)" id="opsMgmtResultInner"></div>
+      <div class="card-title" style="margin-bottom:4px">Operations Boundary</div>
+      <div class="card-sub">This hardened dashboard is intentionally read-only.</div>
+      <div class="read-only-notice">
+        Use the authenticated OpenClaw CLI or an approved operator workflow for restart, repair, model changes, and file updates.
       </div>
     </div>
   </div>
@@ -290,11 +338,11 @@
     <!-- Today Summary Row -->
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:16px" id="sparkSummaryCards">
       <div class="glass-card" style="padding:14px;text-align:center">
-        <div style="font-size:1.6rem;font-weight:700;color:var(--accent)" id="sparkTasksDone">—</div>
+        <div style="font-size:1.6rem;font-weight:700;color:var(--green)" id="sparkTasksDone">—</div>
         <div class="card-sub" style="margin-top:4px">Tasks Done Today</div>
       </div>
       <div class="glass-card" style="padding:14px;text-align:center">
-        <div style="font-size:1.6rem;font-weight:700;color:var(--green)" id="sparkTasksRunning">—</div>
+        <div style="font-size:1.6rem;font-weight:700;color:var(--blue)" id="sparkTasksRunning">—</div>
         <div class="card-sub" style="margin-top:4px">Running Now</div>
       </div>
       <div class="glass-card" style="padding:14px;text-align:center">
@@ -358,7 +406,7 @@
     </div>
     <div class="glass-card" style="padding:16px">
       <div class="card-title" style="margin-bottom:4px">Documents</div>
-      <div class="card-sub" style="margin-bottom:12px">Workspace file viewer/editor</div>
+      <div class="card-sub" style="margin-bottom:12px">Read-only workspace file viewer</div>
       <div class="docs-layout">
         <div class="glass-card" style="padding:12px">
           <div class="file-sidebar-header">Workspace Files</div>
@@ -366,12 +414,7 @@
         </div>
         <div class="editor-area" id="editorArea">
           <div class="editor-toolbar">
-            <div class="editor-filename" id="editorFilename">Select a file<span>to begin editing</span></div>
-            <button class="edit-toggle-btn" id="editToggleBtn" onclick="toggleEditMode()" style="display:none">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-              <span id="editToggleLabel">Edit</span>
-            </button>
-            <button class="save-btn" id="saveBtn" onclick="saveFile()" disabled style="display:none">Save</button>
+            <div class="editor-filename" id="editorFilename">Select a file<span>to view</span></div>
           </div>
           <div class="md-preview" id="mdPreview">
             <div class="md-empty-hint">
@@ -379,7 +422,6 @@
               <p>Select a file from the sidebar to view its contents</p>
             </div>
           </div>
-          <textarea class="editor-textarea" id="editorTextarea" placeholder="Select a file from the sidebar to view and edit its contents…" disabled style="display:none"></textarea>
         </div>
       </div>
     </div>
@@ -402,6 +444,8 @@
       <div id="cronTrendLegend" style="margin-top:6px;font-size:.72rem;display:flex;gap:16px"></div>
     </div>
   </div>
+  </main>
+  </div>
 </div>
 
 <!-- Task Detail Modal -->
@@ -418,64 +462,19 @@
   </div>
 </div>
 
-<!-- Create Task Modal -->
-<div class="modal-overlay" id="createModal">
-  <div class="modal" style="position:relative">
-    <button class="modal-close" onclick="closeCreateModal()">✕</button>
-    <h2>Create Task</h2>
-    <div class="form-group">
-      <label class="form-label">Title</label>
-      <input type="text" class="form-input" id="newTitle" placeholder="Task title…">
-    </div>
-    <div class="form-group">
-      <label class="form-label">Description</label>
-      <textarea class="form-textarea" id="newDesc" placeholder="Short task description…" style="min-height:60px"></textarea>
-    </div>
-    <div class="form-group">
-      <label class="form-label">📝 Content <span style="font-weight:400;text-transform:none;letter-spacing:0;font-size:.72rem;color:var(--text2)">(Markdown supported — use headers, lists, code blocks, tables…)</span></label>
-      <textarea class="form-textarea" id="newContent" placeholder="# Detailed content here…&#10;&#10;Supports **bold**, *italic*, `code`, lists, tables, and more.&#10;&#10;```js&#10;const example = 'code block';&#10;```" style="min-height:160px"></textarea>
-    </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-      <div class="form-group">
-        <label class="form-label">Priority</label>
-        <select class="form-select" id="newPriority">
-          <option value="medium">Medium</option>
-          <option value="high">High</option>
-          <option value="low">Low</option>
-        </select>
-      </div>
-      <div class="form-group">
-        <label class="form-label">Assignee</label>
-        <select class="form-select" id="newAssignee">
-          <option value="main">Main Agent</option>
-          <option value="sub-agent">Sub-Agent</option>
-        </select>
-      </div>
-    </div>
-    <div class="form-group">
-      <label class="form-label">Due Date</label>
-      <input type="date" class="form-input" id="newDueDate">
-    </div>
-    <div class="modal-actions">
-      <button class="action-btn" onclick="closeCreateModal()">Cancel</button>
-      <button class="action-btn primary" id="createTaskBtn" onclick="createTask()">Create Task</button>
-    </div>
-  </div>
-</div>
-
 <!-- Toast Container -->
 <div class="toast-container" id="toastContainer"></div>
 
 <!-- Modular JS: shared utilities first, then tab modules, then boot -->
-<script src="/frontend/shared/api.js?v=20260327ai"></script>
-<script src="/frontend/shared/ui-utils.js?v=20260327ai"></script>
-<script src="/frontend/tabs/overview.js?v=20260327ai"></script>
-<script src="/frontend/tabs/cost.js?v=20260327ai"></script>
-<script src="/frontend/tabs/cron.js?v=20260327ai"></script>
-<script src="/frontend/tabs/health.js?v=20260327ai"></script>
-<script src="/frontend/tabs/spark-monitor.js?v=20260327ai"></script>
-<script src="/frontend/tabs/copilot.js?v=20260401ai"></script>
-<script src="/frontend/tabs/config.js?v=20260327ai"></script>
-<script src="/frontend/shared/boot.js?v=20260327ai"></script>
+<script src="/frontend/shared/api.js?v=20260803e"></script>
+<script src="/frontend/shared/ui-utils.js?v=20260803e"></script>
+<script src="/frontend/tabs/overview.js?v=20260803e"></script>
+<script src="/frontend/tabs/cost.js?v=20260803e"></script>
+<script src="/frontend/tabs/cron.js?v=20260803e"></script>
+<script src="/frontend/tabs/health.js?v=20260803e"></script>
+<script src="/frontend/tabs/spark-monitor.js?v=20260803e"></script>
+<script src="/frontend/tabs/copilot.js?v=20260803e"></script>
+<script src="/frontend/tabs/config.js?v=20260803e"></script>
+<script src="/frontend/shared/boot.js?v=20260803e"></script>
 </body>
 </html>

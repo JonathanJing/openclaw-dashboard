@@ -58,8 +58,13 @@ async function loadSparkTaskList() {
       return;
     }
 
-    const statusColor = { done: '#22c55e', running: '#7c6af7', error: '#ef4444', unknown: '#6b7280' };
-    const statusBg    = { done: 'rgba(34,197,94,0.15)', running: 'rgba(124,106,247,0.15)', error: 'rgba(239,68,68,0.15)', unknown: 'rgba(107,114,128,0.15)' };
+    const statusColor = { done: 'var(--green)', running: 'var(--blue)', error: 'var(--red)', unknown: 'var(--text2)' };
+    const statusBg    = {
+      done: 'color-mix(in srgb,var(--green) 14%,transparent)',
+      running: 'color-mix(in srgb,var(--blue) 14%,transparent)',
+      error: 'color-mix(in srgb,var(--red) 14%,transparent)',
+      unknown: 'color-mix(in srgb,var(--text2) 12%,transparent)',
+    };
     const statusIcon  = { done: '✓', running: '●', error: '✕', unknown: '?' };
 
     const rows = tasks.map(t => {
@@ -109,8 +114,8 @@ async function loadSparkTaskList() {
           
           <!-- Duration & Tokens - Highlighted -->
           <div style="display:flex;gap:8px;justify-content:flex-end;margin-bottom:4px">
-            <span style="font-size:.75rem;padding:3px 8px;border-radius:6px;background:rgba(124,106,247,0.12);color:#a78bfa;font-weight:500">⏱ ${dur}</span>
-            <span style="font-size:.75rem;padding:3px 8px;border-radius:6px;background:rgba(34,197,94,0.12);color:#4ade80;font-weight:500">🪙 ${tokens}</span>
+            <span style="font-size:.75rem;padding:3px 8px;border-radius:6px;background:color-mix(in srgb,var(--blue) 12%,transparent);color:var(--blue);font-weight:500">⏱ ${dur}</span>
+            <span style="font-size:.75rem;padding:3px 8px;border-radius:6px;background:color-mix(in srgb,var(--green) 12%,transparent);color:var(--green);font-weight:500">🪙 ${tokens}</span>
           </div>
           
           <!-- Status Badge -->

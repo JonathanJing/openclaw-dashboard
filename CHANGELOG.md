@@ -1,5 +1,36 @@
 # Changelog
 
+## [2.0.0] - 2026-08-03
+
+### OpenClaw 2026.7 design alignment
+
+- Replaced the floating purple tab strip with an OpenClaw-style application shell: left navigation, sticky topbar, flat neutral cards, red primary accent, thin borders, and responsive bottom navigation.
+- Added dark/light theme support, visible focus states, reduced-motion handling, and improved desktop/tablet/mobile breakpoints.
+- Restyled the new Usage, Spark Monitor, Local API Hub, and Copilot surfaces without changing their existing route or `data-tab` contracts.
+
+### Dashboard integration
+
+- Preserved the modular backend/frontend architecture and integrated source analytics, Spark task history, PR Hunter output, and realtime Copilot into the shared navigation and visual system.
+- Changed frontend API calls to same-origin so any `DASHBOARD_PORT`, reverse proxy, or Tailscale origin works.
+- Added capability-aware Copilot setup states instead of exposing a Start action that fails silently.
+
+### Security and release readiness
+
+- Added authenticated Copilot WebSocket upgrades and fail-closed disabled/unconfigured behavior.
+- Removed automatic secret-file scanning from Copilot; credentials are read only from the process environment.
+- Refuse non-loopback binds when `OPENCLAW_AUTH_TOKEN` is missing.
+- Limited URL-token authentication to an immediate server-side initial handoff; API routes require cookie or Bearer auth.
+- Made cookie parsing resilient to malformed percent escapes and tokens containing `=`.
+- Parse requests against a fixed internal URL base so an invalid or hostile `Host` header cannot terminate the server.
+- Scoped Copilot Redis events by meeting ID while retaining single-meeting legacy worker compatibility.
+- Removed task/file mutation code, restart/doctor routes, and the legacy backend proxy from the shipped server.
+- Repaired the launcher to use `backend/server.js` and Node env-file parsing without hardcoded credentials or machine paths.
+- Track the launcher and test harness in Git and in the explicit release manifest.
+- Replaced the obsolete dashboard smoke script with startup, malformed-input, auth, read-only-boundary, design-contract, release-file, and public-safety tests.
+- Upgraded `ws` to `8.21.1` to resolve the published memory-disclosure and fragmented-message memory-exhaustion advisories.
+- Added a deterministic `?preview=1` mode for public screenshots so published images never expose local hostnames, sessions, or workspace details.
+- Added verified desktop light, desktop dark, and mobile dark screenshots for the GitHub and ClawHub pages.
+
 ## [1.7.6] - 2026-03-04
 
 ### 🐛 Bug Fixes — Model Registry & Matching

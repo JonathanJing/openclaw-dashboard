@@ -1,5 +1,4 @@
 # Personal runtime config (not features)
-start.sh
 .env
 ops-session-model-defaults.json
 tasks.json
@@ -8,7 +7,8 @@ node_modules/
 .DS_Store
 .cursor/
 *.log
-scripts/
+scripts/*
+!scripts/test-dashboard.js
 .env.example
 
 attachments/
