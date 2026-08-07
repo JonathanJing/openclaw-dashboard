@@ -2,31 +2,26 @@
 name: openclaw-dashboard
 description: OpenClaw operations dashboard for sessions, usage and cost, cron runs, gateway health, DGX Spark work, Local API Hub, and opt-in meeting Copilot. Use when installing, operating, auditing, or extending the dashboard backend, frontend tabs, security model, or OpenClaw-aligned design.
 metadata:
-  {
-    "openclaw":
-      {
-        "emoji": "📊",
-        "requires": { "bins": ["node", "openclaw"] },
-        "optionalRequires":
-          {
-            "config": ["gateway.auth.token"],
-            "env": ["OPENCLAW_AUTH_TOKEN"],
-          },
-        "optionalEnv":
-          [
-            "DASHBOARD_CORS_ORIGINS",
-            "DASHBOARD_COOKIE_SECURE",
-            "OPENCLAW_CONTROL_UI_URL",
-            "OPENCLAW_ENABLE_CONFIG_ENDPOINT",
-            "OPENCLAW_ENABLE_COPILOT",
-            "OPENCLAW_COPILOT_MODEL",
-            "OPENCLAW_COPILOT_REDIS_URL",
-            "ALIBABA_CLOUD_API_KEY",
-            "LOCAL_API_HUB_HOST",
-            "LOCAL_API_HUB_PORT",
-          ],
-      },
-  }
+  openclaw:
+    version: "2.0.2"
+    emoji: "📊"
+    homepage: https://github.com/JonathanJing/openclaw-dashboard
+    requires:
+      bins: [node, openclaw]
+    primaryEnv: OPENCLAW_AUTH_TOKEN
+    envVars:
+      - name: OPENCLAW_AUTH_TOKEN
+        required: true
+        description: Authentication token required before the dashboard starts.
+      - name: OPENCLAW_ENABLE_CONFIG_ENDPOINT
+        required: false
+        description: Opt in to redacted configuration inspection.
+      - name: OPENCLAW_ENABLE_COPILOT
+        required: false
+        description: Opt in to meeting audio processing.
+      - name: ALIBABA_CLOUD_API_KEY
+        required: false
+        description: Realtime provider credential used only when Copilot is enabled.
 ---
 
 # OpenClaw Dashboard Skill
@@ -136,6 +131,7 @@ Use this skill for:
 ## Public-safety guardrails
 
 - Never hardcode tokens, API keys, cookies, or host-specific secrets.
+- Require `OPENCLAW_AUTH_TOKEN`; do not start the dashboard without authentication.
 - Never commit machine-specific absolute paths.
 - Prefer `process.env.*` and safe defaults based on `HOME`.
 - Keep examples as placeholders (`your_token_here`, `/path/to/...`).

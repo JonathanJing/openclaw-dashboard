@@ -37,7 +37,7 @@ Open `http://127.0.0.1:18791/`.
 
 Set `OPENCLAW_AUTH_TOKEN` in `.env` before exposing the dashboard beyond loopback. The launcher uses Node's env-file parser and starts `backend/server.js`.
 
-Use the `/login` form for normal authentication. A compatibility `/?token=...` handoff is accepted only at the root and returns an immediate server-side redirect before dashboard HTML is served. Because the first request URL can still appear in upstream access logs, do not use query-token handoff through an untrusted proxy.
+Use the `/login` form for authentication. Query-string tokens are rejected so credentials do not enter browser history, referrers, or proxy access logs.
 
 The header's **Control UI** link is supplied at runtime through `OPENCLAW_CONTROL_UI_URL`. Set the complete URL when your Gateway uses TLS, a non-default host, or `gateway.controlUi.basePath`.
 
@@ -113,7 +113,7 @@ ALIBABA_CLOUD_API_KEY=your_alibaba_cloud_api_key
 OPENCLAW_COPILOT_REDIS_URL=redis://127.0.0.1:6379
 ```
 
-The browser requests microphone access only after the operator clicks **Start**. Its WebSocket upgrade requires dashboard authentication and rejects disabled or incomplete configurations.
+The browser requests confirmation and microphone access only after the operator clicks **Start**. The operator must confirm participant consent and cloud-audio disclosure before the stream begins. Its WebSocket upgrade requires dashboard authentication and rejects disabled or incomplete configurations.
 
 Each connection receives a unique meeting ID and scoped Redis channels:
 

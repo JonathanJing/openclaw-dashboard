@@ -127,7 +127,7 @@ async function loadDiscordSurfacesTable() {
     html += '</tbody></table>';
     tableEl.innerHTML = html;
   } catch (e) {
-    tableEl.innerHTML = `<div class="empty-state"><p>${e.message}</p></div>`;
+    tableEl.innerHTML = `<div class="empty-state"><p>${escHtml(e.message)}</p></div>`;
   }
 }
 
@@ -311,7 +311,7 @@ async function loadSessions() {
     html += '</tbody></table>';
     tableEl.innerHTML = html;
   } catch (e) {
-    tableEl.innerHTML = `<div class="empty-state"><p>${e.message}</p></div>`;
+    tableEl.innerHTML = `<div class="empty-state"><p>${escHtml(e.message)}</p></div>`;
   }
 }
 
@@ -329,14 +329,12 @@ async function loadDgxStatus() {
 
     const online = !!d.online;
     const isSleeping = !!d.isSleeping;
-    const baseUrl = d.baseUrl || d?.config?.metricsUrl || 'unknown';
-
     // Status badge
     if (!online) {
       badge.textContent = '🔴 Offline';
       badge.style.background = 'rgba(239,68,68,.2)';
       badge.style.color = '#ef4444';
-      content.innerHTML = `<div style="color:var(--text2);font-size:.85rem">DGX Spark is not reachable at ${escHtml(baseUrl)}</div>`;
+      content.innerHTML = '<div style="color:var(--text2);font-size:.85rem">DGX Spark is not reachable.</div>';
       return;
     }
     if (isSleeping) {
@@ -464,4 +462,3 @@ async function loadDgxStatus() {
     content.innerHTML = `<div style="color:#ef4444;font-size:.8rem">${escHtml(e.message)}</div>`;
   }
 }
-

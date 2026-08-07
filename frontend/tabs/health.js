@@ -147,7 +147,7 @@ async function loadQuality() {
     }
     html += '</div>';
     el.innerHTML = html;
-  } catch (e) { el.innerHTML = `<p>${e.message}</p>`; }
+  } catch (e) { el.innerHTML = `<p>${escHtml(e.message)}</p>`; }
 }
 
 
@@ -290,7 +290,7 @@ async function loadAudit() {
     html += '</div>';
 
     el.innerHTML = html;
-  } catch (e) { el.innerHTML = `<p>${e.message}</p>`; }
+  } catch (e) { el.innerHTML = `<p>${escHtml(e.message)}</p>`; }
 }
 
 // timeSince() is defined in shared/ui-utils.js

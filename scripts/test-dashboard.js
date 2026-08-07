@@ -87,6 +87,7 @@ async function main() {
   const api = read('frontend/shared/api.js');
   const server = read('backend/server.js');
   const copilot = read('backend/providers/copilot.js');
+  const modelsRegistry = read('models-registry.json');
   const sparkMonitor = read('frontend/tabs/spark-monitor.js');
   const tasksProvider = read('backend/providers/tasks.js');
   const configProvider = read('backend/providers/config.js');
@@ -131,9 +132,11 @@ async function main() {
   assert.doesNotMatch(api, /URLSearchParams\(location\.search\).*token/s);
   assert.match(server, /helpers\.authenticate\(request\)/);
   assert.match(server, /parseRequestUrl\(req\)/);
+  assert.doesNotMatch(server, /query\.token/);
+  assert.match(server, /Refusing to start without OPENCLAW_AUTH_TOKEN/);
   assert.match(copilot, /OPENCLAW_ENABLE_COPILOT|ENABLE_COPILOT/);
   assert.match(copilot, /meetingChannel\(meetingId, 'transcript'\)/);
-  assert.match(copilot, /legacyCompat/);
+  assert.match(copilot, /LegacyMeetingCoordinator/);
   assert.doesNotMatch(copilot, /readFileSync|keys\.env|\.openclaw\/\.env/);
   assert.doesNotMatch(tasksProvider, /triggerTaskExecution|writeFileSync|renameSync|HOOK_TOKEN/);
   assert.doesNotMatch(configProvider, /req\.method === 'PUT'|writeFileSync/);
@@ -178,9 +181,40 @@ async function main() {
   assert.doesNotMatch(publicFiles, /\/Users\/[A-Za-z0-9._-]+/);
   assert.doesNotMatch(publicFiles, /OPENCLAW_AUTH_TOKEN\s*=\s*["'][A-Za-z0-9_-]{16,}/);
   assert.doesNotMatch(publicFiles, /sk-[A-Za-z0-9_-]{16,}/);
+  assert.doesNotMatch(modelsRegistry, /\b(?:10|127\.0\.0\.1|192\.168|172\.(?:1[6-9]|2[0-9]|3[01]))\./);
+  assert.doesNotMatch(modelsRegistry, /"baseUrl"/);
+  assert.doesNotMatch(compatibilityProvider, /\b192\.168\./);
+
+  const configModule = require(path.join(root, 'backend/providers/config.js'));
+  const secretFixture = {
+    apiKey: 'sk-test-secret',
+    OPENAI_API_KEY: 'sk-env-secret',
+    token: 'tok-secret',
+    author: 'public-author',
+    nested: { webhookUrl: 'https://example.invalid/private' },
+  };
+  configModule._test.redactSecrets(secretFixture);
+  assert.equal(secretFixture.apiKey, '[REDACTED]');
+  assert.equal(secretFixture.OPENAI_API_KEY, '[REDACTED]');
+  assert.equal(secretFixture.token, '[REDACTED]');
+  assert.equal(secretFixture.nested.webhookUrl, '[REDACTED]');
+  assert.equal(secretFixture.author, 'public-author');
+
+  const { LegacyMeetingCoordinator } = require(path.join(root, 'backend/providers/copilot.js'))._test;
+  const coordinator = new LegacyMeetingCoordinator();
+  const promoted = [];
+  assert.equal(coordinator.add('meeting-a', async () => promoted.push('meeting-a')), true);
+  assert.equal(coordinator.add('meeting-b', async () => promoted.push('meeting-b')), false);
+  await coordinator.remove('meeting-a');
+  assert.equal(coordinator.ownerId, 'meeting-b');
+  assert.deepEqual(promoted, ['meeting-b']);
+  assert.equal(coordinator.size, 1);
 
   const port = await getFreePort();
   const tempHome = fs.mkdtempSync(path.join(os.tmpdir(), 'openclaw-dashboard-test-'));
+  const tempOpenClaw = path.join(tempHome, '.openclaw');
+  fs.mkdirSync(path.join(tempOpenClaw, 'workspace'), { recursive: true });
+  fs.writeFileSync(path.join(tempOpenClaw, 'openclaw.json'), JSON.stringify(secretFixture));
   const token = 'dashboard=test-token=';
   const child = spawn(process.execPath, ['backend/server.js'], {
     cwd: root,
@@ -191,6 +225,7 @@ async function main() {
       DASHBOARD_PORT: String(port),
       OPENCLAW_AUTH_TOKEN: token,
       OPENCLAW_ENABLE_COPILOT: '0',
+      OPENCLAW_ENABLE_CONFIG_ENDPOINT: '1',
       DASHBOARD_COOKIE_SECURE: '1',
       OPENCLAW_CONTROL_UI_URL: 'https://gateway.example/openclaw/',
     },
@@ -241,9 +276,21 @@ async function main() {
     });
     assert.equal(cookieAuthenticated.status, 200);
 
+    const configResponse = await request(port, '/ops/config', {
+      headers: { Cookie: loginCookie },
+    });
+    assert.equal(configResponse.status, 200);
+    const configJson = JSON.parse(configResponse.body);
+    assert.equal(configJson.config.apiKey, '[REDACTED]');
+    assert.equal(configJson.config.OPENAI_API_KEY, '[REDACTED]');
+    assert.equal(configJson.config.token, '[REDACTED]');
+    assert.equal(configJson.config.nested.webhookUrl, '[REDACTED]');
+    assert.equal(configJson.config.author, 'public-author');
+    assert.doesNotMatch(configResponse.body, /sk-test-secret|sk-env-secret|tok-secret|example\.invalid\/private/);
+
     const tokenHandoff = await request(port, `/?token=${encodeURIComponent(token)}`);
     assert.equal(tokenHandoff.status, 302);
-    assert.equal(tokenHandoff.headers.location, '/');
+    assert.equal(tokenHandoff.headers.location, '/login');
     assert.equal(tokenHandoff.body, '');
 
     const queryTokenApi = await request(port, `/api/copilot/status?token=${encodeURIComponent(token)}`);

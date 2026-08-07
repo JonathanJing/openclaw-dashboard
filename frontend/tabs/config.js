@@ -40,7 +40,7 @@ async function loadConfig() {
       }
     }
     el.innerHTML = html;
-  } catch (e) { el.innerHTML = `<p>${e.message}</p>`; }
+  } catch (e) { el.innerHTML = `<p>${escHtml(e.message)}</p>`; }
 }
 
 async function loadSkills() {
@@ -175,7 +175,7 @@ async function loadTasks(force) {
     // Flash the live indicator on data change
     _flashLiveIndicator();
   } catch(e) {
-    list.innerHTML = `<div class="empty-state"><svg viewBox="0 0 80 80"><circle cx="40" cy="40" r="36" fill="none" stroke="currentColor" stroke-width="2"/><path d="M28 28l24 24M52 28L28 52" stroke="currentColor" stroke-width="2"/></svg><h3>Unable to Load Tasks</h3><p>${e.message}</p><button class="action-btn primary" onclick="loadTasks(true)" style="margin:0 auto">Retry</button></div>`;
+    list.innerHTML = `<div class="empty-state"><svg viewBox="0 0 80 80"><circle cx="40" cy="40" r="36" fill="none" stroke="currentColor" stroke-width="2"/><path d="M28 28l24 24M52 28L28 52" stroke="currentColor" stroke-width="2"/></svg><h3>Unable to Load Tasks</h3><p>${escHtml(e.message)}</p><button class="action-btn primary" onclick="loadTasks(true)" style="margin:0 auto">Retry</button></div>`;
   }
 }
 

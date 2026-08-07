@@ -1,5 +1,24 @@
 # Changelog
 
+## [2.0.2] - 2026-08-03
+
+### Security and reliability
+
+- Removed host-specific private-network endpoints from the public model registry and eliminated the DGX private-IP fallback.
+- Made configuration redaction normalize common secret-key formats and fully replace sensitive values.
+- Transfer the single legacy Copilot Redis subscription to another active meeting when its owner disconnects.
+- Added regression coverage for public bundle safety, secret redaction, and Copilot legacy-owner transfer.
+
+## [2.0.1] - 2026-08-03
+
+### Security and compatibility
+
+- Removed all query-string token handoffs; authentication now uses the login form, cookie, or Bearer header only.
+- Require `OPENCLAW_AUTH_TOKEN` for every startup, including loopback-only use.
+- Removed `keys.env`, absolute runtime paths, Spark SSH hosts, and backend base URLs from API responses.
+- Added explicit participant-consent and cloud-audio confirmation before Copilot microphone streaming.
+- Escaped remaining frontend error messages and added explicit Local API Hub alias routing.
+
 ## [2.0.0] - 2026-08-03
 
 ### OpenClaw 2026.7 design alignment

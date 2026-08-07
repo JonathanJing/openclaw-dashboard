@@ -8,8 +8,37 @@ const helpers = require('../lib/http-helpers');
 
 let redisPubClient = null;
 let redisPubConnectPromise = null;
-const activeMeetingIds = new Set();
-let legacyMeetingId = null;
+
+class LegacyMeetingCoordinator {
+  constructor() {
+    this.active = new Map();
+    this.ownerId = null;
+  }
+
+  add(meetingId, promote) {
+    this.active.set(meetingId, promote);
+    if (this.ownerId) return false;
+    this.ownerId = meetingId;
+    return true;
+  }
+
+  async remove(meetingId) {
+    this.active.delete(meetingId);
+    if (this.ownerId !== meetingId) return;
+    this.ownerId = null;
+    const next = this.active.entries().next().value;
+    if (!next) return;
+    const [nextId, promote] = next;
+    this.ownerId = nextId;
+    await promote();
+  }
+
+  get size() {
+    return this.active.size;
+  }
+}
+
+const meetingCoordinator = new LegacyMeetingCoordinator();
 
 function isConfigured() {
   return cfg.ENABLE_COPILOT && Boolean(cfg.COPILOT_API_KEY);
@@ -73,16 +102,38 @@ async function handleWsConnection(clientWs) {
   let dashWs = null;
   let sub = null;
   let cleanupStarted = false;
+  let legacyCompat = false;
+  let legacySubscribed = false;
   const meetingId = generateId('meeting');
-  activeMeetingIds.add(meetingId);
-  if (!legacyMeetingId) legacyMeetingId = meetingId;
-  const legacyCompat = legacyMeetingId === meetingId;
+
+  const forwardRagHits = (message) => {
+    const data = safeJsonParse(message);
+    if (data) sendJson(clientWs, { type: 'rag_hits', data });
+  };
+  const forwardInsight = (message) => {
+    const data = safeJsonParse(message);
+    if (data) sendJson(clientWs, { type: 'insight', data });
+  };
+
+  const subscribeLegacyChannels = async () => {
+    legacyCompat = true;
+    if (!sub?.isReady || legacySubscribed) return;
+    await sub.subscribe('meeting.rag_hits', forwardRagHits);
+    await sub.subscribe('meeting.insights', forwardInsight);
+    legacySubscribed = true;
+    sendJson(clientWs, { type: 'session', meetingId, legacyCompat: true });
+  };
+
+  legacyCompat = meetingCoordinator.add(meetingId, subscribeLegacyChannels);
 
   const cleanup = async () => {
     if (cleanupStarted) return;
     cleanupStarted = true;
-    activeMeetingIds.delete(meetingId);
-    if (activeMeetingIds.size === 0) legacyMeetingId = null;
+    try {
+      await meetingCoordinator.remove(meetingId);
+    } catch (err) {
+      console.error('[copilot] Legacy meeting promotion failed:', err.message);
+    }
     try {
       if (dashWs && dashWs.readyState !== WebSocket.CLOSED) dashWs.terminate();
     } catch {
@@ -114,21 +165,12 @@ async function handleWsConnection(clientWs) {
     sub.on('error', (err) => console.error('[copilot] Redis sub error:', err.message));
     await sub.connect();
 
-    const forwardRagHits = (message) => {
-      const data = safeJsonParse(message);
-      if (data) sendJson(clientWs, { type: 'rag_hits', data });
-    };
-    const forwardInsight = (message) => {
-      const data = safeJsonParse(message);
-      if (data) sendJson(clientWs, { type: 'insight', data });
-    };
     await sub.subscribe(meetingChannel(meetingId, 'rag_hits'), forwardRagHits);
     await sub.subscribe(meetingChannel(meetingId, 'insights'), forwardInsight);
     if (legacyCompat) {
-      // Preserve the existing single-meeting worker contract without allowing
-      // additional concurrent meetings to share unscoped events.
-      await sub.subscribe('meeting.rag_hits', forwardRagHits);
-      await sub.subscribe('meeting.insights', forwardInsight);
+      // Preserve the existing single-meeting worker contract. Ownership is
+      // transferred to another active meeting when the current owner exits.
+      await subscribeLegacyChannels();
     }
 
     dashWs.on('open', () => {
@@ -218,10 +260,15 @@ function register(router) {
       enabled: cfg.ENABLE_COPILOT,
       configured: isConfigured(),
       model: cfg.ENABLE_COPILOT ? cfg.COPILOT_MODEL : null,
-      activeMeetings: activeMeetingIds.size,
+      activeMeetings: meetingCoordinator.size,
       channelIsolation: true,
     });
   });
 }
 
-module.exports = { register, handleWsConnection, isConfigured };
+module.exports = {
+  register,
+  handleWsConnection,
+  isConfigured,
+  _test: { LegacyMeetingCoordinator },
+};

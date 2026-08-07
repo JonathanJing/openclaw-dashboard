@@ -166,10 +166,14 @@ function register(router) {
     const snapshot = spark.readSnapshot();
     const watchdog = spark.readWatchdogState();
     const gt = spark.readGroundTruth();
-    const dgxBase = gt?.metricsUrl?.replace('/metrics', '') || 'http://192.168.1.152:8000';
+    const dgxBase = gt?.metricsUrl?.replace(/\/metrics\/?$/, '') || null;
 
     const nodeHttp = require('http');
     const fetchJson = (path, timeoutMs = 3000) => new Promise((resolve) => {
+      if (!dgxBase) {
+        resolve(null);
+        return;
+      }
       const t = setTimeout(() => resolve(null), timeoutMs);
       nodeHttp.get(`${dgxBase}${path}`, (r) => {
         let body = '';
@@ -215,7 +219,6 @@ function register(router) {
     jsonReply(res, 200, {
       online: effectiveOnline,
       isSleeping: false,
-      baseUrl: dgxBase,
       model: modelName ? { name: modelName } : null,
       activeTask,
       slots: {

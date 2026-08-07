@@ -251,13 +251,6 @@ const server = http.createServer((req, res) => {
 
   // Login: no auth
   if (pathname === '/login' && method === 'GET') {
-    if (query.token && query.token === cfg.AUTH_TOKEN) {
-      res.writeHead(302, {
-        'Set-Cookie': helpers.authCookie(2592000),
-        'Location': '/',
-      });
-      return res.end();
-    }
     const loginHtml = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>OpenClaw Dashboard Login</title>
@@ -301,20 +294,6 @@ const server = http.createServer((req, res) => {
     if (match?.handler) return match.handler(req, res, query);
   }
 
-  // Accept a URL token only for the initial dashboard handoff, then persist a
-  // cookie. API routes never authenticate from query parameters.
-  const initialTokenAccepted = pathname === '/'
-    && method === 'GET'
-    && query.token
-    && query.token === cfg.AUTH_TOKEN;
-  if (initialTokenAccepted) {
-    res.writeHead(302, {
-      'Set-Cookie': helpers.authCookie(2592000),
-      'Location': '/',
-    });
-    return res.end();
-  }
-
   // Auth check
   if (!helpers.authenticate(req)) {
     // Cookie-only UX: unauth root goes to login page.
@@ -350,9 +329,8 @@ server.on('error', (e) => {
   process.exit(1);
 });
 
-const loopbackHosts = new Set(['127.0.0.1', '::1', 'localhost']);
-if (!loopbackHosts.has(cfg.HOST) && !cfg.AUTH_TOKEN) {
-  console.error('[server] Refusing non-loopback bind without OPENCLAW_AUTH_TOKEN.');
+if (!cfg.AUTH_TOKEN) {
+  console.error('[server] Refusing to start without OPENCLAW_AUTH_TOKEN.');
   process.exit(1);
 }
 

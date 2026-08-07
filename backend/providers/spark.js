@@ -81,7 +81,7 @@ function handleSnapshot(_req, res) {
   jsonReply(res, 200, {
     snapshot,
     watchdog,
-    config: gt ? { metricsUrl: gt.metricsUrl, sshHost: gt.sshHost, sampleEverySeconds: gt.sampleEverySeconds } : null,
+    config: gt ? { sampleEverySeconds: gt.sampleEverySeconds } : null,
   });
 }
 

@@ -145,8 +145,8 @@ function handleWatchdog(req, res, query) {
       filteredListCriticalOnly: criticalOnly,
     },
     files: {
-      stateFile:  WATCHDOG_STATE_FILE,
-      eventsFile: WATCHDOG_EVENTS_FILE,
+      stateAvailable: Boolean(WATCHDOG_STATE_FILE),
+      eventsAvailable: Boolean(WATCHDOG_EVENTS_FILE),
     },
   });
 }

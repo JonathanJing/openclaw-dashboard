@@ -126,7 +126,7 @@ async function loadSparkTaskList() {
 
     el.innerHTML = `<div>${rows}</div>`;
   } catch (e) {
-    el.innerHTML = `<div style="color:var(--red);font-size:.8rem">Error: ${e.message}</div>`;
+    el.innerHTML = `<div style="color:var(--red);font-size:.8rem">Error: ${escHtml(e.message)}</div>`;
   }
 }
 

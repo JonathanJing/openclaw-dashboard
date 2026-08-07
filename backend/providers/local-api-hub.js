@@ -76,6 +76,17 @@ function hubProxy(req, res) {
   req.pipe(proxy);
 }
 
+/** Proxy an exact root-level dashboard alias to the corresponding hub path. */
+function hubAliasProxy(upstreamPath) {
+  return (req, res) => {
+    const originalUrl = req.url;
+    const queryIndex = originalUrl.indexOf('?');
+    const query = queryIndex >= 0 ? originalUrl.slice(queryIndex) : '';
+    req.url = `${upstreamPath}${query}`;
+    return hubProxy(req, res);
+  };
+}
+
 // ── Route handlers ────────────────────────────────────────────────────────────
 
 /** GET /ops/local-api-hub — health check + metadata for Health panel */
@@ -183,12 +194,12 @@ function register(router) {
   router.add('GET', '/local-api-hub/memory/:date', hubProxy);
 
   // Root-level dashboard usage aliases so frontend can call dashboard backend directly.
-  router.add('GET', '/dashboard/usage/models/today', hubProxy);
-  router.add('GET', '/dashboard/usage/models/history', hubProxy);
-  router.add('GET', '/dashboard/usage/source/history', hubProxy);
-  router.add('GET', '/dashboard/usage/cron/summary', hubProxy);
-  router.add('GET', '/dashboard/usage/cron/trend', hubProxy);
-  router.add('GET', '/dashboard/usage/cron/daily', hubProxy);
+  router.add('GET', '/dashboard/usage/models/today', hubAliasProxy('/local-api-hub/dashboard/usage/models/today'));
+  router.add('GET', '/dashboard/usage/models/history', hubAliasProxy('/local-api-hub/dashboard/usage/models/history'));
+  router.add('GET', '/dashboard/usage/source/history', hubAliasProxy('/local-api-hub/dashboard/usage/source/history'));
+  router.add('GET', '/dashboard/usage/cron/summary', hubAliasProxy('/local-api-hub/dashboard/usage/cron/summary'));
+  router.add('GET', '/dashboard/usage/cron/trend', hubAliasProxy('/local-api-hub/dashboard/usage/cron/trend'));
+  router.add('GET', '/dashboard/usage/cron/daily', hubAliasProxy('/local-api-hub/dashboard/usage/cron/daily'));
 }
 
 module.exports = { register };

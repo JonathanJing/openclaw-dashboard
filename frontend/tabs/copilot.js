@@ -63,6 +63,11 @@ function initCopilot() {
 
   startBtn.addEventListener('click', async () => {
     if (!copilotAvailable) return;
+    const consented = window.confirm(
+      'Starting Copilot sends live microphone audio to the configured realtime provider. '
+      + 'Continue only after every meeting participant has consented.'
+    );
+    if (!consented) return;
     startBtn.disabled = true;
     debug.replaceChildren();
     appendDebug(debug, 'Connecting to the dashboard realtime endpoint…', 'info');

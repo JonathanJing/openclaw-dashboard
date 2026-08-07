@@ -378,7 +378,7 @@ async function loadOpsAlltime(days) {
     if (allDaily.length > 0) initWeekNav(ANALYTICS_STATE.allDaily.map(d => ({ date: d.day, tokens: d.totalTokens, cost: d.totalCost, models: d.models, modelCosts: d.modelCosts })));
 
   } catch (e) {
-    modelsEl.innerHTML = `<div class="empty-state"><p>${e.message}</p></div>`;
+    modelsEl.innerHTML = `<div class="empty-state"><p>${escHtml(e.message)}</p></div>`;
   }
 }
 
@@ -427,7 +427,7 @@ async function loadOpsAudit() {
 
     el.innerHTML = html;
   } catch (e) {
-    el.innerHTML = `<div class="ops-ch-meta">Failed: ${e.message}</div>`;
+    el.innerHTML = `<div class="ops-ch-meta">Failed: ${escHtml(e.message)}</div>`;
   }
 }
 
@@ -646,7 +646,7 @@ async function loadOpsBySource(days) {
     renderAnalyticsDailyDetails();
     renderCostHeatmap();
   } catch (e) {
-    listEl.innerHTML = `<div class="empty-state"><h3>Unable to load</h3><p>${e.message}</p></div>`;
+    listEl.innerHTML = `<div class="empty-state"><h3>Unable to load</h3><p>${escHtml(e.message)}</p></div>`;
   }
 }
 

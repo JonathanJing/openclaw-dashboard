@@ -102,7 +102,7 @@ async function loadCronRuns() {
       </div>`;
     }).join('');
   } catch (e) {
-    body.innerHTML = `<div style="padding:12px 18px;font-size:.8rem;color:var(--text2)">${e.message}</div>`;
+    body.innerHTML = `<div style="padding:12px 18px;font-size:.8rem;color:var(--text2)">${escHtml(e.message)}</div>`;
   }
 }
 
@@ -414,6 +414,6 @@ async function loadCronCosts() {
       legendEl.textContent = tt('Not enough trend data (need at least 2 days)', '趋势数据不足（至少需要 2 天）');
     }
   } catch (e) {
-    contentEl.innerHTML = `<p>${e.message}</p>`;
+    contentEl.innerHTML = `<p>${escHtml(e.message)}</p>`;
   }
 }

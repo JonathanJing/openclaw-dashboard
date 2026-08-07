@@ -22,14 +22,29 @@ function getCapabilities() {
 }
 
 // ── Redact secrets ───────────────────────────────────────────────────
+function isSensitiveKey(key) {
+  const normalized = String(key).toLowerCase().replace(/[^a-z0-9]/g, '');
+  if (normalized === 'auth') return true;
+  return [
+    'apikey',
+    'token',
+    'secret',
+    'password',
+    'webhook',
+    'authorization',
+    'credential',
+    'privatekey',
+  ].some(fragment => normalized.includes(fragment));
+}
+
 function redactSecrets(obj) {
   if (!obj || typeof obj !== 'object') return;
-  const sensitiveKeys = ['apiKey', 'token', 'secret', 'password', 'webhook', 'auth'];
   for (const key of Object.keys(obj)) {
-    if (sensitiveKeys.some(s => key.toLowerCase().includes(s)) && typeof obj[key] === 'string') {
-      obj[key] = obj[key].slice(0, 4) + '***';
+    if (isSensitiveKey(key)) {
+      obj[key] = '[REDACTED]';
+    } else if (typeof obj[key] === 'object') {
+      redactSecrets(obj[key]);
     }
-    if (typeof obj[key] === 'object') redactSecrets(obj[key]);
   }
 }
 
@@ -44,7 +59,6 @@ function buildConfigFiles() {
   // Core config files
   const coreFiles = [
     { filePath: path.join(dotOc, 'openclaw.json'), label: 'openclaw.json',        category: 'core'  },
-    { filePath: path.join(dotOc, 'keys.env'),      label: 'keys.env',             category: 'keys'  },
     { filePath: path.join(dotOc, 'exec-approvals.json'), label: 'exec-approvals.json', category: 'core' },
   ];
 
@@ -68,9 +82,6 @@ function buildConfigFiles() {
           redactSecrets(parsed);
           content = JSON.stringify(parsed, null, 2);
         } catch {}
-      } else if (label.endsWith('.env') || label.endsWith('keys.env')) {
-        // Redact values in env files
-        content = content.replace(/^(\s*\w+=)(.+)$/gm, (_, k, v) => k + '***');
       }
 
       files.push({
@@ -204,4 +215,4 @@ function register(router) {
   router.add('GET', '/notes',       (_req, res) => jsonReply(res, 200, []));
 }
 
-module.exports = { register };
+module.exports = { register, _test: { isSensitiveKey, redactSecrets } };

@@ -11,9 +11,8 @@ It does not register routes for task/file mutation, agent spawning, model change
 - **Primary:** URL-encoded HttpOnly + SameSite=Strict cookie (`ds`), set by `POST /login`.
 - **HTTPS deployments:** Set `DASHBOARD_COOKIE_SECURE=1` so the cookie also carries `Secure`.
 - **API clients:** `Authorization: Bearer <token>` is supported.
-- **Initial handoff:** `/?token=...` and `/login?token=...` are compatibility paths only. The server validates the token, sets the cookie, and sends an immediate `302` before serving dashboard HTML.
-- **Query boundary:** API routes never authenticate from query parameters.
-- **Logging caveat:** The first compatibility-handoff URL can still appear in browser history or upstream access logs. Prefer the login form, especially through a proxy.
+- **Login boundary:** Authentication is accepted only through `POST /login`, the `ds` cookie, or a Bearer header.
+- **Query boundary:** Query-string tokens are rejected on all routes so credentials do not enter browser history, referrers, or proxy access logs.
 - **No browser token storage:** The frontend does not write the token to localStorage or sessionStorage.
 - **Bind safety:** The default bind is `127.0.0.1`; the server refuses a non-loopback bind when `OPENCLAW_AUTH_TOKEN` is empty.
 
@@ -32,7 +31,7 @@ The public `/health` response reports these boundaries through `capabilities`.
 
 ## Meeting Copilot
 
-- Microphone access begins only after an explicit **Start** click.
+- Microphone access begins only after an explicit **Start** click and a confirmation covering participant consent and cloud-audio processing.
 - WebSocket upgrades reject unauthenticated, disabled, or incomplete configurations.
 - WebSocket messages are bounded by a 64 KiB maximum payload.
 - Credentials come only from the process environment; the provider does not scan `keys.env` or `~/.openclaw/.env`.
